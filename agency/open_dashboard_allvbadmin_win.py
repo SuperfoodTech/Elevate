@@ -29,18 +29,7 @@ SCRIPT_DIR   = Path(__file__).resolve().parent          # weekly/
 PROJECT_ROOT = SCRIPT_DIR.parent                        # weekly/
 sys.path.insert(0, str(SCRIPT_DIR))
 
-# Patch Options.add_argument agar otomatis menggunakan profile _win di Linux
-orig_add_argument = Options.add_argument
-def custom_add_argument(self, argument):
-    if "--user-data-dir=" in argument:
-        if argument.endswith("chrome_profile"):
-            argument = argument + "_win"
-        elif "chrome_profile_" in argument and not argument.endswith("_win"):
-            argument = argument + "_win"
-        print(f"🔧 [PATCH] Mengalihkan user data dir ke: {argument}")
-    orig_add_argument(self, argument)
-
-Options.add_argument = custom_add_argument
+# Patch dihapus agar profil diselaraskan dengan run_weekly.py (menggunakan chrome_profile)
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 ACCOUNT_NAME = "allvbadmin"
@@ -73,13 +62,12 @@ def main():
 
     print(f"🚀 Membuka dashboard Shopee untuk akun: {ACCOUNT_NAME}")
     print(f"   Session file : {SESSION_FILE}")
-    print(f"   Target Profile: {DATA_DIR / 'chrome_profile_win'}")
     print()
 
     # Arahkan browser module ke session file akun ini
     browser.set_session_file(SESSION_FILE)
 
-    print("🌐 Memulai browser (menggunakan chrome_profile_win)...")
+    print("🌐 Memulai browser (menggunakan profil standar)...")
     driver = browser._init_driver(headless=HEADLESS)
     wait = WebDriverWait(driver, 20)
     
@@ -201,7 +189,7 @@ def main():
 
         print()
         print("=" * 55)
-        print("  Browser aktif menggunakan profile Windows.")
+        print("  Browser aktif.")
         print("  Tekan Ctrl+C di terminal ini untuk menutup.")
         print("=" * 55)
 

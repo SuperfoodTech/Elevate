@@ -337,15 +337,15 @@ async def run_all(date_start: str = None, date_end: str = None, output_dir: str 
         log.warning("⚠️ Tidak ada transaksi yang valid setelah filter diterapkan.")
         return
 
-    # Normalisasi kolom tanggal
-    date_cols = ["Updated On", "Created On", "Transfer Date"]
-    for col in date_cols:
-        if col in master_df.columns:
-            parsed = pd.to_datetime(master_df[col], format="%d %b %Y %I:%M %p", errors="coerce")
-            mask_failed = parsed.isna() & master_df[col].notna()
-            if mask_failed.any():
-                parsed[mask_failed] = pd.to_datetime(master_df.loc[mask_failed, col], errors="coerce")
-            master_df[col] = parsed.dt.strftime("%Y-%m-%d at %H:%M").where(parsed.notna(), other=master_df[col])
+    # Normalisasi kolom tanggal (Dinonaktifkan agar raw)
+    # date_cols = ["Updated On", "Created On", "Transfer Date"]
+    # for col in date_cols:
+    #     if col in master_df.columns:
+    #         parsed = pd.to_datetime(master_df[col], format="%d %b %Y %I:%M %p", errors="coerce")
+    #         mask_failed = parsed.isna() & master_df[col].notna()
+    #         if mask_failed.any():
+    #             parsed[mask_failed] = pd.to_datetime(master_df.loc[mask_failed, col], errors="coerce")
+    #         master_df[col] = parsed.dt.strftime("%Y-%m-%d at %H:%M").where(parsed.notna(), other=master_df[col])
 
     # Simpan sebagai Excel Lokal (Pemisahan Penamaan Pelaporan)
     filename_prefix = "0Master"
@@ -371,61 +371,13 @@ async def run_all(date_start: str = None, date_end: str = None, output_dir: str 
         
         dist_df = master_df.copy()
         
+        # (Dinonaktifkan agar raw)
         # Tambah Flag dan Month
-        dist_df["Flag"] = "Final OP"
+        # dist_df["Flag"] = "Final OP"
+        # ... (semua modifikasi kolom dilewati)
         
-        def get_month_from_grab(date_str):
-            try:
-                # Format: "YYYY-MM-DD at HH:MM"
-                return date_str.split(" ")[0][:7]
-            except:
-                return ""
-        
-        if "Created On" in dist_df.columns:
-            dist_df["Month"] = dist_df["Created On"].apply(get_month_from_grab)
-        else:
-            dist_df["Month"] = ""
-            
-        dist_df["Move to OE/OP"] = ""
-        
-        # Headers target Grab (sesuai urutan di sheet)
-        target_headers = [
-            "Flag", "Month", "Merchant Name", "Merchant ID", "Store Name", "Store ID", 
-            "Updated On", "Created On", "Type", "Category", "Subcategory", "Status", 
-            "Transaction ID", "Linked Transaction ID", "Partner transaction ID 1", 
-            "Partner transaction ID 2", "Long Order ID", "Short Order ID", "Booking ID", 
-            "Order Channel", "Order Type", "Payment Method", "Receiving account / Source of fund", 
-            "Terminal ID", "Channel", "Offer Type", "Grab Fee (%)", "Points Multiplier", 
-            "Points Issued", "Settlement ID", "Transfer Date", "Amount", "Tax on Order Value", 
-            "Restaurant Packaging Charge", "Non-Member Fee", "Restaurant Service Charge", 
-            "Offer", "Discount (Merchant-Funded)", "Delivery Fee Discount (Merchant-Funded)", 
-            "Delivery Charge (Grab Online Store)", "Delivery Charge (Merchant Delivery)", 
-            "GrabExpress Delivery Service Fee", "Net Sales", "Net MDR", "Tax on MDR", 
-            "Grab Fee", "Marketing success fee", "Delivery Commission", "Channel Commission", 
-            "Order commission", "GrabFood / GrabMart Other Commission", "GrabKitchen Commission", 
-            "GrabKitchen Other Commission", "Withholding Tax", "Total", "Tax on MDR (%)", 
-            "Delivery Commission (%)", "Channel Commission (%)", "Order Commission (%)",
-            "Tax on GrabFood / GrabMart Commission, Adjustments, Ads",
-            "Tax on Total GrabKitchen Commission", "Cancellation Reason", "Cancelled by", 
-            "Reason for Refund", "Description", "Incident group", "Incident alias", 
-            "Customer refund Item", "Appeal link", "Appeal status", "Package/Voucher Used", 
-            "Attributed Service Fee", "Attributed Promo", "Move to OE/OP"
-        ]
-
-        # Rename columns from MASTER to match target headers
-        rename_map = {
-            "Step-up commission": "GrabFood / GrabMart Other Commission",
-            "Tax on GrabFood/GrabMart commission, adjustments, ads": "Tax on GrabFood / GrabMart Commission, Adjustments, Ads"
-        }
-        dist_df = dist_df.rename(columns=rename_map)
-        
-        # Pastikan semua kolom ada (isi kosong jika tidak ada)
-        for col in target_headers:
-            if col not in dist_df.columns:
-                dist_df[col] = ""
-        
-        # Pilih kolom sesuai urutan target
-        final_df = dist_df[target_headers]
+        # Kirim dataframe persis sebagaimana raw (ditambah Merchant)
+        final_df = master_df.copy()
         
         # Payload JSON (Handle NaN values which are not JSON compliant)
         payload = final_df.fillna("").to_dict(orient="records")
