@@ -25,7 +25,7 @@ log = get_logger("omzet_pipeline")
 
 # --- Toggle Konfigurasi Global ---
 ENABLE_GSHEETS_PUSH = False   # Set ke True untuk mengizinkan unggah ke Google Sheets
-ENABLE_POSTGRES_PUSH = False  # Set ke True untuk mengizinkan unggah ke PostgreSQL (Tabel Gajah)
+ENABLE_POSTGRES_PUSH = True  # Set ke True untuk mengizinkan unggah ke PostgreSQL (Tabel Gajah)
 
 def subtract_months(dt, months):
     """Helper to subtract calendar months."""
@@ -217,6 +217,7 @@ def run_pipeline():
 
     # Determine output directory
     report_dir = args.output_dir or "data/reports/weekly"
+    os.makedirs(report_dir, exist_ok=True)
 
     # Pre-run cleanup of old Excel files in custom or download runs to ensure clean master aggregation
     import glob
@@ -295,23 +296,20 @@ def run_pipeline():
     # Hardcoded/CSV fallback if still not found
     if not username or not password or not phone:
         try:
-            log.info("🔍 [DATA] Fetching 'allvbadmin' credentials from Google Sheets...")
-            url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+            log.info("🔍 [DATA] Fetching credentials from new Google Sheets (Row 7, Col T & U)...")
+            url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRYSUnKOqk29LCktTxdb0wPLbWMbRaWRP3eC_UA4AwYod1FW6zDMhtLMC5ghIvot2B8upCDfBsn-TCP/pub?gid=0&single=true&output=csv"
             cache_buster = f"&t={int(time.time())}" if "?" in url else f"?t={int(time.time())}"
             df = pd.read_csv(url + cache_buster)
-            mask = df.isin(["allvbadmin"]).any(axis=1)
-            if mask.any():
-                row = df[mask].iloc[0]
-                for col in df.columns:
-                    if str(row[col]) == "allvbadmin":
-                        idx = df.columns.get_loc(col)
-                        username = "allvbadmin"
-                        phone = str(row.iloc[idx+1]).split(".")[0] if pd.notna(row.iloc[idx+1]) else ""
-                        password = str(row.iloc[idx+2]) if pd.notna(row.iloc[idx+2]) else ""
-                        log.info("✅ [DATA] Successfully loaded credentials for 'allvbadmin' from Sheets.")
-                        break
+            
+            # Row 7 corresponds to index 5 in pandas DataFrame (since row 1 is header).
+            # Column T is index 19, Column U is index 20.
+            username = str(df.iloc[5, 19]).strip()
+            password = str(df.iloc[5, 20]).strip()
+            phone = ""
+            
+            log.info(f"✅ [DATA] Successfully loaded credentials for '{username}' from Sheets.")
         except Exception as e:
-            log.warning(f"⚠️ Failed to fetch 'allvbadmin' credentials from Sheets: {e}")
+            log.warning(f"⚠️ Failed to fetch credentials from Sheets: {e}")
             
     # Ultimate fallback if it completely fails
     if not username: username = "allvbadmin"
@@ -626,110 +624,25 @@ def run_pipeline():
                 log.warning(f"  ⚠️ [CHECK] Raw file '{filename}' is EMPTY (no transaction rows). Skipping merger.")
                 continue
                 
-            if "Nilai Transaksi" in df.columns and "Harga Makanan" in df.columns:
+            has_indo = "Nilai Transaksi" in df.columns and "Harga Makanan" in df.columns
+            has_eng = "Transaction amount" in df.columns and "Food original price" in df.columns
+            
+            if has_indo or has_eng:
                 log.info(f"  🔍 [CHECK] Raw file '{filename}' has {len(df)} rows. Processing & including in MASTER...")
-                # List of exact monetary columns in ShopeeFood reports
-                monetary_cols = [
-                    'Harga Makanan', 'Diskon', 'Diskon Flash Sale', 'Biaya Tambahan', 
-                    'Subsidi Merchant untuk Voucher Deals', 'Subsidi Platform untuk Flash Sale', 
-                    'Subsidi Voucher Makanan', 'Diskon Langsung', 'Nilai Transaksi', 
-                    'Harga Checkout Murah'
-                ]
-                
-                # Fix monetary columns: handle Shopee's inconsistent thousand separator/decimal format
-                def clean_shopee_monetary(val):
-                    if pd.isna(val) or str(val).lower() == 'nan': return 0
-                    s = str(val).strip()
-                    if not s or s == '-': return 0
-                    
-                    import re
-                    s = re.sub(r'[^\d\.\,\-]', '', s)
-                    if not s or s == '-': return 0
-
-                    has_dot = '.' in s
-                    has_comma = ',' in s
-                    try:
-                        if has_dot and has_comma:
-                            if s.rfind(',') > s.rfind('.'):
-                                s = s.split(',')[0].replace('.', '')
-                            else:
-                                s = s.split('.')[0].replace(',', '')
-                            return int(s)
-                        elif has_dot:
-                            parts = s.split('.')
-                            if len(parts[-1]) == 3:
-                                return int(s.replace('.', ''))
-                            else:
-                                return int(float(s))
-                        elif has_comma:
-                            parts = s.split(',')
-                            if len(parts[-1]) == 3:
-                                return int(s.replace(',', ''))
-                            else:
-                                return int(float(s.replace(',', '.')))
-                        else:
-                            return int(s)
-                    except:
-                        return 0
-
-                for col in monetary_cols:
-                    if col in df.columns:
-                        df[col] = df[col].apply(clean_shopee_monetary).astype(int)
-                
-                # Calculate new metrics based on corrected raw values (keep decimals for Commission, Revenue, and OFD Fees)
-                commission_real = (df['Nilai Transaksi'] * 0.25).fillna(0)
-                revenue_real = (df['Nilai Transaksi'] - commission_real).fillna(0)
-                ofd_fees_real = (df['Harga Makanan'] - revenue_real).fillna(0)
-                
-                # Insert new columns
-                df['Commission'] = commission_real
-                df['Revenue'] = revenue_real
-                df['OFD Fees'] = ofd_fees_real
+                # (Dinonaktifkan agar raw: tidak ada cleaning monetary, kalkulasi komisi, atau format tanggal)
                 
                 # Add Merchant Name column at the beginning if not already present
                 if "Merchant Name" not in df.columns:
                     df.insert(0, "Merchant Name", matched_merchant)
                 
-                # Fix scientific notation for Order IDs
-                if "No. Pesanan" in df.columns:
-                    df["No. Pesanan"] = df["No. Pesanan"].astype(str).str.replace(r'\.0$', '', regex=True)
+                # Fix scientific notation for Order IDs (tetap dipakai agar ID tidak float)
+                for col in ["No. Pesanan", "Transaction ID (Order ID)"]:
+                    if col in df.columns:
+                        df[col] = df[col].astype(str).str.replace(r'\.0$', '', regex=True)
                     
-                # Reformat Waktu Penyelesaian from "07 Mei 2026 23:16" to "2026-05-07 at 23:16"
-                if "Waktu Penyelesaian" in df.columns:
-                    indo_months = {
-                        'Januari': 'Jan', 'Februari': 'Feb', 'Maret': 'Mar', 
-                        'April': 'Apr', 'Mei': 'May', 'Juni': 'Jun', 'Juli': 'Jul', 
-                        'Agustus': 'Aug', 'September': 'Sep', 'Oktober': 'Oct', 
-                        'November': 'Nov', 'Desember': 'Dec',
-                        'Jan': 'Jan', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Apr',
-                        'Jun': 'Jun', 'Jul': 'Jul', 'Ags': 'Aug', 'Agu': 'Aug',
-                        'Sep': 'Sep', 'Okt': 'Oct', 'Nov': 'Nov', 'Des': 'Dec'
-                    }
-                    temp_dates = df["Waktu Penyelesaian"].astype(str)
-                    for indo, eng in sorted(indo_months.items(), key=lambda x: len(x[0]), reverse=True):
-                        temp_dates = temp_dates.str.replace(indo, eng, case=False, regex=False)
-                    
-                    # Parse to datetime using robust explicit format
-                    parsed_dates = pd.to_datetime(temp_dates, format='%d %b %Y %H:%M', errors='coerce')
-                    
-                    # Where parsing succeeded, apply the new format. Where it failed, keep original.
-                    df["Waktu Penyelesaian"] = parsed_dates.dt.strftime('%Y-%m-%d at %H:%M').fillna(df["Waktu Penyelesaian"])
-                    
-                # Reorder columns to match Google Sheets format
-                desired_order = [
-                    'Merchant Name', 'Store ID', 'Nama Toko', 'Tipe Transaksi', 'No. Pesanan', 
-                    'Waktu Penyelesaian', 'Status', 'Harga Makanan', 'Diskon', 'Diskon Flash Sale', 
-                    'Biaya Tambahan', 'Subsidi Merchant untuk Voucher Deals', 
-                    'Subsidi Platform untuk Flash Sale', 'Subsidi Voucher Makanan', 
-                    'Diskon Langsung', 'Nilai Transaksi', 'Harga Checkout Murah', 'Notes', 
-                    'Commission', 'OFD Fees', 'Revenue'
-                ]
-                final_cols = [c for c in desired_order if c in df.columns] + [c for c in df.columns if c not in desired_order]
-                df = df[final_cols]
-                
-                # Save individual analyzed report by overwriting the raw file in place
-                df.to_excel(fpath, index=False)
-                log.info(f"     ✅ [DATA] Saved analyzed data (overwriting raw file): {os.path.basename(fpath)}")
+                # (Overwriting raw file in place dinonaktifkan agar file original aman)
+                # df.to_excel(fpath, index=False)
+                # log.info(f"     ✅ [DATA] Saved analyzed data (overwriting raw file): {os.path.basename(fpath)}")
                 
                 all_analyzed_data.append(df)
             else:
@@ -747,10 +660,14 @@ def run_pipeline():
         
         if "No. Pesanan" in working.columns:
             working["Long Order ID"] = working["No. Pesanan"].fillna("").astype(str).str.strip()
+        elif "Transaction ID (Order ID)" in working.columns:
+            working["Long Order ID"] = working["Transaction ID (Order ID)"].fillna("").astype(str).str.strip()
         else:
             working["Long Order ID"] = ""
-            
-        if "Status" in working.columns:
+        
+        if "Status Pesanan" in working.columns:
+            working["Status"] = working["Status Pesanan"].fillna("").astype(str).str.strip().str.casefold()
+        elif "Status" in working.columns:
             working["Status"] = working["Status"].fillna("").astype(str).str.strip().str.casefold()
         else:
             working["Status"] = ""
@@ -801,50 +718,8 @@ def run_pipeline():
             # Mapping columns to match 'Shopee' sheet headers
             # Target Headers: Flag,Month,Store ID,Store name,Transaction type,Transaction ID (Order ID),Complete Time,Status,Food original price,Item discounts,Flash sale discount,Surcharge fee,Merchant Voucher Deals Subsidy,Platform Flash Sale Subsidy,Food Voucher Subsidy,Food Direct Discount,Transaction amount,Checkout Murah Price,Notes,Net Sales,Commission,Revenue,Move to OE/OP
             
-            # Prepare data for mapping
-            dist_df = master_df.copy()
-            
-            # Calculate Month and Flag
-            def get_month_from_str(date_str):
-                try:
-                    # Date format is "YYYY-MM-DD at HH:MM"
-                    return date_str.split(" ")[0][:7] # YYYY-MM
-                except:
-                    return ""
-
-            dist_df["Flag"] = "Final OP"
-            dist_df["Month"] = dist_df["Waktu Penyelesaian"].apply(get_month_from_str)
-            dist_df["Net Sales"] = dist_df["Harga Makanan"] - dist_df["Diskon"]
-            dist_df["Move to OE/OP"] = ""
-
-            mapping = {
-                "Flag": "Flag",
-                "Month": "Month",
-                "Store ID": "Store ID",
-                "Nama Toko": "Store name",
-                "Tipe Transaksi": "Transaction type",
-                "No. Pesanan": "Transaction ID (Order ID)",
-                "Waktu Penyelesaian": "Complete Time",
-                "Status": "Status",
-                "Harga Makanan": "Food original price",
-                "Diskon": "Item discounts",
-                "Diskon Flash Sale": "Flash sale discount",
-                "Biaya Tambahan": "Surcharge fee",
-                "Subsidi Merchant untuk Voucher Deals": "Merchant Voucher Deals Subsidy",
-                "Subsidi Platform untuk Flash Sale": "Platform Flash Sale Subsidy",
-                "Subsidi Voucher Makanan": "Food Voucher Subsidy",
-                "Diskon Langsung": "Food Direct Discount",
-                "Nilai Transaksi": "Transaction amount",
-                "Harga Checkout Murah": "Checkout Murah Price",
-                "Notes": "Notes",
-                "Net Sales": "Net Sales",
-                "Commission": "Commission",
-                "Revenue": "Revenue",
-                "Move to OE/OP": "Move to OE/OP"
-            }
-
-            # Select and rename columns
-            final_df = dist_df[list(mapping.keys())].rename(columns=mapping)
+            # (Dinonaktifkan agar raw: tidak ada modifikasi/mapping kolom)
+            final_df = master_df.copy()
             
             # Convert to list of dicts for JSON (Handle NaN values)
             payload = final_df.fillna("").to_dict(orient="records")
@@ -883,18 +758,63 @@ def run_pipeline():
         # ── 7. Phase 6: Sync to PostgreSQL ──────────────────────────────────
         if not ENABLE_POSTGRES_PUSH:
             log.info("⏭️ [SKIP] PHASE 6: Sinkronisasi ke PostgreSQL dinonaktifkan secara global.")
-        elif args.merchant:
-            log.info("⏭️ [SKIP] PHASE 6: Custom Merchant run dideteksi. Sinkronisasi PostgreSQL dilewati untuk mencegah kerusakan data master.")
         else:
             try:
-                log.info("🐘 [PROGRESS] PHASE 6: Syncing data to PostgreSQL...")
-                from database.db_manager import DatabaseManager
-                db = DatabaseManager()
-                db.ingest_shopee(final_df)
-                db.refresh_master()
-                log.info("✅ [SUCCESS] Data successfully pushed to Master Table (Tabel Gajah).")
+                log.info("🐘 [PROGRESS] PHASE 6: Syncing RAW data to VPS PostgreSQL (layer1_raw.raw_shopee)...")
+                
+                # Menyiapkan data RAW untuk diupload (menggabungkan semua file Excel mentah yang berhasil diproses)
+                if all_analyzed_data:
+                    raw_merged_df = pd.concat(all_analyzed_data, ignore_index=True)
+                    
+                    target_cols = [
+                        'Store ID', 'Store name', 'Transaction type', 'Transaction ID (Order ID)', 'Complete Time', 'Status',
+                        'Food original price', 'Item discounts', 'Flash sale discount', 'Surcharge fee',
+                        'Merchant Voucher Deals Subsidy', 'Platform Flash Sale Subsidy', 'Food Voucher Subsidy',
+                        'Food Direct Discount', 'Transaction amount', 'Checkout Murah Price', 'Notes'
+                    ]
+                    
+                    # Ensure columns exist
+                    for col in target_cols:
+                        if col not in raw_merged_df.columns:
+                            raw_merged_df[col] = ''
+                            
+                    final_raw_df = raw_merged_df[target_cols].copy()
+                    
+                    # Save temporary CSV
+                    csv_path = os.path.join(report_dir, 'temp_upload_shopee.csv')
+                    final_raw_df.to_csv(csv_path, index=False)
+                    log.info(f"  📄 Saved temp CSV with {len(final_raw_df)} rows at {csv_path}")
+                    
+                    # Gunakan pexpect untuk SSH ke VPS dan copy data
+                    import pexpect
+                    cmd = [
+                        'ssh', '-o', 'StrictHostKeyChecking=no', '-i', '/mnt/DATA/Proyek/ssh/radi_ed25519', 'radi@165.232.165.241',
+                        'docker exec -i postgres-elevate psql -U admin -d db_superfood -c "\\copy layer1_raw.raw_shopee FROM stdin WITH CSV HEADER"'
+                    ]
+                    
+                    log.info("  🔌 Menghubungkan ke VPS via SSH...")
+                    child = pexpect.spawn(cmd[0], cmd[1:], encoding='utf-8')
+                    
+                    idx = child.expect(['Enter passphrase for key.*:', pexpect.EOF], timeout=15)
+                    if idx == 0:
+                        child.sendline('superF763!')
+                        
+                    with open(csv_path, 'r') as f:
+                        child.send(f.read())
+                        child.sendeof()
+                        
+                    child.expect(pexpect.EOF, timeout=60)
+                    out_text = child.before.strip() if child.before else ""
+                    log.info(f"✅ [SUCCESS] Data berhasil ditembakkan ke VPS (layer1_raw.raw_shopee). Output: {out_text}")
+                    
+                    # Hapus file temp
+                    try: os.unlink(csv_path)
+                    except: pass
+                else:
+                    log.warning("⚠️ [SKIP] Tidak ada data raw yang valid untuk diupload ke VPS.")
+                    
             except Exception as e:
-                log.info(f"⏭️ [SKIP] PostgreSQL sync skipped (DB is temporarily inactive or offline).")
+                log.error(f"❌ [ERROR] Gagal mengupload data ke VPS: {e}")
 
     # Driver cleanup handled in finally block of download phase
     pass

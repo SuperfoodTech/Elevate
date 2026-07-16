@@ -115,7 +115,8 @@ def _resolve_python_executable() -> str:
 
 def _resolve_output_dir(platform_name: str, start_date: str, end_date: str) -> str:
     base = os.path.dirname(os.path.abspath(__file__))
-    out = os.path.join(base, "laporan", platform_name, f"{start_date}_to_{end_date}")
+    folder_type = "data_raw" if platform_name in ("grab", "shopee") else "laporan"
+    out = os.path.join(base, folder_type, platform_name, f"{start_date}_to_{end_date}")
     os.makedirs(out, exist_ok=True)
     return out
 
@@ -343,18 +344,34 @@ def interactive_mode():
         import pandas as pd
         import requests
         import io
+        import os
         print(f"\n  {CYAN}[INFO] Mengunduh daftar merchant terbaru dari Google Sheets...{RESET}")
         CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
+        
+        base = os.path.dirname(os.path.abspath(__file__))
+        cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
+        
         try:
             import time
             cache_buster = f"&t={int(time.time())}" if "?" in CSV_URL_MAIN else f"?t={int(time.time())}"
             resp_main = requests.get(CSV_URL_MAIN + cache_buster, timeout=30)
             resp_main.raise_for_status()
             df_main = pd.read_csv(io.StringIO(resp_main.text))
+            
+            # Save cache
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            df_main.to_csv(cache_path, index=False)
+            
             return df_main
         except Exception as e:
-            print(f"  {RED}[ERROR] Gagal mengunduh Google Sheets: {e}{RESET}")
-            sys.exit(1)
+            print(f"  {YELLOW}[WARNING] Gagal mengunduh Google Sheets: {e}{RESET}")
+            if os.path.exists(cache_path):
+                print(f"  {CYAN}[INFO] Menggunakan data cache terakhir...{RESET}")
+                df_main = pd.read_csv(cache_path)
+                return df_main
+            else:
+                print(f"  {RED}[ERROR] Tidak ada cache yang tersedia. Keluar.{RESET}")
+                sys.exit(1)
 
     while True:
         if state == "platform":
@@ -365,19 +382,32 @@ def interactive_mode():
             print(f"    {MAGENTA}[2]{RESET} Shopee")
             print(f"    {YELLOW}[3]{RESET} GoFood")
             print(f"    {CYAN}[4]{RESET} Semua Platform (Grab + Shopee + GoFood)")
-            print(f"    {RED}[5]{RESET} Keluar")
+            print(f"    {MAGENTA}[5]{RESET} Perbaikan Session Shopee")
+            print(f"    {RED}[6]{RESET} Keluar")
             print()
             
-            choice = input(f"  {BOLD}Pilihan (1/2/3/4/5):{RESET} ").strip()
-            if choice == "5":
+            choice = input(f"  {BOLD}Pilihan (1/2/3/4/5/6):{RESET} ").strip()
+            if choice == "6":
                 print("  Keluar.")
                 sys.exit(0)
+            elif choice == "5":
+                print(f"\n  {MAGENTA}Menjalankan Perbaikan Session Shopee...{RESET}")
+                import subprocess
+                script_path = os.path.join(os.path.dirname(__file__), "open_dashboard_allvbadmin_win.py")
+                python_exe = _resolve_python_executable()
+                try:
+                    subprocess.run([python_exe, script_path])
+                except KeyboardInterrupt:
+                    pass # Tangkap Ctrl+C agar tidak crash ke luar script
+                print(f"\n  {GREEN}Kembali ke menu utama...{RESET}")
+                time.sleep(1)
+                continue
             elif choice in ("1", "2", "3", "4"):
                 platform_map = {"1": "grab", "2": "shopee", "3": "gofood", "4": "all"}
                 platform = platform_map[choice]
                 state = "scope"
             else:
-                print(f"  {RED}Input tidak valid. Masukkan 1, 2, 3, 4, atau 5.{RESET}")
+                print(f"  {RED}Input tidak valid. Masukkan angka 1 sampai 6.{RESET}")
                 time.sleep(1)
 
         elif state == "scope":

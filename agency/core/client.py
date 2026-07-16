@@ -77,7 +77,7 @@ class ShopeeClient:
             "user-agent":          self.user_agent,
             "shopee-baggage":      "PFB=undefined",
             "x-merchant-from":     "12",
-            "x-merchant-language":  "id",
+            "x-merchant-language":  "en",
             "x-merchant-login-from": "12",
             "x-merchant-requestid": str(uuid.uuid4()),
             "x-merchant-timezone":  "Asia/Jakarta",
@@ -212,7 +212,7 @@ class ShopeeClient:
             "content-type": "application/json",
             "x-merchant-token": self.tob_token,
             "x-merchant-from": str(self.entity_id),
-            "x-merchant-language": "id",
+            "x-merchant-language": "en",
             "x-merchant-login-from": "12",
             "x-merchant-requestid": "auto-gen-req-id", # usually doesn't aggressively validate UUID formatting 
             "x-merchant-timezone": "Asia/Jakarta",

@@ -1028,6 +1028,9 @@ def auto_switch_merchant(driver, target_name, is_retry=False):
         if "/food/dashboard" not in driver.current_url:
             driver.get(PARTNER_DASHBOARD)
             time.sleep(2)
+            
+        # PHASE 2.1: Switch Language to English dipindah ke setelah switch merchant (di bawah)
+
         
         for switch_attempt in range(3):
             # Use ActionChains to hover Profile then "Pilih Merchant Lain"
@@ -1162,6 +1165,68 @@ def auto_switch_merchant(driver, target_name, is_retry=False):
                         
                 WebDriverWait(driver, 5).until(is_name_updated)
                 log.info(f"✅ [MERCHANT] Switched to: {target_name}")
+                
+                # PHASE 2.1: Switch Language to English (AFTER merchant switch)
+                try:
+                    log.info("  🌍 Checking/Setting language to English...")
+                    actions_lang = ActionChains(driver)
+                    profile_menu_lang = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".merchantName")))
+                    actions_lang.move_to_element(profile_menu_lang).click().perform()
+                    time.sleep(1)
+                    
+                    lang_switched = driver.execute_script("""
+                        var items = document.querySelectorAll('.ant-dropdown-menu-item, li[role="menuitem"], span, div');
+                        for (var s of items) {
+                            var t = (s.innerText || '').trim().toLowerCase();
+                            if (t === 'ubah bahasa' || t === 'language') {
+                                s.dispatchEvent(new MouseEvent('mouseover', {bubbles:true}));
+                                s.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    """)
+                    
+                    if lang_switched:
+                        time.sleep(1)
+                        eng_clicked = driver.execute_script("""
+                            var items = document.querySelectorAll('.ant-dropdown-menu-item, li[role="menuitem"], span, div');
+                            for (var s of items) {
+                                if ((s.innerText || '').trim().toLowerCase() === 'english') {
+                                    s.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        """)
+                        if eng_clicked:
+                            time.sleep(1)
+                            driver.execute_script("""
+                                var btns = document.querySelectorAll('button');
+                                for (var b of btns) {
+                                    var bt = (b.innerText || '').trim().toLowerCase();
+                                    if (bt === 'ok' || bt === 'konfirmasi' || bt === 'confirm') {
+                                        b.click();
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            """)
+                            log.info("  ✅ Language switched to English. Waiting for reload...")
+                            time.sleep(4)
+                            try: WebDriverWait(driver, 10).until(lambda d: "/food/dashboard" in d.current_url)
+                            except: pass
+                        else:
+                            log.info("  ⚠️ English option not found or already in English.")
+                            try: actions_lang.move_to_element(driver.find_element(By.CSS_SELECTOR, ".merchantName")).click().perform()
+                            except: pass
+                    else:
+                        log.debug("  ⚠️ 'Ubah Bahasa' menu not found.")
+                        try: actions_lang.move_to_element(driver.find_element(By.CSS_SELECTOR, ".merchantName")).click().perform()
+                        except: pass
+                except Exception as e:
+                    log.warning(f"  ⚠️ Could not switch language: {e}")
+
                 return True
             except:
                 log.warning(f"⚠️ [MERCHANT] UI name belum berubah ke {target_name}.")
