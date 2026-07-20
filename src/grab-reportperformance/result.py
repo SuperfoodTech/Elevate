@@ -9,8 +9,12 @@ import requests
 import sys
 from dotenv import load_dotenv
 
-# Path to root for database manager
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+# Path configuration for database manager dynamically
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if os.path.exists(os.path.join(current_dir, "..", "database")):
+    sys.path.insert(0, os.path.abspath(os.path.join(current_dir, "..")))
+elif os.path.exists(os.path.join(current_dir, "..", "..", "database")):
+    sys.path.insert(0, os.path.abspath(os.path.join(current_dir, "..", "..")))
 
 # Load environment variables
 load_dotenv()
@@ -242,10 +246,9 @@ def main(username: str = None, outlet: str = "", branch: str = "") -> None:
 		from database.db_manager import DatabaseManager
 		db = DatabaseManager()
 		db.ingest_grab(df)
-		db.refresh_master()
-		print("✅ [DB] Successfully pushed to Master Table.")
+		print("✅ [DB] Successfully ingested raw Grab transactions.")
 	except Exception as e:
-		print(f"⏭️ [SKIP] PostgreSQL sync skipped (DB is temporarily inactive or offline).")
+		print(f"⏭️ [SKIP] PostgreSQL sync skipped: {e}")
 
 	# print(f"\nRingkasan disimpan ke: {output_path}")
 	print("\n⏭️ [SKIP] Local Excel saving disabled by user request.")

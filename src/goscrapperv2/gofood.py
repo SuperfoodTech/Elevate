@@ -49,7 +49,7 @@ console = Console(theme=custom_theme)
 START_TIME_TOTAL = time.time()
 
 # Master credential Google Sheet — source of truth for ALL scrapers
-SHEET_PUBLISHED_URL = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
+SHEET_PUBLISHED_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
 
 
 def to_csv_url(url):
@@ -141,7 +141,7 @@ def fetch_gofood_accounts_from_sheet(task="2"):
     """
     url = SHEET_PUBLISHED_URL
     if task == "1":
-        url = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=880434015"
+        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=880434015&single=true&output=csv"
     
     url += f"&t={int(time.time())}"
 
@@ -1811,6 +1811,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-proxy", action="store_true", help="Nonaktifkan proxy/WARP untuk sesi ini")
     parser.add_argument("--no-sheet", action="store_true", help="Nonaktifkan pengiriman data ke Google Sheets")
     parser.add_argument("--task", type=str, default="2", help="Task choice: 1 for baseline, 2 for weekly, 3 for VB")
+    parser.add_argument("--db", action="store_true", help="Enable database ingestion to layer1_raw schema")
     args_cli = parser.parse_args()
 
     if args_cli.output_dir:
@@ -2223,6 +2224,17 @@ if __name__ == "__main__":
             master_df.to_excel(master_filepath, index=False)
             console.print(f"🎉 [SUCCESS] Laporan 0Master created: {master_filepath}")
             console.print(f"   Total baris: {len(master_df)}")
+            
+            # 🐘 SYNC KE POSTGRESQL (NEW)
+            if args_cli.db or os.getenv("INGEST_DB") == "true":
+                try:
+                    console.print("\n🐘 Syncing raw GoFood transactions to PostgreSQL...")
+                    from database.db_manager import DatabaseManager
+                    db = DatabaseManager()
+                    db.ingest_gofood(master_df)
+                    console.print("✅ [DB] Successfully ingested raw GoFood transactions.")
+                except Exception as e:
+                    console.print(f"⏭️ [SKIP] PostgreSQL sync skipped: {e}")
         else:
             console.print("⚠️ Tidak ada data untuk digabungkan ke 0Master.")
 

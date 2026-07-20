@@ -1,4 +1,7 @@
 import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import time
 import json
 import pandas as pd
@@ -46,7 +49,7 @@ def format_rupiah(amount):
     except:
         return str(amount)
 
-def run_pipeline():
+def run_pipeline(start_date=None, end_date=None, ingest_db=False):
     print("\n" + "=" * 60)
     print("  Shopee Omzet Analysis Pipeline (Batch Parallel)")
     print("=" * 60)
@@ -140,13 +143,20 @@ def run_pipeline():
         client = ShopeeClient(tob_token=session["shopee_tob_token"], entity_id=active_id, extra_cookies=session.get("extra_cookies", {}))
         
         # Define ranges
-        now = datetime.now()
-        month_starts = [subtract_months(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0), j) for j in range(4)]
-        ranges = []
-        for j in range(3):
-            ranges.append({"start": int(month_starts[j+1].timestamp()), "end": int(month_starts[j].timestamp()) - 1, "label": month_starts[j+1].strftime("%b %Y")})
+        if start_date and end_date:
+            s_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            e_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            ranges = [{"start": int(s_dt.timestamp()), "end": int(e_dt.timestamp()), "label": f"{start_date}_to_{end_date}"}]
+        else:
+            now = datetime.now()
+            month_starts = [subtract_months(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0), j) for j in range(4)]
+            ranges = []
+            for j in range(3):
+                ranges.append({"start": int(month_starts[j+1].timestamp()), "end": int(month_starts[j].timestamp()) - 1, "label": month_starts[j+1].strftime("%b %Y")})
         
+        expected_count = len(ranges)
         merchants_context[merchant_name]["ranges"] = ranges
+        merchants_context[merchant_name]["expected_count"] = expected_count
         merchants_context[merchant_name]["downloaded"] = []
 
         # Trigger
@@ -158,7 +168,7 @@ def run_pipeline():
     log.info(f"⏳ PHASE 2: Global Polling for all reports...")
     os.makedirs("data/reports/merchant", exist_ok=True)
     
-    total_expected = len(merchants_context) * 3
+    total_expected = sum(ctx["expected_count"] for ctx in merchants_context.values())
     download_count = 0
     start_poll = time.time()
     
@@ -168,7 +178,8 @@ def run_pipeline():
         poll_iteration += 1
         
         for m_name, ctx in merchants_context.items():
-            if len(ctx["downloaded"]) >= 3: continue
+            expected = ctx["expected_count"]
+            if len(ctx["downloaded"]) >= expected: continue
             
             client = ShopeeClient(tob_token=ctx["tob_token"], entity_id=ctx["entity_id"], extra_cookies=ctx["cookies"])
             reports = client.get_report_list()
@@ -183,14 +194,31 @@ def run_pipeline():
                         
                         if target_path not in [d[0] for d in ctx["downloaded"]]:
                             if download_file(rep.get("download_url"), target_path):
-                                log.info(f"  ✅ [{m_name}] Downloaded: {report_name} ({len(ctx['downloaded'])+1}/3)")
+                                log.info(f"  ✅ [{m_name}] Downloaded: {report_name} ({len(ctx['downloaded'])+1}/{expected})")
                                 ctx["downloaded"].append((target_path, report_name))
                                 download_count += 1
                                 found_new = True
+                                
+                                # DB Ingestion
+                                if ingest_db:
+                                    try:
+                                        print(f"🐘 Syncing raw Shopee transactions to PostgreSQL...")
+                                        import pandas as pd
+                                        from database.db_manager import DatabaseManager
+                                        db = DatabaseManager()
+                                        df_raw = pd.read_excel(target_path)
+                                        if "Store ID" not in df_raw.columns:
+                                            df_raw["Store ID"] = ctx["entity_id"]
+                                        if "Store name" not in df_raw.columns and "Nama Toko" not in df_raw.columns:
+                                            df_raw["Store name"] = m_name
+                                        db.ingest_shopee(df_raw)
+                                        print("✅ [DB] Successfully pushed Shopee raw data to raw_shopee table.")
+                                    except Exception as e:
+                                        log.warning(f"  ⚠️ PostgreSQL sync skipped: {e}")
             
             # Log progress every 3 iterations (~30 seconds)
             if not found_new and poll_iteration % 3 == 0:
-                 log.info(f"  ⏳ Still waiting for {m_name}... ({len(ctx['downloaded'])}/3 ready)")
+                 log.info(f"  ⏳ Still waiting for {m_name}... ({len(ctx['downloaded'])}/{expected} ready)")
             
         if download_count < total_expected:
             time.sleep(10)
@@ -198,7 +226,7 @@ def run_pipeline():
     # ── Summary ──────────────────────────────────────────────────────────
     log.info("📋 DONE! Download Summary:")
     for m_name, ctx in merchants_context.items():
-        log.info(f"  🏪 {m_name}: {len(ctx['downloaded'])}/3 files")
+        log.info(f"  🏪 {m_name}: {len(ctx['downloaded'])}/{ctx['expected_count']} files")
         for fpath, label in ctx["downloaded"]:
             log.info(f"     📄 {fpath}")
 
@@ -206,4 +234,10 @@ def run_pipeline():
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start-date", type=str, default=None)
+    parser.add_argument("--end-date", type=str, default=None)
+    parser.add_argument("--db", action="store_true")
+    args = parser.parse_args()
+    run_pipeline(start_date=args.start_date, end_date=args.end_date, ingest_db=args.db)

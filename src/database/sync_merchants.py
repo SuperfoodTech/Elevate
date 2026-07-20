@@ -1,46 +1,68 @@
 import pandas as pd
-import requests
-import io
-from sqlalchemy import create_engine, text
 import os
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
 
-# Configuration
-GSHEET_MASTER_URL = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
-DB_URL = "postgresql://superfood_admin:superfood_password@localhost:5433/srs_db"
+# Path configuration
+db_dir = os.path.dirname(os.path.abspath(__file__))
+elevate_dir = os.path.dirname(db_dir)
+load_dotenv(os.path.join(elevate_dir, ".env"))
+
+import urllib.parse
+
+# Load database/.env first, then fallback to Elevate/.env
+load_dotenv(os.path.join(db_dir, ".env"))
+load_dotenv(os.path.join(elevate_dir, ".env"), override=True)
+
+# DB Configuration
+DB_HOST = (os.getenv("DB_HOST") or "165.232.165.241").strip("'").strip('"').strip()
+DB_PORT = (os.getenv("DB_Port") or os.getenv("DB_PORT") or "5432").strip("'").strip('"').strip()
+DB_NAME = (os.getenv("DB_NAME") or os.getenv("DB_Name") or "db_superfood").strip("'").strip('"').strip()
+DB_USERNAME = (os.getenv("DB_USERNAME") or os.getenv("DB_Username") or "admin").strip("'").strip('"').strip()
+DB_PASSWORD = (os.getenv("DB_PASSWORD") or os.getenv("DB_PASS") or os.getenv("DB_Password") or "superF777@").strip("'").strip('"').strip()
+SSL_MODE = (os.getenv("SSL_Mode") or os.getenv("SSL_MODE") or os.getenv("SSL_mode") or "disable").strip("'").strip('"').strip()
+
+safe_username = urllib.parse.quote_plus(DB_USERNAME)
+safe_password = urllib.parse.quote_plus(DB_PASSWORD)
+
+DB_URL = f"postgresql://{safe_username}:{safe_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+if SSL_MODE:
+    DB_URL += f"?sslmode={SSL_MODE}"
+
+LOCAL_CREDENTIALS_PATH = os.path.join(elevate_dir, "A. Credential (Outlet & Access)  - Credential.csv")
 
 def sync_merchants():
-    import time
-    print("📥 Fetching Merchant Master from Google Sheets...")
-    response = requests.get(GSHEET_MASTER_URL + f"&t={int(time.time())}")
-    if response.status_code != 200:
-        print(f"❌ Failed to fetch data: {response.status_code}")
+    print(f"🔗 Connecting to database at {DB_HOST}:{DB_PORT}...")
+    engine = create_engine(DB_URL)
+    
+    # --- 1. SYNC DIM_MERCHANTS FROM LOCAL CSV ---
+    if not os.path.exists(LOCAL_CREDENTIALS_PATH):
+        print(f"❌ Local credentials CSV not found at {LOCAL_CREDENTIALS_PATH}")
         return
 
-    # Load into DataFrame
-    df = pd.read_csv(io.StringIO(response.text))
-    
-    # 1. Clean Column Names (Handle potential duplicates/spaces)
+    print(f"📖 Reading local credentials from {LOCAL_CREDENTIALS_PATH}...")
+    df = pd.read_csv(LOCAL_CREDENTIALS_PATH)
     df.columns = [c.strip() for c in df.columns]
-    
-    # 2. Logic: is_active
-    # If Status is 'Live' then is_active = True
+
+    # Clean data & filter Live status
     df['is_active'] = df['Status'].str.strip().str.lower() == 'live'
-    
-    # 3. Filter: Hanya ambil yang ada Store ID
     df = df.dropna(subset=['Store ID'])
     df = df[df['Store ID'].astype(str).str.strip() != '-']
-    
-    # 4. Username Logic (Priority SuperFood)
+
+    # Username logic (Priority to SuperFood logins)
     def get_active_user(row):
-        # The CSV might have duplicate column names which pandas suffix as .1
-        u1 = row.get('Nama Pengguna.1') # SuperFood login
-        u2 = row.get('Nama Pengguna')   # Original login
+        # Handle duplicate name suffixes in pandas
+        u1 = row.get('Nama Pengguna.1')
+        u2 = row.get('Nama Pengguna')
         user = u1 if pd.notna(u1) and str(u1).strip() != "-" else u2
         return str(user).strip() if pd.notna(user) else None
 
     df['active_user'] = df.apply(get_active_user, axis=1)
-    
-    # 5. Mapping
+
+    # Fallback branch name
+    if 'Cabang' not in df.columns:
+        df['Cabang'] = df.get('Nama Resto Final', 'UNKNOWN')
+
     mapping = {
         'Store ID': 'store_id',
         'Aplikasi': 'platform',
@@ -54,19 +76,14 @@ def sync_merchants():
         'Status': 'status',
         'is_active': 'is_active'
     }
-    
-    df_final = df.rename(columns=mapping)[list(mapping.values())]
-    
-    # Deduplicate based on Store ID
-    df_final = df_final.drop_duplicates(subset=['store_id'], keep='first')
-    
-    print(f"🔄 Syncing {len(df_final)} total records (Filtering for Live in process)...")
-    
-    engine = create_engine(DB_URL)
-    
+
+    df_merchants = df.rename(columns=mapping)[list(mapping.values())]
+    df_merchants = df_merchants.drop_duplicates(subset=['store_id'], keep='first')
+
+    print(f"🔄 Syncing {len(df_merchants)} merchant records...")
     with engine.begin() as conn:
         conn.execute(text("CREATE TEMP TABLE tmp_merchants (LIKE dim_merchants INCLUDING ALL) ON COMMIT DROP"))
-        df_final.to_sql('tmp_merchants', conn, if_exists='append', index=False)
+        df_merchants.to_sql('tmp_merchants', conn, if_exists='append', index=False)
         
         upsert_query = """
             INSERT INTO dim_merchants (store_id, platform, outlet_name, branch_name, group_code, owner_name, 
@@ -87,16 +104,12 @@ def sync_merchants():
                 updated_at = CURRENT_TIMESTAMP;
         """
         conn.execute(text(upsert_query))
-        
-        # FINAL STEP: Hapus atau sembunyikan yang tidak LIVE jika diminta
-        # Sesuai permintaan Anda: "pastikan juga untuk yang kita ambil hanya status live"
-        # Kita hapus yang is_active = False agar database benar-benar bersih
+        # Keep only live merchants
         conn.execute(text("DELETE FROM dim_merchants WHERE is_active = FALSE"))
-        
-    print("✅ Merchant sync with is_active logic completed!")
+    print("✅ Merchant dim sync completed.")
 
 if __name__ == "__main__":
     try:
         sync_merchants()
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error during sync: {e}")
