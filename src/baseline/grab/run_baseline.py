@@ -14,8 +14,8 @@ import os
 # --- Toggle Konfigurasi Global ---
 ENABLE_GSHEETS_PUSH = False  # Set ke True untuk mengizinkan unggah ke Google Sheets
 
-# Add grab-reportperformance directory to sys.path to allow importing grab_api_scraper
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../grab-reportperformance')))
+# Add grab directory to sys.path to allow importing grab_api_scraper
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../grab')))
 
 import logging
 from logging.handlers import RotatingFileHandler

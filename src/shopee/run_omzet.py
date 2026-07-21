@@ -204,7 +204,7 @@ def run_pipeline(start_date=None, end_date=None, ingest_db=False):
                                     try:
                                         print(f"🐘 Syncing raw Shopee transactions to PostgreSQL...")
                                         import pandas as pd
-                                        from database.db_manager import DatabaseManager
+                                        from database.layer1_db_manager import DatabaseManager
                                         db = DatabaseManager()
                                         df_raw = pd.read_excel(target_path)
                                         if "Store ID" not in df_raw.columns:

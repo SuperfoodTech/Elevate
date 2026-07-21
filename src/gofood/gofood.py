@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from discord_notifier import send_discord_error
+from config import get_sheet_url
 
 from rich.console import Console
 from rich.panel import Panel
@@ -49,7 +50,7 @@ console = Console(theme=custom_theme)
 START_TIME_TOTAL = time.time()
 
 # Master credential Google Sheet — source of truth for ALL scrapers
-SHEET_PUBLISHED_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+SHEET_PUBLISHED_URL = get_sheet_url("gofood_merchant_list")
 
 
 def to_csv_url(url):
@@ -141,7 +142,7 @@ def fetch_gofood_accounts_from_sheet(task="2"):
     """
     url = SHEET_PUBLISHED_URL
     if task == "1":
-        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=880434015&single=true&output=csv"
+        url = get_sheet_url("gofood_baseline_list")
     
     url += f"&t={int(time.time())}"
 
@@ -174,7 +175,7 @@ def fetch_gofood_accounts_from_sheet(task="2"):
         bd_to_phone = {}
         if task == "3":
             try:
-                creds_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRYSUnKOqk29LCktTxdb0wPLbWMbRaWRP3eC_UA4AwYod1FW6zDMhtLMC5ghIvot2B8upCDfBsn-TCP/pub?gid=565510790&single=true&output=csv"
+                creds_url = get_sheet_url("gofood_vb_creds")
                 import requests as _req
                 c_resp = _req.get(creds_url, timeout=15)
                 c_resp.raise_for_status()
@@ -2229,7 +2230,7 @@ if __name__ == "__main__":
             if args_cli.db or os.getenv("INGEST_DB") == "true":
                 try:
                     console.print("\n🐘 Syncing raw GoFood transactions to PostgreSQL...")
-                    from database.db_manager import DatabaseManager
+                    from database.layer1_db_manager import DatabaseManager
                     db = DatabaseManager()
                     db.ingest_gofood(master_df)
                     console.print("✅ [DB] Successfully ingested raw GoFood transactions.")

@@ -241,14 +241,18 @@ def main(username: str = None, outlet: str = "", branch: str = "") -> None:
 	# push_to_gsheet(user_to_push, wide_summary, outlet, branch)
 
 	# 🐘 SYNC KE POSTGRESQL (NEW)
-	try:
-		print("\n🐘 Syncing raw transactions to PostgreSQL...")
-		from database.db_manager import DatabaseManager
-		db = DatabaseManager()
-		db.ingest_grab(df)
-		print("✅ [DB] Successfully ingested raw Grab transactions.")
-	except Exception as e:
-		print(f"⏭️ [SKIP] PostgreSQL sync skipped: {e}")
+	ingest_db = os.getenv("INGEST_DB") == "true" or "--db" in sys.argv
+	if ingest_db:
+		try:
+			print("\n🐘 Syncing raw transactions to PostgreSQL...")
+			from database.layer1_db_manager import DatabaseManager
+			db = DatabaseManager()
+			db.ingest_grab(df)
+			print("✅ [DB] Successfully ingested raw Grab transactions.")
+		except Exception as e:
+			print(f"⏭️ [SKIP] PostgreSQL sync skipped: {e}")
+	else:
+		print("\n⏭️ [SKIP] PostgreSQL sync skipped (INGEST_DB is not enabled).")
 
 	# print(f"\nRingkasan disimpan ke: {output_path}")
 	print("\n⏭️ [SKIP] Local Excel saving disabled by user request.")

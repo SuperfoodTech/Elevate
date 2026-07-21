@@ -17,6 +17,7 @@ import asyncio
 import sys
 import os
 from datetime import datetime, timedelta
+from config import get_sheet_url
 
 def normalize_date_string(date_str: str) -> str:
     """
@@ -187,11 +188,8 @@ def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None, task_cho
         )
         cache_path = os.path.join(base, "baseline", "shopee", "data", "master_merchants_cache.csv")
     else:
-        GSHEETS_URL = (
-            "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0"
-            "/export?format=csv&gid=0"
-        )
-        cache_path = os.path.join(base, "shopee-omzet-automation", "data", "master_merchants_cache.csv")
+        GSHEETS_URL = get_sheet_url("cli_master_merchants")
+        cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
 
     def _clean(name: str) -> str:
         return str(name).strip().rstrip('_').strip()
@@ -325,7 +323,7 @@ def run_grab(start_date: str, end_date: str, user_filter: str = None, outlet_fil
     relative paths (browser_data/, downloads/) resolve correctly.
     Output is routed to task-weekly/src/laporan/grab/{start}_to_{end}.
     """
-    grab_weekly_dir = os.path.join(os.path.dirname(__file__), "grab-reportperformance", "weekly")
+    grab_weekly_dir = os.path.join(os.path.dirname(__file__), "grab", "weekly")
     
     if not os.path.isdir(grab_weekly_dir):
         print(f"{RED}[ERROR]{RESET} Grab weekly directory not found: {grab_weekly_dir}")
@@ -454,11 +452,11 @@ def run_grab_baseline(start_date: str, end_date: str, user_filter: str = None, o
 def run_shopee(start_date: str, end_date: str, merchant_filter: str = None):
     """
     Delegates to the existing Shopee weekly pipeline.
-    Working directory is set to shopee-omzet-automation so that
+    Working directory is set to shopee so that
     relative paths (core/) resolve correctly.
     Output is routed to task-weekly/src/laporan/shopee/{start}_to_{end}.
     """
-    shopee_dir = os.path.join(os.path.dirname(__file__), "shopee-omzet-automation")
+    shopee_dir = os.path.join(os.path.dirname(__file__), "shopee")
     
     if not os.path.isdir(shopee_dir):
         print(f"{RED}[ERROR]{RESET} Shopee directory not found: {shopee_dir}")
@@ -576,7 +574,7 @@ def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch
     Working directory is set to goscrapperv2 so that
     relative paths and imports resolve correctly.
     """
-    gofood_dir = os.path.join(os.path.dirname(__file__), "goscrapperv2")
+    gofood_dir = os.path.join(os.path.dirname(__file__), "gofood")
     
     if not os.path.isdir(gofood_dir):
         print(f"{RED}[ERROR]{RESET} GoFood directory not found: {gofood_dir}")
@@ -778,8 +776,8 @@ def interactive_mode():
             import io
 
             print(f"\n  {CYAN}[INFO] Mengunduh daftar merchant terbaru dari Google Sheets...{RESET}")
-            CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
-            CSV_URL_VB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRYSUnKOqk29LCktTxdb0wPLbWMbRaWRP3eC_UA4AwYod1FW6zDMhtLMC5ghIvot2B8upCDfBsn-TCP/pub?gid=565510790&single=true&output=csv"
+            CSV_URL_MAIN = get_sheet_url("cli_master_merchants")
+            CSV_URL_VB = get_sheet_url("cli_virtual_brands")
             
             try:
                 resp_main = requests.get(CSV_URL_MAIN, timeout=30)
@@ -802,7 +800,7 @@ def interactive_mode():
             # --- FILTER CUSTOM GRAB ---
             if "grab" in platform or platform == "all":
                 if task_choice == "3":
-                    CSV_URL_VB_GRAB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRYSUnKOqk29LCktTxdb0wPLbWMbRaWRP3eC_UA4AwYod1FW6zDMhtLMC5ghIvot2B8upCDfBsn-TCP/pub?gid=978201567&single=true&output=csv"
+                    CSV_URL_VB_GRAB = get_sheet_url("cli_grab_virtual_brands")
                     try:
                         resp_grab_vb = requests.get(CSV_URL_VB_GRAB, timeout=30)
                         resp_grab_vb.raise_for_status()

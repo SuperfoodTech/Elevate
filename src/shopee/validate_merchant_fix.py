@@ -17,7 +17,7 @@ TEST 2: Deliberate Logout + Onboarding (PHASE 1)
   - Verifikasi redirect ke dashboard
 
 Usage:
-    uv run --project src src/shopee-omzet-automation/validate_merchant_fix.py
+    uv run --project src src/shopee/validate_merchant_fix.py
 """
 
 import sys

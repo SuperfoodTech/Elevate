@@ -20,14 +20,6 @@ def resolve_script_path(base_dir, rel_path):
         parent = os.path.dirname(base_dir)
         options.append(os.path.join(parent, "src", rel_path))
         options.append(os.path.join(parent, rel_path))
-        
-    if "goscrapper" in rel_path:
-        alt_path = rel_path.replace("goscrapper", "goscrapperv2")
-        options.append(os.path.join(base_dir, alt_path))
-        if alt_path.startswith("src/"):
-            options.append(os.path.join(base_dir, alt_path[4:]))
-        else:
-            options.append(os.path.join(base_dir, "src", alt_path))
             
     for opt in options:
         abs_opt = os.path.abspath(opt)
@@ -152,7 +144,7 @@ def main():
     if run_all or args.grab:
         results["GrabFood"] = run_scraper(
             scraper_name="GrabFood Scraper",
-            script_path="src/grab-reportperformance/main.py",
+            script_path="src/grab/main.py",
             args=sub_args
         )
         
@@ -160,7 +152,7 @@ def main():
     if run_all or args.shopee:
         results["ShopeeFood"] = run_scraper(
             scraper_name="ShopeeFood Scraper",
-            script_path="src/shopee-omzet-automation/run_omzet.py",
+            script_path="src/shopee/run_omzet.py",
             args=sub_args
         )
         
@@ -168,7 +160,7 @@ def main():
     if run_all or args.gofood:
         results["GoFood"] = run_scraper(
             scraper_name="GoFood Scraper",
-            script_path="src/goscrapper/gofood.py",
+            script_path="src/gofood/gofood.py",
             args=sub_args
         )
         
@@ -189,25 +181,36 @@ def main():
             print("RUNNING AUTOMATIC NORMALIZATION & REFRESH")
             print("=" * 60)
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            norm_script = resolve_script_path(base_dir, "database/normalize_layer2.py")
+            
+            venv_options = [
+                os.path.join(base_dir, ".venv", "bin", "python"),
+                os.path.join(os.path.dirname(base_dir), ".venv", "bin", "python"),
+            ]
+            venv_python = sys.executable
+            for opt in venv_options:
+                if os.path.exists(opt):
+                    venv_python = opt
+                    break
+
+            norm_script = resolve_script_path(base_dir, "database/layer2_normalize.py")
             if os.path.exists(norm_script):
-                venv_options = [
-                    os.path.join(base_dir, ".venv", "bin", "python"),
-                    os.path.join(os.path.dirname(base_dir), ".venv", "bin", "python"),
-                ]
-                venv_python = sys.executable
-                for opt in venv_options:
-                    if os.path.exists(opt):
-                        venv_python = opt
-                        break
-                
                 try:
                     subprocess.run([venv_python, norm_script], check=True)
-                    print("\nSUCCESS: Database normalization and master refresh completed.")
+                    print("\nSUCCESS: Database normalization (Layer 2) completed.")
                 except subprocess.CalledProcessError as e:
                     print(f"\nError: Normalization failed with exit code {e.returncode}")
             else:
                 print(f"Error: Normalization script not found at {norm_script}")
+
+            refresh_script = resolve_script_path(base_dir, "database/layer3_refresh_fact.py")
+            if os.path.exists(refresh_script):
+                try:
+                    subprocess.run([venv_python, refresh_script], check=True)
+                    print("\nSUCCESS: Master fact table refresh (Layer 3) completed.")
+                except subprocess.CalledProcessError as e:
+                    print(f"\nError: Refresh failed with exit code {e.returncode}")
+            else:
+                print(f"Error: Refresh script not found at {refresh_script}")
 
 if __name__ == "__main__":
     main()

@@ -226,7 +226,7 @@ def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch
     relative paths and imports resolve correctly.
     task_choice: "1" = Baseline, "2" = Weekly (default)
     """
-    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "goscrapperv2")
+    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "gofood")
     if not os.path.isdir(gofood_dir):
         print(f"{RED}[ERROR]{RESET} GoFood directory not found: {gofood_dir}")
         return False
@@ -280,7 +280,7 @@ def run_gofood_send_data(start_date: str, end_date: str, task_choice: str = "2",
     Memanggil fungsi kirim_ke_google_sheet() dari goscrapperv2/send_data.py.
     """
     import sys as _sys
-    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "goscrapperv2")
+    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "gofood")
     send_data_path = os.path.join(gofood_dir, "send_data.py")
 
     if not os.path.isfile(send_data_path):

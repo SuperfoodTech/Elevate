@@ -42,7 +42,7 @@ function getSrcDir() {
 const SRC_DIR = getSrcDir();
 const OFD_JOB_LOCK_PATH = path.join(
     SRC_DIR,
-    'shopee-omzet-automation',
+    'shopee',
     'data',
     'ofd_job.lock'
 );

@@ -87,3 +87,7 @@ VB/data/*_cache.csv
 # Allow VB chrome profiles
 !VB/data/chrome_profiles/
 !VB/data/chrome_profiles/**
+
+# Local development / agent cache
+database.bak/
+.agent/

@@ -1,10 +1,10 @@
-# database/normalize_layer2.py
+# database/layer2_normalize.py
 import sys
 import os
 from sqlalchemy import text
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-from db_manager import DatabaseManager
+from layer1_db_manager import DatabaseManager
 
 def normalize_all():
     db = DatabaseManager()
@@ -279,22 +279,17 @@ def normalize_all():
         print("[DB] Normalizing ShopeeFood data to layer2_clean.stg_shopee_orders...")
         conn.execute(text(shopee_query))
         
-        print("[DB] Refreshing public.fact_transactions (Unified Master Table)...")
-        conn.execute(text("SELECT refresh_fact_transactions();"))
-        
     print("\n[DB] Querying verification counts...")
     with db.engine.connect() as conn:
         grab_cnt = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_grab_orders")).scalar()
         go_cnt = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_go_orders")).scalar()
         shopee_cnt = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_shopee_orders")).scalar()
-        fact_cnt = conn.execute(text("SELECT COUNT(*) FROM public.fact_transactions")).scalar()
         print(f"  [VERIFY] stg_grab_orders row count: {grab_cnt}")
         print(f"  [VERIFY] stg_go_orders row count: {go_cnt}")
         print(f"  [VERIFY] stg_shopee_orders row count: {shopee_cnt}")
-        print(f"  [VERIFY] public.fact_transactions row count: {fact_cnt}")
         
     print("=" * 60)
-    print("   NORMALIZATION & MASTER REFRESH COMPLETE")
+    print("   NORMALIZATION RUN COMPLETE")
     print("=" * 60)
 
 if __name__ == "__main__":

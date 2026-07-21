@@ -7,7 +7,14 @@ from core.logger import get_logger
 
 log = get_logger("otp")
 
-SHEET_URL_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRYSUnKOqk29LCktTxdb0wPLbWMbRaWRP3eC_UA4AwYod1FW6zDMhtLMC5ghIvot2B8upCDfBsn-TCP/pub?gid=213442295&single=true&output=csv"
+import sys
+import os
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+from config import get_sheet_url
+
+SHEET_URL_BASE = get_sheet_url("shopee_otp_sheet")
 
 def get_latest_otp(timeout_mins=10):
     """

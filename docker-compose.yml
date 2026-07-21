@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  elevate_postgres:
+    image: postgres:15-alpine
+    container_name: elevate_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: elevate_admin
+      POSTGRES_PASSWORD: superfood_elevate_secret_pass
+      POSTGRES_DB: elevate_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+      - ./database/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql

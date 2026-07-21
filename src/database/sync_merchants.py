@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import sys
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
@@ -8,31 +9,30 @@ db_dir = os.path.dirname(os.path.abspath(__file__))
 elevate_dir = os.path.dirname(db_dir)
 load_dotenv(os.path.join(elevate_dir, ".env"))
 
-import urllib.parse
+# Add parent directory to sys.path to allow importing config
+if elevate_dir not in sys.path:
+    sys.path.insert(0, elevate_dir)
 
-# Load database/.env first, then fallback to Elevate/.env
+from config import get_db_url
+DB_URL = get_db_url()
+
+# Extra safety load envs
 load_dotenv(os.path.join(db_dir, ".env"))
 load_dotenv(os.path.join(elevate_dir, ".env"), override=True)
 
-# DB Configuration
-DB_HOST = (os.getenv("DB_HOST") or "165.232.165.241").strip("'").strip('"').strip()
-DB_PORT = (os.getenv("DB_Port") or os.getenv("DB_PORT") or "5432").strip("'").strip('"').strip()
-DB_NAME = (os.getenv("DB_NAME") or os.getenv("DB_Name") or "db_superfood").strip("'").strip('"').strip()
-DB_USERNAME = (os.getenv("DB_USERNAME") or os.getenv("DB_Username") or "admin").strip("'").strip('"').strip()
-DB_PASSWORD = (os.getenv("DB_PASSWORD") or os.getenv("DB_PASS") or os.getenv("DB_Password") or "superF777@").strip("'").strip('"').strip()
-SSL_MODE = (os.getenv("SSL_Mode") or os.getenv("SSL_MODE") or os.getenv("SSL_mode") or "disable").strip("'").strip('"').strip()
-
-safe_username = urllib.parse.quote_plus(DB_USERNAME)
-safe_password = urllib.parse.quote_plus(DB_PASSWORD)
-
-DB_URL = f"postgresql://{safe_username}:{safe_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-if SSL_MODE:
-    DB_URL += f"?sslmode={SSL_MODE}"
+# Parse host name from URL for printing
+DB_HOST = "ConfigDB"
+try:
+    from urllib.parse import urlparse
+    parsed = urlparse(DB_URL)
+    DB_HOST = parsed.hostname or "ConfigDB"
+except:
+    pass
 
 LOCAL_CREDENTIALS_PATH = os.path.join(elevate_dir, "A. Credential (Outlet & Access)  - Credential.csv")
 
 def sync_merchants():
-    print(f"🔗 Connecting to database at {DB_HOST}:{DB_PORT}...")
+    print(f"🔗 Connecting to database at {DB_HOST}...")
     engine = create_engine(DB_URL)
     
     # --- 1. SYNC DIM_MERCHANTS FROM LOCAL CSV ---

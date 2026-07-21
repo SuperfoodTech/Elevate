@@ -4,37 +4,21 @@ import urllib.parse
 import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
+import sys
 
-# Path configuration
-db_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(db_dir)
-grandparent_dir = os.path.dirname(parent_dir)
+# Add parent directory to sys.path to allow importing config
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
-# Load database/.env first, then fallback to parent .env, then grandparent .env
-load_dotenv(os.path.join(db_dir, ".env"))
+# Load env variables
+load_dotenv(os.path.join(current_dir, ".env"))
 load_dotenv(os.path.join(parent_dir, ".env"), override=True)
-load_dotenv(os.path.join(grandparent_dir, ".env"), override=True)
-load_dotenv() # Load from current working directory as well
+load_dotenv()
 
-# DB Configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL:
-    DB_URL = DATABASE_URL
-else:
-    DB_HOST = (os.getenv("DB_HOST") or "165.232.165.241").strip("'").strip('"').strip()
-    DB_PORT = (os.getenv("DB_Port") or os.getenv("DB_PORT") or "5432").strip("'").strip('"').strip()
-    DB_NAME = (os.getenv("DB_NAME") or os.getenv("DB_Name") or "db_superfood").strip("'").strip('"').strip()
-    DB_USERNAME = (os.getenv("DB_USERNAME") or os.getenv("DB_Username") or "admin").strip("'").strip('"').strip()
-    DB_PASSWORD = (os.getenv("DB_PASSWORD") or os.getenv("DB_PASS") or os.getenv("DB_Password") or "superF777@").strip("'").strip('"').strip()
-    SSL_MODE = (os.getenv("SSL_Mode") or os.getenv("SSL_MODE") or os.getenv("SSL_mode") or "disable").strip("'").strip('"').strip()
-
-    # URL-encode credentials to handle special characters (e.g. '@' in password)
-    safe_username = urllib.parse.quote_plus(DB_USERNAME)
-    safe_password = urllib.parse.quote_plus(DB_PASSWORD)
-
-    DB_URL = f"postgresql://{safe_username}:{safe_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    if SSL_MODE:
-        DB_URL += f"?sslmode={SSL_MODE}"
+from config import get_db_url
+DB_URL = get_db_url()
 
 def raw_string_format(val):
     if pd.isna(val) or val is None or val == "":
@@ -46,7 +30,7 @@ class DatabaseManager:
         self.engine = create_engine(DB_URL)
 
     def ingest_shopee(self, df: pd.DataFrame):
-        """Ingests Shopee raw data into layer1_raw.raw_shopee."""
+        """Ingests Shopee raw data into layer1_raw.raw_shopee with delete-before-insert idempotency."""
         print("[DB] Ingesting Shopee data to layer1_raw.raw_shopee...")
         
         # Support both Indonesian and English headers
@@ -116,14 +100,22 @@ class DatabaseManager:
         for col in target_cols:
             df_stg[col] = df_stg[col].apply(raw_string_format)
         
-        # Write to database schema layer1_raw
+        # QA-5: Delete-before-Insert Idempotency Logic
+        order_ids = df_stg["Transaction ID (Order ID)"].dropna().unique().tolist()
+        
         with self.engine.begin() as conn:
+            if order_ids:
+                print(f"[DB] Cleaning {len(order_ids)} existing Shopee raw records to ensure idempotency...")
+                conn.execute(
+                    text("DELETE FROM layer1_raw.raw_shopee WHERE \"Transaction ID (Order ID)\" = ANY(:ids)"),
+                    {"ids": order_ids}
+                )
             df_stg.to_sql('raw_shopee', conn, schema='layer1_raw', if_exists='append', index=False)
         
         print("[DB] Shopee raw ingestion completed.")
 
     def ingest_grab(self, df: pd.DataFrame):
-        """Ingests Grab raw data into layer1_raw.raw_grab."""
+        """Ingests Grab raw data into layer1_raw.raw_grab with delete-before-insert idempotency."""
         print("[DB] Ingesting Grab data to layer1_raw.raw_grab...")
         
         cols = [
@@ -181,13 +173,22 @@ class DatabaseManager:
         for col in cols:
             df_stg[col] = df_stg[col].apply(raw_string_format)
 
+        # QA-5: Delete-before-Insert Idempotency Logic
+        order_ids = df_stg["Long Order ID"].dropna().unique().tolist()
+
         with self.engine.begin() as conn:
+            if order_ids:
+                print(f"[DB] Cleaning {len(order_ids)} existing Grab raw records to ensure idempotency...")
+                conn.execute(
+                    text("DELETE FROM layer1_raw.raw_grab WHERE \"Long Order ID\" = ANY(:ids)"),
+                    {"ids": order_ids}
+                )
             df_stg.to_sql('raw_grab', conn, schema='layer1_raw', if_exists='append', index=False)
             
         print("[DB] Grab raw ingestion completed.")
 
     def ingest_gofood(self, df: pd.DataFrame):
-        """Ingests GoFood raw data into layer1_raw.raw_go."""
+        """Ingests GoFood raw data into layer1_raw.raw_go with delete-before-insert idempotency."""
         print("[DB] Ingesting GoFood data to layer1_raw.raw_go...")
         
         header_mapping = {
@@ -225,7 +226,17 @@ class DatabaseManager:
         for col in target_cols:
             df_stg[col] = df_stg[col].apply(raw_string_format)
 
+        # QA-5: Delete-before-Insert Idempotency Logic
+        keys = df_stg[["Tanggal", "Store ID"]].dropna().drop_duplicates().values.tolist()
+
         with self.engine.begin() as conn:
+            if keys:
+                print(f"[DB] Cleaning existing GoFood raw records matching {len(keys)} period-merchant combinations...")
+                for tanggal, store_id in keys:
+                    conn.execute(
+                        text("DELETE FROM layer1_raw.raw_go WHERE \"Tanggal\" = :tanggal AND \"Store ID\" = :store_id"),
+                        {"tanggal": tanggal, "store_id": store_id}
+                    )
             df_stg.to_sql('raw_go', conn, schema='layer1_raw', if_exists='append', index=False)
             
         print("[DB] GoFood raw ingestion completed.")

@@ -5,7 +5,7 @@ Membuka browser Shopee Partner Portal untuk akun auto7310
 menggunakan Chrome profile yang sudah tersimpan (tidak perlu login ulang).
 
 Usage (dari folder task-weekly/):
-    uv run src/shopee-omzet-automation/open_dashboard_7310.py
+    uv run src/shopee/open_dashboard_7310.py
 
 Browser akan tetap terbuka sampai kamu menutupnya secara manual (Ctrl+C / tutup jendela).
 """
@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 # ── Path Setup ─────────────────────────────────────────────────────────────────
-SCRIPT_DIR   = Path(__file__).resolve().parent          # shopee-omzet-automation/
+SCRIPT_DIR   = Path(__file__).resolve().parent          # shopee/
 PROJECT_ROOT = SCRIPT_DIR.parent.parent                 # task-weekly/
 sys.path.insert(0, str(SCRIPT_DIR))
 

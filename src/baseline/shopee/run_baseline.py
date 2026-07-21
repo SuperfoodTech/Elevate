@@ -3,7 +3,7 @@ import time
 import json
 import pandas as pd
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../shopee-omzet-automation'))) # Path to core
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../shopee'))) # Path to core
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))) # Path to database manager
 
 from datetime import datetime, timedelta

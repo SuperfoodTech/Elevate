@@ -58,7 +58,13 @@ def setup_logger():
 
 log = setup_logger()
 
-CSV_URL = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
+# Add src directory to sys.path to allow importing config
+grandparent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if grandparent_dir not in sys.path:
+    sys.path.insert(0, grandparent_dir)
+from config import get_sheet_url
+
+CSV_URL = get_sheet_url("cli_master_merchants")
 
 async def run_all(date_start: str = None, date_end: str = None, output_dir: str = None, user_filter: str = None, outlet_filter: str = None, branch_filter: str = None):
     # Reload env just in case

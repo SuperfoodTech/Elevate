@@ -6,13 +6,18 @@ import requests
 import io
 from dotenv import load_dotenv
 
-# Add current directory to path to allow importing local modules
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
+# Add parent directory to allow importing config
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+from config import get_sheet_url
 from grab_api_scraper import run_api_download_for_portal, validate_credentials
 from result import main as run_result
 
-CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+CSV_URL = get_sheet_url("grab_merchant_list")
 
 async def run_all():
     # Reload env just in case

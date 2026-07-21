@@ -1,6 +1,6 @@
 import sys
 
-file_path = '/home/akbarhann/project/task-weekly/src/shopee-omzet-automation/core/browser.py'
+file_path = '/home/akbarhann/project/FoodMaster/Elevate/src/shopee/core/browser.py'
 with open(file_path, 'r') as f:
     lines = f.readlines()
 
