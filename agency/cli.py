@@ -274,56 +274,6 @@ def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch
         return False
 
 
-def run_gofood_send_data(start_date: str, end_date: str, task_choice: str = "2", sheet_name: str = "Gofood") -> bool:
-    """
-    Mengirim data hasil scraping GoFood dari folder raw ke Google Sheet.
-    Memanggil fungsi kirim_ke_google_sheet() dari goscrapperv2/send_data.py.
-    """
-    import sys as _sys
-    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "goscrapperv2")
-    send_data_path = os.path.join(gofood_dir, "send_data.py")
-
-    if not os.path.isfile(send_data_path):
-        print(f"{RED}[ERROR]{RESET} send_data.py tidak ditemukan: {send_data_path}")
-        return False
-
-    if task_choice == "1":
-        raw_folder = _resolve_output_dir("gofood_baseline", start_date, end_date)
-    else:
-        raw_folder = _resolve_output_dir("gofood", start_date, end_date)
-    if not os.path.isdir(raw_folder):
-        print(f"  {YELLOW}⚠ Folder raw GoFood tidak ditemukan: {raw_folder}{RESET}")
-        print(f"  {DIM}Pastikan scraping GoFood sudah selesai terlebih dahulu.{RESET}")
-        return False
-
-    print(f"\n{YELLOW}{BOLD}▶ KIRIM DATA GOFOOD → GOOGLE SHEET{RESET}")
-    print(f"  {DIM}Folder  : {raw_folder}{RESET}")
-    print(f"  {DIM}Sheet   : {sheet_name}{RESET}")
-    print(f"  {DIM}Range   : {start_date} → {end_date}{RESET}")
-    print()
-
-    if gofood_dir not in _sys.path:
-        _sys.path.insert(0, gofood_dir)
-
-    try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("send_data", send_data_path)
-        send_data_mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(send_data_mod)
-        
-        # Override RAW_BASE_DIR di modul send_data agar membaca dari output_dir yang tepat
-        send_data_mod.RAW_BASE_DIR = os.path.dirname(raw_folder)
-        
-        send_data_mod.kirim_ke_google_sheet(
-            start_date=start_date,
-            end_date=end_date,
-            sheet_name=sheet_name
-        )
-        return True
-    except Exception as e:
-        print(f"{RED}[ERROR]{RESET} Gagal mengirim data ke GSheet: {e}")
-        return False
-
 def ingest_to_db(platform_name: str, start_date: str, end_date: str) -> bool:
     """
     Ingests output Excel data for the specified platform into PostgreSQL (layer1_raw)
@@ -843,25 +793,6 @@ def main():
                 go_str = "|".join(gofood_outlet) if gofood_outlet else None
                 b_str = "|".join(branch) if branch else None
                 results["GoFood"] = run_gofood(start_date, end_date, outlet_filter=go_str, branch_filter=b_str, task_choice="2")
-
-                # ── Auto-kirim ke GSheet setelah scraping GoFood selesai ──
-                if results.get("GoFood"):
-                    print(f"\n  {CYAN}{'─'*50}{RESET}")
-                    if not is_interactive:
-                        print(f"  {BOLD}[INFO] Mode non-interaktif: Mengirim data GoFood ke Google Sheet secara otomatis.{RESET}")
-                        run_gofood_send_data(start_date, end_date, task_choice="2")
-                    else:
-                        while True:
-                            send_choice = input(
-                                f"  {BOLD}Kirim data GoFood ({start_date} s/d {end_date}) ke Google Sheet? (Y/n):{RESET} "
-                            ).strip().lower()
-                            if send_choice in ("y", "yes", ""):
-                                run_gofood_send_data(start_date, end_date, task_choice="2")
-                                break
-                            elif send_choice in ("n", "no"):
-                                print(f"  {YELLOW}[INFO] Pengiriman ke GSheet dilewati.{RESET}")
-                                break
-                            print(f"  {RED}Input tidak valid. Masukkan y atau n.{RESET}")
 
             elapsed = datetime.now() - start_time
             print(f"\n{CYAN}{BOLD}  SUMMARY{RESET}")
