@@ -50,6 +50,7 @@ START_TIME_TOTAL = time.time()
 
 # Master credential Google Sheet — source of truth for ALL scrapers
 SHEET_PUBLISHED_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+DEFAULT_OTP_ENDPOINT_URL = os.getenv("OTP_ENDPOINT_URL", "https://script.google.com/macros/s/AKfycbyPgVKDxRa3d5_Z-0Y41LHYIM3dys__OOTC6gdYUkXckiShzdztQOiCgZthuWHs020d/exec")
 
 
 def to_csv_url(url):
@@ -690,7 +691,7 @@ def login_outlet_gofood_flow(outlet_info):
                 is_banned = False
 
                 # Ambil konfigurasi OTP endpoint di awal setiap attempt
-                otp_endpoint = os.getenv("OTP_ENDPOINT_URL")
+                otp_endpoint = os.getenv("OTP_ENDPOINT_URL") or os.getenv("APPS_SCRIPT_OTP_URL") or DEFAULT_OTP_ENDPOINT_URL
                 label_email_cfg = os.getenv("GMAIL_OTP_LABEL", "OTP-GO")
                 action_type = "getOtpEmail" if current_email else "getOtp"
                 otp_snapshot_awal = ""
