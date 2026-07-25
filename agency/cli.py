@@ -121,7 +121,7 @@ def _resolve_output_dir(platform_name: str, start_date: str, end_date: str) -> s
     return out
 
 def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None) -> str:
-    GSHEETS_URL = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
+    GSHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
     base = os.path.dirname(os.path.abspath(__file__))
     cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
 
@@ -274,54 +274,25 @@ def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch
         return False
 
 
-def run_gofood_send_data(start_date: str, end_date: str, task_choice: str = "2", sheet_name: str = "Gofood") -> bool:
+def ingest_to_db(platform_name: str, start_date: str, end_date: str) -> bool:
     """
-    Mengirim data hasil scraping GoFood dari folder raw ke Google Sheet.
-    Memanggil fungsi kirim_ke_google_sheet() dari goscrapperv2/send_data.py.
+    Ingests output Excel data for the specified platform into PostgreSQL (layer1_raw)
+    with anti-duplication protection.
     """
-    import sys as _sys
-    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "goscrapperv2")
-    send_data_path = os.path.join(gofood_dir, "send_data.py")
-
-    if not os.path.isfile(send_data_path):
-        print(f"{RED}[ERROR]{RESET} send_data.py tidak ditemukan: {send_data_path}")
-        return False
-
-    if task_choice == "1":
-        raw_folder = _resolve_output_dir("gofood_baseline", start_date, end_date)
-    else:
-        raw_folder = _resolve_output_dir("gofood", start_date, end_date)
-    if not os.path.isdir(raw_folder):
-        print(f"  {YELLOW}⚠ Folder raw GoFood tidak ditemukan: {raw_folder}{RESET}")
-        print(f"  {DIM}Pastikan scraping GoFood sudah selesai terlebih dahulu.{RESET}")
-        return False
-
-    print(f"\n{YELLOW}{BOLD}▶ KIRIM DATA GOFOOD → GOOGLE SHEET{RESET}")
-    print(f"  {DIM}Folder  : {raw_folder}{RESET}")
-    print(f"  {DIM}Sheet   : {sheet_name}{RESET}")
-    print(f"  {DIM}Range   : {start_date} → {end_date}{RESET}")
-    print()
-
-    if gofood_dir not in _sys.path:
-        _sys.path.insert(0, gofood_dir)
-
+    output_dir = _resolve_output_dir(platform_name, start_date, end_date)
     try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("send_data", send_data_path)
-        send_data_mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(send_data_mod)
-        
-        # Override RAW_BASE_DIR di modul send_data agar membaca dari output_dir yang tepat
-        send_data_mod.RAW_BASE_DIR = os.path.dirname(raw_folder)
-        
-        send_data_mod.kirim_ke_google_sheet(
-            start_date=start_date,
-            end_date=end_date,
-            sheet_name=sheet_name
-        )
-        return True
+        if platform_name == "grab":
+            from core.db_ingest import ingest_grab_to_db
+            return ingest_grab_to_db(output_dir)
+        elif platform_name == "shopee":
+            from core.db_ingest import ingest_shopee_to_db
+            return ingest_shopee_to_db(output_dir)
+        elif platform_name == "gofood":
+            print(f"  {YELLOW}[INFO] Ingest GoFood ke DB dilewati untuk sementara.{RESET}")
+            return True
+        return False
     except Exception as e:
-        print(f"{RED}[ERROR]{RESET} Gagal mengirim data ke GSheet: {e}")
+        print(f"{RED}[ERROR]{RESET} Gagal menjalankan DB Ingest untuk {platform_name}: {e}")
         return False
 
 def interactive_mode():
@@ -346,7 +317,7 @@ def interactive_mode():
         import io
         import os
         print(f"\n  {CYAN}[INFO] Mengunduh daftar merchant terbaru dari Google Sheets...{RESET}")
-        CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
+        CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
         
         base = os.path.dirname(os.path.abspath(__file__))
         cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
@@ -713,6 +684,7 @@ def main():
     parser.add_argument("--shopee-merchant", type=str, default=None, help="Filter specific Shopee merchant names (pipe-separated)")
     parser.add_argument("--gofood-outlet", type=str, default=None, help="Filter specific GoFood outlet names (pipe-separated)")
     parser.add_argument("--skip-existing", action="store_true", help="Skip already processed/downloaded outlets/merchants")
+    parser.add_argument("--db", action="store_true", help="Kirim data ke database secara otomatis setelah penarikan selesai")
     args = parser.parse_args()
 
     # ── Double-run prevention using filelock ──
@@ -775,33 +747,52 @@ def main():
                 b_str = "|".join(branch) if branch else None
                 results["Grab"] = run_grab(start_date, end_date, user_filter=args.user, outlet_filter=o_str, branch_filter=b_str, skip_existing=skip_existing)
 
+                # ── Auto / Prompt Ingest Grab ke DB ──
+                if results.get("Grab"):
+                    print(f"\n  {CYAN}{'─'*50}{RESET}")
+                    if args.db:
+                        print(f"  {BOLD}[INFO] Flag --db aktif: Mengirim data Grab ke Database.{RESET}")
+                        ingest_to_db("grab", start_date, end_date)
+                    elif is_interactive:
+                        while True:
+                            db_choice = input(
+                                f"  {BOLD}Kirim data Grab ({start_date} s/d {end_date}) ke Database? (Y/n):{RESET} "
+                            ).strip().lower()
+                            if db_choice in ("y", "yes", ""):
+                                ingest_to_db("grab", start_date, end_date)
+                                break
+                            elif db_choice in ("n", "no"):
+                                print(f"  {YELLOW}[INFO] Pengiriman Grab ke Database dilewati.{RESET}")
+                                break
+                            print(f"  {RED}Input tidak valid. Masukkan y atau n.{RESET}")
+
             if platform in ("shopee", "all"):
                 m_str = "|".join(shopee_merchant) if shopee_merchant else None
                 results["Shopee"] = run_shopee(start_date, end_date, merchant_filter=m_str, skip_existing=skip_existing)
+
+                # ── Auto / Prompt Ingest Shopee ke DB ──
+                if results.get("Shopee"):
+                    print(f"\n  {CYAN}{'─'*50}{RESET}")
+                    if args.db:
+                        print(f"  {BOLD}[INFO] Flag --db aktif: Mengirim data Shopee ke Database.{RESET}")
+                        ingest_to_db("shopee", start_date, end_date)
+                    elif is_interactive:
+                        while True:
+                            db_choice = input(
+                                f"  {BOLD}Kirim data Shopee ({start_date} s/d {end_date}) ke Database? (Y/n):{RESET} "
+                            ).strip().lower()
+                            if db_choice in ("y", "yes", ""):
+                                ingest_to_db("shopee", start_date, end_date)
+                                break
+                            elif db_choice in ("n", "no"):
+                                print(f"  {YELLOW}[INFO] Pengiriman Shopee ke Database dilewati.{RESET}")
+                                break
+                            print(f"  {RED}Input tidak valid. Masukkan y atau n.{RESET}")
 
             if platform in ("gofood", "all"):
                 go_str = "|".join(gofood_outlet) if gofood_outlet else None
                 b_str = "|".join(branch) if branch else None
                 results["GoFood"] = run_gofood(start_date, end_date, outlet_filter=go_str, branch_filter=b_str, task_choice="2")
-
-                # ── Auto-kirim ke GSheet setelah scraping GoFood selesai ──
-                if results.get("GoFood"):
-                    print(f"\n  {CYAN}{'─'*50}{RESET}")
-                    if not is_interactive:
-                        print(f"  {BOLD}[INFO] Mode non-interaktif: Mengirim data GoFood ke Google Sheet secara otomatis.{RESET}")
-                        run_gofood_send_data(start_date, end_date, task_choice="2")
-                    else:
-                        while True:
-                            send_choice = input(
-                                f"  {BOLD}Kirim data GoFood ({start_date} s/d {end_date}) ke Google Sheet? (Y/n):{RESET} "
-                            ).strip().lower()
-                            if send_choice in ("y", "yes", ""):
-                                run_gofood_send_data(start_date, end_date, task_choice="2")
-                                break
-                            elif send_choice in ("n", "no"):
-                                print(f"  {YELLOW}[INFO] Pengiriman ke GSheet dilewati.{RESET}")
-                                break
-                            print(f"  {RED}Input tidak valid. Masukkan y atau n.{RESET}")
 
             elapsed = datetime.now() - start_time
             print(f"\n{CYAN}{BOLD}  SUMMARY{RESET}")
