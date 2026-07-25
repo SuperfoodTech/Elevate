@@ -121,7 +121,7 @@ def _resolve_output_dir(platform_name: str, start_date: str, end_date: str) -> s
     return out
 
 def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None) -> str:
-    GSHEETS_URL = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
+    GSHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
     base = os.path.dirname(os.path.abspath(__file__))
     cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
 
@@ -324,6 +324,27 @@ def run_gofood_send_data(start_date: str, end_date: str, task_choice: str = "2",
         print(f"{RED}[ERROR]{RESET} Gagal mengirim data ke GSheet: {e}")
         return False
 
+def ingest_to_db(platform_name: str, start_date: str, end_date: str) -> bool:
+    """
+    Ingests output Excel data for the specified platform into PostgreSQL (layer1_raw)
+    with anti-duplication protection.
+    """
+    output_dir = _resolve_output_dir(platform_name, start_date, end_date)
+    try:
+        if platform_name == "grab":
+            from core.db_ingest import ingest_grab_to_db
+            return ingest_grab_to_db(output_dir)
+        elif platform_name == "shopee":
+            from core.db_ingest import ingest_shopee_to_db
+            return ingest_shopee_to_db(output_dir)
+        elif platform_name == "gofood":
+            print(f"  {YELLOW}[INFO] Ingest GoFood ke DB dilewati untuk sementara.{RESET}")
+            return True
+        return False
+    except Exception as e:
+        print(f"{RED}[ERROR]{RESET} Gagal menjalankan DB Ingest untuk {platform_name}: {e}")
+        return False
+
 def interactive_mode():
     state = "platform"
     
@@ -346,7 +367,7 @@ def interactive_mode():
         import io
         import os
         print(f"\n  {CYAN}[INFO] Mengunduh daftar merchant terbaru dari Google Sheets...{RESET}")
-        CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/14eCb8DAEXhmbYj9MFj2KzC7AhkulbCbSNPltN2m-go0/export?format=csv&gid=0"
+        CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
         
         base = os.path.dirname(os.path.abspath(__file__))
         cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
@@ -713,6 +734,7 @@ def main():
     parser.add_argument("--shopee-merchant", type=str, default=None, help="Filter specific Shopee merchant names (pipe-separated)")
     parser.add_argument("--gofood-outlet", type=str, default=None, help="Filter specific GoFood outlet names (pipe-separated)")
     parser.add_argument("--skip-existing", action="store_true", help="Skip already processed/downloaded outlets/merchants")
+    parser.add_argument("--db", action="store_true", help="Kirim data ke database secara otomatis setelah penarikan selesai")
     args = parser.parse_args()
 
     # ── Double-run prevention using filelock ──
@@ -775,9 +797,47 @@ def main():
                 b_str = "|".join(branch) if branch else None
                 results["Grab"] = run_grab(start_date, end_date, user_filter=args.user, outlet_filter=o_str, branch_filter=b_str, skip_existing=skip_existing)
 
+                # ── Auto / Prompt Ingest Grab ke DB ──
+                if results.get("Grab"):
+                    print(f"\n  {CYAN}{'─'*50}{RESET}")
+                    if args.db:
+                        print(f"  {BOLD}[INFO] Flag --db aktif: Mengirim data Grab ke Database.{RESET}")
+                        ingest_to_db("grab", start_date, end_date)
+                    elif is_interactive:
+                        while True:
+                            db_choice = input(
+                                f"  {BOLD}Kirim data Grab ({start_date} s/d {end_date}) ke Database? (Y/n):{RESET} "
+                            ).strip().lower()
+                            if db_choice in ("y", "yes", ""):
+                                ingest_to_db("grab", start_date, end_date)
+                                break
+                            elif db_choice in ("n", "no"):
+                                print(f"  {YELLOW}[INFO] Pengiriman Grab ke Database dilewati.{RESET}")
+                                break
+                            print(f"  {RED}Input tidak valid. Masukkan y atau n.{RESET}")
+
             if platform in ("shopee", "all"):
                 m_str = "|".join(shopee_merchant) if shopee_merchant else None
                 results["Shopee"] = run_shopee(start_date, end_date, merchant_filter=m_str, skip_existing=skip_existing)
+
+                # ── Auto / Prompt Ingest Shopee ke DB ──
+                if results.get("Shopee"):
+                    print(f"\n  {CYAN}{'─'*50}{RESET}")
+                    if args.db:
+                        print(f"  {BOLD}[INFO] Flag --db aktif: Mengirim data Shopee ke Database.{RESET}")
+                        ingest_to_db("shopee", start_date, end_date)
+                    elif is_interactive:
+                        while True:
+                            db_choice = input(
+                                f"  {BOLD}Kirim data Shopee ({start_date} s/d {end_date}) ke Database? (Y/n):{RESET} "
+                            ).strip().lower()
+                            if db_choice in ("y", "yes", ""):
+                                ingest_to_db("shopee", start_date, end_date)
+                                break
+                            elif db_choice in ("n", "no"):
+                                print(f"  {YELLOW}[INFO] Pengiriman Shopee ke Database dilewati.{RESET}")
+                                break
+                            print(f"  {RED}Input tidak valid. Masukkan y atau n.{RESET}")
 
             if platform in ("gofood", "all"):
                 go_str = "|".join(gofood_outlet) if gofood_outlet else None
