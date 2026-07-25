@@ -51,7 +51,7 @@ START_TIME_TOTAL = time.time()
 
 # Master credential Google Sheet — source of truth for ALL scrapers
 SHEET_PUBLISHED_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
-DEFAULT_OTP_ENDPOINT_URL = os.getenv("OTP_ENDPOINT_URL", "https://script.google.com/macros/s/AKfycbyPgVKDxRa3d5_Z-0Y41LHYIM3dys__OOTC6gdYUkXckiShzdztQOiCgZthuWHs020d/exec")
+DEFAULT_OTP_ENDPOINT_URL = os.getenv("OTP_ENDPOINT_URL", "https://script.google.com/macros/s/AKfycbwRViqfGkDtQGmUDD0PycfSGyEBPgx2uaxelHdKIr__4rZ5aq41j1En5Wb96CgEmRvM/exec")
 
 
 def to_csv_url(url):
@@ -515,88 +515,56 @@ def get_sheet_entry(mapping, num, current_name=None):
     return None
 
 
-DEFAULT_SHEET_OTP_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRYSUnKOqk29LCktTxdb0wPLbWMbRaWRP3eC_UA4AwYod1FW6zDMhtLMC5ghIvot2B8upCDfBsn-TCP/pub?gid=213442295&single=true&output=csv"
-
-
-def ambil_otp_dari_sheet_csv():
-    """
-    Fallback parser untuk membaca OTP langsung dari tab Google Sheets CSV terpublikasi.
-    """
-    try:
-        cache_buster = f"&t={int(time.time())}"
-        headers = {"User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache"}
-        resp = requests.get(DEFAULT_SHEET_OTP_URL + cache_buster, headers=headers, timeout=15)
-        if resp.status_code == 200:
-            reader = csv.DictReader(io.StringIO(resp.content.decode('utf-8')))
-            rows = list(reader)
-            for row in reversed(rows):
-                otp = row.get('OTP', '').strip()
-                if otp and otp != '-' and otp.isdigit() and len(otp) in (4, 6):
-                    return otp
-                body = row.get('Body SMS', '') or ''
-                matches = re.findall(r'\b(\d{6})\b', body)
-                if matches:
-                    return matches[0]
-                matches_hyphen = re.findall(r'\b(\d{3})[- ]?(\d{3})\b', body)
-                if matches_hyphen:
-                    return matches_hyphen[0][0] + matches_hyphen[0][1]
-                matches_4 = re.findall(r'\b(\d{4})\b', body)
-                if matches_4:
-                    return matches_4[0]
-    except Exception as e:
-        console.print(f"[warning]⚠️ Fallback Google Sheets OTP CSV error: {e}[/warning]")
-    return ""
-
-
 def ambil_otp_dari_endpoint(url_dasar, action="getOtp", label_email=None):
     """
     Mengambil OTP terbaru dari endpoint Google Apps Script atau langsung dari Google Sheets CSV.
     """
     if not url_dasar:
-        return ambil_otp_dari_sheet_csv()
+        raise ValueError("URL endpoint OTP kosong.")
 
     # Jika URL mengarah langsung ke Google Sheets CSV
     if "docs.google.com/spreadsheets" in url_dasar:
-        return ambil_otp_dari_sheet_csv()
+        try:
+            with urlopen(url_dasar, timeout=15) as response:
+                content = response.read().decode("utf-8").strip()
+                lines = content.splitlines()
+                if not lines or len(lines) < 2:
+                    return ""
+                reader = csv.reader(lines)
+                rows = list(reader)
+                headers = [h.strip().lower() for h in rows[0]]
+                
+                otp_idx = -1
+                for idx, h in enumerate(headers):
+                    if "otp" in h:
+                        otp_idx = idx
+                        break
+                
+                if otp_idx == -1:
+                    otp_idx = 1 if len(rows[0]) > 1 else 0
+                    
+                last_row = rows[-1]
+                if len(last_row) > otp_idx:
+                    return last_row[otp_idx].strip()
+                return ""
+        except Exception as e:
+            console.print(f"[warning]⚠️ Gagal membaca OTP dari Sheets: {e}[/warning]")
+            return ""
 
-    try:
-        parsed = urlparse(url_dasar)
-        query_params = dict(parse_qsl(parsed.query))
-        query_params["action"] = action
-        if label_email:
-            query_params["label"] = label_email
-        url_final = urlunparse(parsed._replace(query=urlencode(query_params)))
+    parsed = urlparse(url_dasar)
+    query_params = dict(parse_qsl(parsed.query))
+    query_params["action"] = action
+    if label_email:
+        query_params["label"] = label_email
+    url_final = urlunparse(parsed._replace(query=urlencode(query_params)))
 
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        resp = requests.get(url_final, headers=headers, timeout=15)
-        res_text = resp.text.strip()
-
-        # Jika response berupa HTML (misal butuh login / 403 Forbidden Apps Script), fallback ke Google Sheet CSV
-        if resp.status_code != 200 or res_text.startswith("<html") or "Anda memerlukan akses" in res_text or "<!DOCTYPE" in res_text:
-            return ambil_otp_dari_sheet_csv()
-
-        if res_text.isdigit() and len(res_text) in (4, 6):
-            return res_text
-
-        # Jika berwujud JSON response
-        if res_text.startswith("{") and res_text.endswith("}"):
-            try:
-                data = json.loads(res_text)
-                otp_val = str(data.get("otp", "") or data.get("code", "")).strip()
-                if otp_val.isdigit() and len(otp_val) in (4, 6):
-                    return otp_val
-            except Exception:
-                pass
-
-        return res_text
-    except Exception as e:
-        console.print(f"[warning]⚠️ Apps Script OTP request failed ({e}), fallback ke Sheet CSV...[/warning]")
-        return ambil_otp_dari_sheet_csv()
+    with urlopen(url_final, timeout=15) as response:
+        return response.read().decode("utf-8").strip()
 
 
 def tunggu_otp_terbaru(url_dasar, action="getOtp", label_email=None, interval_detik=3, otp_awal_override=None, timeout_detik=30):
     """
-    Menunggu OTP terbaru yang berbeda dari nilai awal agar tidak memakai OTP sebelumnya.
+    Menunggu OTP terbaru dari Gmail/AppsScript yang berbeda dari nilai awal agar tidak memakai OTP sebelumnya.
     otp_awal_override: Jika diisi, gunakan nilai ini sebagai baseline (snapshot sebelum OTP dikirim).
     """
     if otp_awal_override is not None:
@@ -614,7 +582,7 @@ def tunggu_otp_terbaru(url_dasar, action="getOtp", label_email=None, interval_de
         time.sleep(interval_detik)
         try:
             otp_baru = ambil_otp_dari_endpoint(url_dasar, action=action, label_email=label_email)
-            if otp_baru and otp_baru != otp_awal and otp_baru.isdigit() and len(otp_baru) in (4, 6):
+            if otp_baru and otp_baru != otp_awal:
                 return otp_baru
         except Exception:
             pass
