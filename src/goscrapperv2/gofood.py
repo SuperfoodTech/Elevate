@@ -50,7 +50,7 @@ console = Console(theme=custom_theme)
 START_TIME_TOTAL = time.time()
 
 # Master credential Google Sheet — source of truth for ALL scrapers
-SHEET_PUBLISHED_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+SHEET_PUBLISHED_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?output=csv"
 DEFAULT_OTP_ENDPOINT_URL = os.getenv("OTP_ENDPOINT_URL", "https://script.google.com/macros/s/AKfycbwRViqfGkDtQGmUDD0PycfSGyEBPgx2uaxelHdKIr__4rZ5aq41j1En5Wb96CgEmRvM/exec")
 
 
@@ -143,7 +143,7 @@ def fetch_gofood_accounts_from_sheet(task="2"):
     """
     url = SHEET_PUBLISHED_URL
     if task == "1":
-        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=880434015&single=true&output=csv"
+        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?output=csv"
     
     url += f"&t={int(time.time())}"
 
@@ -1088,7 +1088,7 @@ def fetch_gofood_v2_transactions(token, store_id, start_date, end_date):
         params = {
             'from': from_offset,
             'size': page_size,
-            'statuses': 'SETTLEMENT,CAPTURE,REFUND,PARTIAL_REFUND',
+            'statuses': 'SETTLEMENT,CAPTURE,REFUND,PARTIAL_REFUND,CANCEL',
             'payment_types': 'QRIS,GOPAY,OFFLINE_CREDIT_CARD,OFFLINE_DEBIT_CARD,CREDIT_CARD',
             'start_time': start_utc,
             'end_time': end_utc,

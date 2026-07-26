@@ -121,7 +121,7 @@ def _resolve_output_dir(platform_name: str, start_date: str, end_date: str) -> s
     return out
 
 def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None) -> str:
-    GSHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+    GSHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?output=csv"
     base = os.path.dirname(os.path.abspath(__file__))
     cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
 
@@ -288,8 +288,8 @@ def ingest_to_db(platform_name: str, start_date: str, end_date: str) -> bool:
             from core.db_ingest import ingest_shopee_to_db
             return ingest_shopee_to_db(output_dir)
         elif platform_name == "gofood":
-            print(f"  {YELLOW}[INFO] Ingest GoFood ke DB dilewati untuk sementara.{RESET}")
-            return True
+            from core.db_ingest import ingest_gofood_to_db
+            return ingest_gofood_to_db(output_dir)
         return False
     except Exception as e:
         print(f"{RED}[ERROR]{RESET} Gagal menjalankan DB Ingest untuk {platform_name}: {e}")
@@ -317,7 +317,7 @@ def interactive_mode():
         import io
         import os
         print(f"\n  {CYAN}[INFO] Mengunduh daftar merchant terbaru dari Google Sheets...{RESET}")
-        CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+        CSV_URL_MAIN = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?output=csv"
         
         base = os.path.dirname(os.path.abspath(__file__))
         cache_path = os.path.join(base, "shopee", "data", "master_merchants_cache.csv")
@@ -793,6 +793,25 @@ def main():
                 go_str = "|".join(gofood_outlet) if gofood_outlet else None
                 b_str = "|".join(branch) if branch else None
                 results["GoFood"] = run_gofood(start_date, end_date, outlet_filter=go_str, branch_filter=b_str, task_choice="2")
+
+                # ── Auto / Prompt Ingest GoFood ke DB ──
+                if results.get("GoFood"):
+                    print(f"\n  {CYAN}{'─'*50}{RESET}")
+                    if args.db:
+                        print(f"  {BOLD}[INFO] Flag --db aktif: Mengirim data GoFood ke Database.{RESET}")
+                        ingest_to_db("gofood", start_date, end_date)
+                    elif is_interactive:
+                        while True:
+                            db_choice = input(
+                                f"  {BOLD}Kirim data GoFood ({start_date} s/d {end_date}) ke Database? (Y/n):{RESET} "
+                            ).strip().lower()
+                            if db_choice in ("y", "yes", ""):
+                                ingest_to_db("gofood", start_date, end_date)
+                                break
+                            elif db_choice in ("n", "no"):
+                                print(f"  {YELLOW}[INFO] Pengiriman GoFood ke Database dilewati.{RESET}")
+                                break
+                            print(f"  {RED}Input tidak valid. Masukkan y atau n.{RESET}")
 
             elapsed = datetime.now() - start_time
             print(f"\n{CYAN}{BOLD}  SUMMARY{RESET}")

@@ -42,7 +42,7 @@ def get_live_merchants(app_name="ShopeeFood", max_age_hours=0.01, merchant_filte
     import time
     from datetime import datetime
     
-    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?gid=0&single=true&output=csv"
+    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?output=csv"
     cache_path = "data/master_merchants_cache.csv"
     os.makedirs("data", exist_ok=True)
     
