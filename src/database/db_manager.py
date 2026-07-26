@@ -22,10 +22,17 @@ if DATABASE_URL:
     DB_URL = DATABASE_URL
 else:
     DB_HOST = (os.getenv("DB_HOST") or "165.232.165.241").strip("'").strip('"').strip()
+    if DB_HOST == "db":
+        import socket
+        try:
+            socket.gethostbyname("db")
+        except socket.gaierror:
+            DB_HOST = "165.232.165.241"
+
     DB_PORT = (os.getenv("DB_Port") or os.getenv("DB_PORT") or "5432").strip("'").strip('"').strip()
     DB_NAME = (os.getenv("DB_NAME") or os.getenv("DB_Name") or "db_superfood").strip("'").strip('"').strip()
-    DB_USERNAME = (os.getenv("DB_USERNAME") or os.getenv("DB_Username") or "admin").strip("'").strip('"').strip()
-    DB_PASSWORD = (os.getenv("DB_PASSWORD") or os.getenv("DB_PASS") or os.getenv("DB_Password") or "superF777@").strip("'").strip('"').strip()
+    DB_USERNAME = (os.getenv("DB_USER") or os.getenv("DB_USERNAME") or os.getenv("DB_Username") or "admin").strip("'").strip('"').strip()
+    DB_PASSWORD = (os.getenv("DB_PASS") or os.getenv("DB_PASSWORD") or os.getenv("DB_Password") or "superF777@").strip("'").strip('"').strip()
     SSL_MODE = (os.getenv("SSL_Mode") or os.getenv("SSL_MODE") or os.getenv("SSL_mode") or "disable").strip("'").strip('"').strip()
 
     # URL-encode credentials to handle special characters (e.g. '@' in password)
@@ -191,15 +198,40 @@ class DatabaseManager:
         print("[DB] Ingesting GoFood data to layer1_raw.raw_go...")
         
         header_mapping = {
-            "Tanggal": "Tanggal",
-            "Outlet Name": "Store Name",
-            "Store Name": "Store Name",
-            "Store ID": "Store ID",
-            "Penjualan Kotor": "Penjualan Kotor",
-            "Biaya Komisi": "Biaya Komisi",
-            "Pengeluaran Iklan & Diskon": "Pengeluaran Iklan & Diskon",
-            "Order Sukses": "Order Sukses",
-            "Order Batal": "Order Batal"
+            "Order Status": "Order Status",
+            "Outlet Name": "Outlet Name",
+            "Store Name": "Outlet Name",
+            "Nama Outlet": "Outlet Name",
+            "Merchant ID": "Merchant ID",
+            "Store ID": "Merchant ID",
+            "Feature": "Feature",
+            "Layanan": "Feature",
+            "Order ID": "Order ID",
+            "No. Pesanan": "Order ID",
+            "Transaction ID": "Transaction ID",
+            "ID Transaksi": "Transaction ID",
+            "Amount": "Amount",
+            "Penjualan Kotor": "Amount",
+            "Net Amount": "Net Amount",
+            "Penjualan Bersih": "Net Amount",
+            "Transaction Time": "Transaction Time",
+            "Waktu Transaksi": "Transaction Time",
+            "Tanggal": "Transaction Time",
+            "Payment Type": "Payment Type",
+            "Tipe Pembayaran": "Payment Type",
+            "GoPay Promo": "GoPay Promo",
+            "Promo Type": "Promo Type",
+            "Promo Name": "Promo Name",
+            "Merchant Promo Contribution": "Merchant Promo Contribution",
+            "Voucher Description": "Voucher Description",
+            "GoFood Discount": "GoFood Discount",
+            "Voucher Commission": "Voucher Commission",
+            "Total Fee": "Total Fee",
+            "Biaya Komisi": "Total Fee",
+            "Value Added Tax": "Value Added Tax",
+            "Restaurant Tax": "Restaurant Tax",
+            "Service": "Service",
+            "Withholding Tax": "Withholding Tax",
         }
         
         resolved_mapping = {}
@@ -208,8 +240,11 @@ class DatabaseManager:
                 resolved_mapping[df_col] = header_mapping[df_col]
                 
         target_cols = [
-            "Tanggal", "Store Name", "Store ID", "Penjualan Kotor", 
-            "Biaya Komisi", "Pengeluaran Iklan & Diskon", "Order Sukses", "Order Batal"
+            "Order Status", "Outlet Name", "Merchant ID", "Feature", "Order ID",
+            "Transaction ID", "Amount", "Net Amount", "Transaction Time", "Payment Type",
+            "GoPay Promo", "Promo Type", "Promo Name", "Merchant Promo Contribution",
+            "Voucher Description", "GoFood Discount", "Voucher Commission", "Total Fee",
+            "Value Added Tax", "Restaurant Tax", "Service", "Withholding Tax"
         ]
         
         df_mapped = df[list(resolved_mapping.keys())].rename(columns=resolved_mapping).copy()

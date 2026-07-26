@@ -34,10 +34,17 @@ def get_db_engine():
         db_url = DATABASE_URL
     else:
         DB_HOST = (os.getenv("DB_HOST") or "165.232.165.241").strip("'").strip('"').strip()
+        if DB_HOST == "db":
+            import socket
+            try:
+                socket.gethostbyname("db")
+            except socket.gaierror:
+                DB_HOST = "165.232.165.241"
+
         DB_PORT = (os.getenv("DB_Port") or os.getenv("DB_PORT") or "5432").strip("'").strip('"').strip()
         DB_NAME = (os.getenv("DB_NAME") or os.getenv("DB_Name") or "db_superfood").strip("'").strip('"').strip()
-        DB_USERNAME = (os.getenv("DB_USERNAME") or os.getenv("DB_Username") or "admin").strip("'").strip('"').strip()
-        DB_PASSWORD = (os.getenv("DB_PASSWORD") or os.getenv("DB_PASS") or os.getenv("DB_Password") or "superF777@").strip("'").strip('"').strip()
+        DB_USERNAME = (os.getenv("DB_USER") or os.getenv("DB_USERNAME") or os.getenv("DB_Username") or "admin").strip("'").strip('"').strip()
+        DB_PASSWORD = (os.getenv("DB_PASS") or os.getenv("DB_PASSWORD") or os.getenv("DB_Password") or "superF777@").strip("'").strip('"').strip()
         SSL_MODE = (os.getenv("SSL_Mode") or os.getenv("SSL_MODE") or os.getenv("SSL_mode") or "disable").strip("'").strip('"').strip()
 
         safe_username = urllib.parse.quote_plus(DB_USERNAME)
@@ -299,3 +306,134 @@ def ingest_shopee_to_db(output_dir: str) -> bool:
     except Exception as e:
         print(f"  {RED}❌ [DB ERROR] Gagal ingest Shopee ke DB: {e}{RESET}")
         return False
+
+
+def ingest_gofood_to_db(output_dir: str) -> bool:
+    """
+    Ingests GoFood V2 transaction data from output_dir into layer1_raw.raw_go with anti-duplication protection.
+    Deduplication Key: 'Transaction ID' (or fallback 'Order ID')
+    """
+    print(f"\n{GREEN}{BOLD}🐘 [DB INGEST] Single/Weekly GoFood V2 → layer1_raw.raw_go{RESET}")
+    df = _load_excel_dataframe(output_dir)
+    if df.empty:
+        print(f"  {YELLOW}⚠ Tidak ada data GoFood yang dapat di-ingest.{RESET}")
+        return False
+
+    header_mapping = {
+        "Order Status": "Order Status",
+        "Outlet Name": "Outlet Name",
+        "Store Name": "Outlet Name",
+        "Nama Outlet": "Outlet Name",
+        "Merchant ID": "Merchant ID",
+        "Store ID": "Merchant ID",
+        "Feature": "Feature",
+        "Layanan": "Feature",
+        "Order ID": "Order ID",
+        "No. Pesanan": "Order ID",
+        "Transaction ID": "Transaction ID",
+        "ID Transaksi": "Transaction ID",
+        "Amount": "Amount",
+        "Penjualan Kotor": "Amount",
+        "Net Amount": "Net Amount",
+        "Penjualan Bersih": "Net Amount",
+        "Transaction Time": "Transaction Time",
+        "Waktu Transaksi": "Transaction Time",
+        "Tanggal": "Transaction Time",
+        "Payment Type": "Payment Type",
+        "Tipe Pembayaran": "Payment Type",
+        "GoPay Promo": "GoPay Promo",
+        "Promo Type": "Promo Type",
+        "Promo Name": "Promo Name",
+        "Merchant Promo Contribution": "Merchant Promo Contribution",
+        "Voucher Description": "Voucher Description",
+        "GoFood Discount": "GoFood Discount",
+        "Voucher Commission": "Voucher Commission",
+        "Total Fee": "Total Fee",
+        "Biaya Komisi": "Total Fee",
+        "Value Added Tax": "Value Added Tax",
+        "Restaurant Tax": "Restaurant Tax",
+        "Service": "Service",
+        "Withholding Tax": "Withholding Tax",
+    }
+
+    resolved_mapping = {}
+    for df_col in df.columns:
+        if df_col in header_mapping:
+            resolved_mapping[df_col] = header_mapping[df_col]
+
+    target_cols = [
+        "Order Status",
+        "Outlet Name",
+        "Merchant ID",
+        "Feature",
+        "Order ID",
+        "Transaction ID",
+        "Amount",
+        "Net Amount",
+        "Transaction Time",
+        "Payment Type",
+        "GoPay Promo",
+        "Promo Type",
+        "Promo Name",
+        "Merchant Promo Contribution",
+        "Voucher Description",
+        "GoFood Discount",
+        "Voucher Commission",
+        "Total Fee",
+        "Value Added Tax",
+        "Restaurant Tax",
+        "Service",
+        "Withholding Tax",
+    ]
+
+    df_mapped = df[list(resolved_mapping.keys())].rename(columns=resolved_mapping).copy()
+    df_mapped = df_mapped.loc[:, ~df_mapped.columns.duplicated()]
+
+    for col in target_cols:
+        if col not in df_mapped.columns:
+            df_mapped[col] = None
+
+    df_stg = df_mapped[target_cols].copy()
+    for col in target_cols:
+        df_stg[col] = df_stg[col].apply(raw_string_format)
+
+    engine = get_db_engine()
+    try:
+        with engine.connect() as conn:
+            # Query existing Transaction IDs / Order IDs
+            query_sql = text('SELECT DISTINCT "Transaction ID", "Order ID" FROM layer1_raw.raw_go')
+            existing_result = conn.execute(query_sql).fetchall()
+            existing_tx_ids = {str(r[0]).strip() for r in existing_result if r[0] is not None and str(r[0]).strip() != ""}
+            existing_order_ids = {str(r[1]).strip() for r in existing_result if r[1] is not None and str(r[1]).strip() != ""}
+
+        total_rows = len(df_stg)
+
+        clean_tx = df_stg["Transaction ID"].astype(str).str.strip()
+        clean_order = df_stg["Order ID"].astype(str).str.strip()
+
+        # Deduplicate by Transaction ID or Order ID
+        is_new_tx = ~clean_tx.isin(existing_tx_ids) & clean_tx.notna() & (clean_tx != "None") & (clean_tx != "")
+        is_new_order = ~clean_order.isin(existing_order_ids) & clean_order.notna() & (clean_order != "None") & (clean_order != "")
+        
+        new_df = df_stg[is_new_tx | (clean_tx.isin(["None", "", "nan"]) & is_new_order)].copy()
+
+        new_count = len(new_df)
+        skipped_count = total_rows - new_count
+
+        if new_count == 0:
+            print(f"  {CYAN}ℹ [DUPLICATE CHECK] Semua {total_rows} baris sudah ada di database (0 baris baru di-insert).{RESET}")
+            return True
+
+        with engine.begin() as conn:
+            new_df.to_sql('raw_go', conn, schema='layer1_raw', if_exists='append', index=False)
+
+        print(f"  {GREEN}✅ [SUCCESS] Ingest GoFood V2 ke layer1_raw.raw_go selesai:{RESET}")
+        print(f"     • Total baris dalam file : {total_rows}")
+        print(f"     • Baris baru ter-insert  : {new_count}")
+        print(f"     • Baris di-skip (duplikat): {skipped_count}")
+        return True
+
+    except Exception as e:
+        print(f"  {RED}❌ [DB ERROR] Gagal ingest GoFood ke DB: {e}{RESET}")
+        return False
+
