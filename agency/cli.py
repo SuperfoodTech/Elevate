@@ -33,6 +33,7 @@ CYAN   = "\033[96m"
 YELLOW = "\033[93m"
 RED    = "\033[91m"
 MAGENTA = "\033[95m"
+BLUE   = "\033[94m"
 DIM    = "\033[2m"
 
 def banner():
