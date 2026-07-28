@@ -318,7 +318,7 @@ def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None, task_cho
 def run_grab(start_date: str, end_date: str, user_filter: str = None, outlet_filter: str = None, branch_filter: str = None):
     """
     Delegates to the existing Grab weekly pipeline.
-    Working directory is set to grab-reportperformance/weekly so that
+    Working directory is set to grab/weekly so that
     relative paths (browser_data/, downloads/) resolve correctly.
     Output is routed to task-weekly/src/laporan/grab/{start}_to_{end}.
     """
@@ -570,7 +570,7 @@ def run_shopee_vb(start_date: str, end_date: str, merchant_filter: str = None):
 def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch_filter: str = None, task_choice: str = "2", no_sheet: bool = False, clear_cache: bool = False):
     """
     Delegates to the GoFood Login/Dashboard utility.
-    Working directory is set to goscrapperv2 so that
+    Working directory is set to gofood so that
     relative paths and imports resolve correctly.
     """
     gofood_dir = os.path.join(os.path.dirname(__file__), "gofood")

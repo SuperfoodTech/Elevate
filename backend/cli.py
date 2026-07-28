@@ -223,7 +223,7 @@ def run_shopee(start_date: str, end_date: str, merchant_filter: str = None, skip
 def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch_filter: str = None, task_choice: str = "2", no_sheet: bool = False, clear_cache: bool = False):
     """
     Delegates to the GoFood Login/Dashboard utility.
-    Working directory is set to goscrapperv2 so that
+    Working directory is set to gofood so that
     relative paths and imports resolve correctly.
     task_choice: "1" = Baseline, "2" = Weekly (default)
     """
