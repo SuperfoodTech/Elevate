@@ -9,14 +9,28 @@ def recreate_tables():
         """
         DROP TABLE IF EXISTS layer1_raw.raw_go CASCADE;
         CREATE TABLE layer1_raw.raw_go (
-            "Tanggal" TEXT,
-            "Store Name" TEXT,
-            "Store ID" TEXT,
-            "Penjualan Kotor" TEXT,
-            "Biaya Komisi" TEXT,
-            "Pengeluaran Iklan & Diskon" TEXT,
-            "Order Sukses" TEXT,
-            "Order Batal" TEXT
+            "Order Status" TEXT,
+            "Outlet Name" TEXT,
+            "Merchant ID" TEXT,
+            "Feature" TEXT,
+            "Order ID" TEXT,
+            "Transaction ID" TEXT,
+            "Amount" TEXT,
+            "Net Amount" TEXT,
+            "Transaction Time" TEXT,
+            "Payment Type" TEXT,
+            "GoPay Promo" TEXT,
+            "Promo Type" TEXT,
+            "Promo Name" TEXT,
+            "Merchant Promo Contribution" TEXT,
+            "Voucher Description" TEXT,
+            "GoFood Discount" TEXT,
+            "Voucher Commission" TEXT,
+            "Total Fee" TEXT,
+            "Value Added Tax" TEXT,
+            "Restaurant Tax" TEXT,
+            "Service" TEXT,
+            "Withholding Tax" TEXT
         );
         """,
         

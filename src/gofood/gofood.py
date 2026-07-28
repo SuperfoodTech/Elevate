@@ -4,6 +4,7 @@ import requests
 import openpyxl
 import urllib.request
 import csv
+import io
 import re
 import codecs
 from datetime import datetime, timedelta
@@ -561,9 +562,9 @@ def ambil_otp_dari_endpoint(url_dasar, action="getOtp", label_email=None):
         return response.read().decode("utf-8").strip()
 
 
-def tunggu_otp_terbaru(url_dasar, action="getOtp", label_email=None, interval_detik=3, otp_awal_override=None, timeout_detik=15):
+def tunggu_otp_terbaru(url_dasar, action="getOtp", label_email=None, interval_detik=3, otp_awal_override=None, timeout_detik=30):
     """
-    Menunggu OTP terbaru yang berbeda dari nilai awal agar tidak memakai OTP sebelumnya.
+    Menunggu OTP terbaru dari Gmail/AppsScript yang berbeda dari nilai awal agar tidak memakai OTP sebelumnya.
     otp_awal_override: Jika diisi, gunakan nilai ini sebagai baseline (snapshot sebelum OTP dikirim).
     """
     if otp_awal_override is not None:
@@ -691,7 +692,7 @@ def login_outlet_gofood_flow(outlet_info):
                 is_banned = False
 
                 # Ambil konfigurasi OTP endpoint di awal setiap attempt
-                otp_endpoint = os.getenv("OTP_ENDPOINT_URL")
+                otp_endpoint = os.getenv("OTP_ENDPOINT_URL") or os.getenv("APPS_SCRIPT_OTP_URL") or DEFAULT_OTP_ENDPOINT_URL
                 label_email_cfg = os.getenv("GMAIL_OTP_LABEL", "OTP-GO")
                 action_type = "getOtpEmail" if current_email else "getOtp"
                 otp_snapshot_awal = ""
@@ -1057,520 +1058,207 @@ def minta_range_tanggal_custom():
             print("⚠️ Format tanggal tidak valid. Gunakan DD-MM-YYYY atau YYYY-MM-DD.")
 
 
+def fetch_gofood_v2_transactions(token, store_id, start_date, end_date):
+    """
+    Fetches detailed transactions from Gojek Merchant Analytics V2 API.
+    URL: https://api.gojekapi.com/merchant-analytics/v2/merchants/transactions
+    """
+    url = "https://api.gojekapi.com/merchant-analytics/v2/merchants/transactions"
+    headers = {
+        'Accept': 'application/json, text/plain, */*',
+        'Authentication-Type': 'go-id',
+        'Authorization': f"Bearer {token}",
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    }
+
+    use_proxy = os.getenv("USE_PROXY", "false").lower() in ("true", "1", "yes")
+    proxy_server = os.getenv("PROXY_SERVER")
+    session = requests.Session()
+    if use_proxy and proxy_server:
+        session.proxies = {"http": proxy_server, "https": proxy_server}
+
+    start_utc = start_date.strftime("%Y-%m-%dT00:00:00.000Z")
+    end_utc = end_date.strftime("%Y-%m-%dT23:59:59.999Z")
+
+    all_transactions = []
+    from_offset = 0
+    page_size = 50
+
+    while True:
+        params = {
+            'from': from_offset,
+            'size': page_size,
+            'statuses': 'SETTLEMENT,CAPTURE,REFUND,PARTIAL_REFUND,CANCEL',
+            'payment_types': 'QRIS,GOPAY,OFFLINE_CREDIT_CARD,OFFLINE_DEBIT_CARD,CREDIT_CARD',
+            'start_time': start_utc,
+            'end_time': end_utc,
+        }
+        if store_id:
+            params['merchant_ids'] = str(store_id).strip()
+
+        try:
+            resp = session.get(url, headers=headers, params=params, timeout=30)
+            if resp.status_code != 200:
+                console.print(f"[error]❌ Gagal fetching GoFood V2 Transactions (HTTP {resp.status_code}): {resp.text[:200]}[/error]")
+                break
+            
+            data = resp.json()
+            tx_list = data.get('transactions', [])
+            if not tx_list:
+                break
+
+            all_transactions.extend(tx_list)
+            total = data.get('total', 0)
+
+            if len(all_transactions) >= total or len(tx_list) < page_size:
+                break
+
+            from_offset += page_size
+            time.sleep(0.2)
+        except Exception as e:
+            console.print(f"[error]❌ Exception saat fetch GoFood V2 API: {e}[/error]")
+            break
+
+    return all_transactions
+
+
 def ambil_data_analytics(write_header=True, start_date=None, end_date=None, return_data=False,
                           token=None, store_id=None, nama_outlet=None, phone=None, cabang=None):
     """
-    Mengambil data analytics GoFood.
-    Parameter token, store_id, nama_outlet, phone, cabang di-pass secara eksplisit
-    agar tidak bergantung pada os.environ global (aman untuk concurrent execution).
-    Jika tidak di-pass, fallback ke os.getenv() untuk kompatibilitas backward.
+    Mengambil data transaksi GoFood menggunakan Gojek Merchant Analytics V2 API.
     """
-    # Resolve context — gunakan parameter eksplisit jika ada, fallback ke env
     _token     = token     or os.getenv('BEARER_TOKEN', '')
     _store_id  = store_id  or os.getenv('ACTIVE_STORE_ID', '')
     _phone     = phone     or os.getenv('ACTIVE_NOMOR_HP', '')
     _outlet    = nama_outlet or os.getenv('ACTIVE_NAMA_OUTLET', '')
     _cabang    = cabang    or os.getenv('ACTIVE_CABANG', '')
-    session = requests.Session()
-    use_proxy = os.getenv("USE_PROXY", "false").lower() in ("true", "1", "yes")
-    proxy_server = os.getenv("PROXY_SERVER")
-    if use_proxy and proxy_server:
-        session.proxies = {
-            "http": proxy_server,
-            "https": proxy_server
-        }
+
     START_TIME_STORE = time.time()
 
-    # --- LOGIKA TANGGAL ---
-    custom_mode = start_date is not None and end_date is not None
-    if not custom_mode:
-        # Default: 3 bulan penuh ke belakang (per bulan)
-        now = datetime.now()
+    now = datetime.now()
+    if start_date is None or end_date is None:
         first_day_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end_date = first_day_this_month - timedelta(milliseconds=1)
-
         start_month = first_day_this_month.month - 3
         start_year = first_day_this_month.year
         if start_month <= 0:
             start_month += 12
             start_year -= 1
         start_date = first_day_this_month.replace(year=start_year, month=start_month, day=1)
-
-        period_label_title = "Bulan"
-        period_iter = []
-        curr_month = start_date
-        while curr_month <= end_date:
-            label = curr_month.strftime('%B %Y')
-            period_iter.append((curr_month.strftime('%Y-%m'), label))
-            curr_month = (curr_month.replace(day=1) + timedelta(days=32)).replace(day=1)
-        excel_filename = 'revenue_3_bulan.xlsx'
     else:
-        # Custom range: per hari
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999000)
 
-        period_label_title = "Hari"
-        period_iter = []
-        curr_day = start_date
-        while curr_day <= end_date:
-            label = curr_day.strftime('%d %b %Y')
-            period_iter.append((curr_day.strftime('%Y-%m-%d'), label))
-            curr_day = curr_day + timedelta(days=1)
-        excel_filename = f"revenue_{start_date.strftime('%Y-%m-%d')}_sampai_{end_date.strftime('%Y-%m-%d')}.xlsx"
-
-    global GLOBAL_OUTPUT_DIR
-    if GLOBAL_OUTPUT_DIR:
-        os.makedirs(GLOBAL_OUTPUT_DIR, exist_ok=True)
-        excel_filename = os.path.join(GLOBAL_OUTPUT_DIR, excel_filename)
-
-    # Konversi ke Epoch timestamp dalam milidetik untuk header
-    range_from_ms = str(int(start_date.timestamp() * 1000))
-    range_to_ms = str(int(end_date.timestamp() * 1000))
-
-    # --- 1. REQUEST DATA GROSS REVENUE ---
-    # include merchant_ids param in Referer if available
-    active_store = _store_id.strip() if _store_id else ''
-    merchant_q = f"&merchant_ids={active_store}" if active_store else ''
-
-    headers = {
-        'Accept': '*/*',
-        'Authentication-Type': 'go-id',
-        'Authorization': f"Bearer {_token}",
-        'Content-Type': 'application/json, application/x-ndjson',
-        'Origin': 'https://portal.gofoodmerchant.co.id',
-        'Referer': f"https://portal.gofoodmerchant.co.id/analytics/sales-gofood?date_range=custom&end_date={end_date.strftime('%Y-%m-%dT%H%%3A%M%%3A%S.999Z')}&start_date={start_date.strftime('%Y-%m-%dT%H%%3A%M%%3A%S.000Z')}{merchant_q}",
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
-        'x-comp-range-from': range_from_ms,
-        'x-comp-range-to': range_to_ms,
-        'x-custom-interval': '1d',
-        'x-custom-merchant-id': active_store,
-        'x-dashboard-id': '107',
-        'x-grafana-org-id': '1',
-        'x-panel-id': '2',
-        'x-range-from': range_from_ms,
-        'x-range-to': range_to_ms,
-        'x-ref-ids': 'total_gmv_topline_amount;prev_total_gmv_topline_amount',
-        'x-setting-interval': '1d'
-    }
-
-    url = "https://portal.gofoodmerchant.co.id/analytics-backend/api/datasources/proxy/63/_msearch?max_concurrent_shard_requests=5"
+    console.print(f"[cyan]🚀 [GOFOOD V2 API] Mengambil transaksi untuk '{_outlet}' ({start_date.strftime('%Y-%m-%d')} s/d {end_date.strftime('%Y-%m-%d')})...[/cyan]")
     
-    with console.status("[bold cyan]Mengambil data Revenue...", spinner="bouncingBar"):
-        response = session.post(url, headers=headers, data="")
-    
-    data_revenue = {}
+    transactions = fetch_gofood_v2_transactions(_token, _store_id, start_date, end_date)
+    console.print(f"[success]✅ Berhasil mengambil {len(transactions)} transaksi dari V2 API.[/success]")
 
-    if response.status_code == 200:
-        msg = f"Berhasil mengambil data Revenue dari {start_date.strftime('%d %b %Y')} hingga {end_date.strftime('%d %b %Y')}"
-        console.print(f"[success]✅ {msg}[/success]")
-        data_revenue = response.json()
-    else:
-        console.print(f"[error]❌ Gagal mengakses Revenue, status code: {response.status_code}[/error]")
-        return
-        
-    # --- 2. REQUEST DATA JUMLAH PESANAN (ORDERS) ---
-    url_orders = "https://portal.gofoodmerchant.co.id/analytics-backend/api/datasources/proxy/46/_msearch?max_concurrent_shard_requests=5"
-    
-    # Menentukan indeks Elasticsearch secara dinamis untuk rentang yang dipilih
-    indices = []
-    curr_idx = start_date
-    while curr_idx <= end_date:
-        indices.append(f"analytic_detail_gofood_booking_v1_{curr_idx.strftime('%Y-%m')}")
-        curr_idx = (curr_idx.replace(day=1) + timedelta(days=32)).replace(day=1)
-    indices_json = json.dumps(indices)
+    # ── 22 Kolom Header Excel Detail ──
+    headers_excel = [
+        "Order Status",
+        "Outlet Name",
+        "Merchant ID",
+        "Feature",
+        "Order ID",
+        "Transaction ID",
+        "Amount",
+        "Net Amount",
+        "Transaction Time",
+        "Payment Type",
+        "GoPay Promo",
+        "Promo Type",
+        "Promo Name",
+        "Merchant Promo Contribution",
+        "Voucher Description",
+        "GoFood Discount",
+        "Voucher Commission",
+        "Total Fee",
+        "Value Added Tax",
+        "Restaurant Tax",
+        "Service",
+        "Withholding Tax",
+    ]
 
-    # Build merchant_id filter for Elasticsearch query string: merchant_id:("VALUE") format
-    if active_store:
-        merchant_filter = f" AND merchant_id:(\\\"{ active_store}\\\")"
-    else:
-        merchant_filter = " AND merchant_id:__empty__"
+    rows_excel = []
+    total_omzet = 0.0
+    total_omzet_bersih = 0.0
+    total_komisi = 0.0
+    total_order = 0
+    total_order_batal = 0
 
-    payload_orders = (
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_ms} AND time:<={range_to_ms}{merchant_filter} AND NOT id:FP* AND _exists_:data.status AND data.status:COMPLETED"}}]}}}},"aggs":{{"2":{{"date_histogram":{{"field":"time","min_doc_count":0,"extended_bounds":{{"min":{range_from_ms},"max":{range_to_ms}}},"format":"epoch_millis","time_zone":"Asia/Jakarta","interval":"1d"}},"aggs":{{}}}}}}}}\n'
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_ms} AND time:<={range_to_ms}{merchant_filter} AND NOT id:FP*"}}]}}}},"aggs":{{"2":{{"date_histogram":{{"field":"time","min_doc_count":0,"extended_bounds":{{"min":{range_from_ms},"max":{range_to_ms}}},"format":"epoch_millis","time_zone":"Asia/Jakarta","interval":"1d"}},"aggs":{{}}}}}}}}\n'
-    )
+    outlet_name_display = _outlet
+    if _cabang and _cabang.lower() != 'tanpa cabang':
+        outlet_name_display = f"{_outlet} - {_cabang}"
 
-    headers_orders = headers.copy()
-    headers_orders.update({
-        'Content-Type': 'application/x-ndjson',
-        'Referer': f"https://portal.gofoodmerchant.co.id/analytics-backend/d/npZdujrIz/operationals?orgId=1&kiosk=gobiz&from={range_from_ms}&to={range_to_ms}&var-interval=1d&var-merchant_id={active_store}&locale=id&country=ID&var-ad_slot=GOFOOD_CPC_FUNGIBLE_AD&var-ad_slot=GOFOOD_HOME_BANNER_TOP&var-ad_slot=GOFOOD_HOME_MAST_HEAD_TOP&var-ad_slot=GOFOOD_TEXT_SEARCH_TILE{merchant_q}",
-        'x-dashboard-id': '83',
-        'x-panel-id': '38',
-        'x-ref-ids': 'A;B',
-        'x-comp-range-offset': '30d',
-        'x-custom-interval': '1d',
-        'x-setting-interval': '2h'
-    })
+    for tx in transactions:
+        status_tx = tx.get("transaction_status", "")
+        shares = tx.get("shares", [{}])[0] if tx.get("shares") else {}
+        commerce = tx.get("commerce") or {}
+        promo = tx.get("promo_details") or {}
 
-    with console.status("[bold cyan]Mengambil data Pesanan (Orders)...", spinner="bouncingBar"):
-        response_orders = session.post(url_orders, headers=headers_orders, data=payload_orders)
-    
-    data_orders = {}
-
-    if response_orders.status_code == 200:
-        console.print(f"[success]✅ Berhasil mengambil data Orders.[/success]")
-        data_orders = response_orders.json()
-    else:
-        console.print(f"[error]❌ Gagal mengakses Orders, status code: {response_orders.status_code}[/error]")
-
-    # --- 3. REQUEST DATA OMZET BERSIH ---
-    url_net = "https://portal.gofoodmerchant.co.id/analytics-backend/api/datasources/proxy/63/_msearch?max_concurrent_shard_requests=5"
-
-    headers_net = headers.copy()
-    headers_net.update({
-        'x-panel-id': '7',
-        'x-ref-ids': 'total_gmv_bottomline_amount;prev_total_gmv_bottomline_amount'
-    })
-
-    with console.status("[bold cyan]Mengambil data Omzet Bersih...", spinner="bouncingBar"):
-        response_net = session.post(url_net, headers=headers_net, data="")
-    
-    data_net = {}
-
-    if response_net.status_code == 200:
-        console.print(f"[success]✅ Berhasil mengambil data Omzet Bersih.[/success]")
-        data_net = response_net.json()
-    else:
-        console.print(f"[error]❌ Gagal mengakses Omzet Bersih, status code: {response_net.status_code}[/error]")
-
-    # --- 3.5 REQUEST DATA KOMISI ---
-    url_komisi = "https://portal.gofoodmerchant.co.id/analytics-backend/api/datasources/proxy/63/_msearch?max_concurrent_shard_requests=5"
-
-    headers_komisi = headers.copy()
-    headers_komisi.update({
-        'x-panel-id': '4',
-        'x-ref-ids': 'total_commission_amount'
-    })
-
-    with console.status("[bold cyan]Mengambil data Komisi...", spinner="bouncingBar"):
-        response_komisi = session.post(url_komisi, headers=headers_komisi, data="")
-    
-    data_komisi = {}
-
-    if response_komisi.status_code == 200:
-        console.print(f"[success]✅ Berhasil mengambil data Komisi.[/success]")
-        data_komisi = response_komisi.json()
-    else:
-        console.print(f"[error]❌ Gagal mengakses Komisi, status code: {response_komisi.status_code}[/error]")
-
-    # --- 3.6 REQUEST DATA IKLAN & DISKON ---
-    url_iklan = "https://portal.gofoodmerchant.co.id/analytics-backend/api/datasources/proxy/63/_msearch?max_concurrent_shard_requests=5"
-
-    headers_iklan = headers.copy()
-    headers_iklan.update({
-        'x-panel-id': '5',
-        'x-ref-ids': 'total_ad_promo_burn_amount'
-    })
-
-    with console.status("[bold cyan]Mengambil data Iklan & Diskon...", spinner="bouncingBar"):
-        response_iklan = session.post(url_iklan, headers=headers_iklan, data="")
-    
-    data_iklan = {}
-
-    if response_iklan.status_code == 200:
-        console.print(f"[success]✅ Berhasil mengambil data Iklan & Diskon.[/success]")
-        data_iklan = response_iklan.json()
-    else:
-        console.print(f"[error]❌ Gagal mengakses Iklan & Diskon, status code: {response_iklan.status_code}[/error]")
-
-    # --- 3.7 REQUEST DATA ORDER BATAL (6-QUERY PAYLOAD) ---
-    url_batal = "https://portal.gofoodmerchant.co.id/analytics-backend/api/datasources/proxy/46/_msearch?max_concurrent_shard_requests=5"
-    
-    cancel_reasons = (
-        "MERCHANT_ACCEPTANCE_TIMEOUT", "HIGH_DEMAND", "MERCHANT_HIGH_DEMAND",
-        "CCU_PORTAL_MERCHANT_UNCONTACTABLE", "DCU_PORTAL_MERCHANT_UNCONTACTABLE",
-        "PORTAL_MERCHANT_UNCONTACTABLE", "MERCHANT_OTHERS",
-        "CCU_PORTAL_MERCHANT_OUT_OF_STOCK", "CUSTOMER_OUT_OF_STOCK",
-        "DCU_PORTAL_MERCHANT_OUT_OF_STOCK", "DRIVER_OUT_OF_STOCK",
-        "ITEMS_OUT_OF_STOCK", "MCU_PORTAL_MERCHANT_OUT_OF_STOCK",
-        "MERCHANT_ITEMS_OUT_OF_STOCK", "PORTAL_MERCHANT_OUT_OF_STOCK",
-        "CCU_PORTAL_MERCHANT_CLOSED", "CUSTOMER_STORE_IS_CLOSED",
-        "DCU_PORTAL_MERCHANT_CLOSED", "DRIVER_RESTAURANT_MART_CLOSED",
-        "MCU_PORTAL_MERCHANT_CLOSED", "MERCHANT_RESTAURANT_CLOSED",
-        "PORTAL_MERCHANT_CLOSED", "RESTAURANT_CLOSED",
-        "CCU_PORTAL_MERCHANT_WRONG_PRICE", "DCU_PORTAL_MERCHANT_WRONG_PRICE",
-        "MCU_PORTAL_MERCHANT_WRONG_PRICE", "PORTAL_MERCHANT_WRONG_PRICE"
-    )
-    # Correctly format for query string, escaping quotes inside the string
-    cancel_reasons_query = "(" + " OR ".join([f'\\"{reason}\\"' for reason in cancel_reasons]) + ")"
-
-    # Ranges for comparison
-    range_from_comp_ms = str(int((datetime.fromtimestamp(int(range_from_ms) / 1000) - timedelta(days=10)).timestamp() * 1000))
-    range_to_comp_ms = str(int((datetime.fromtimestamp(int(range_from_ms) / 1000) - timedelta(milliseconds=1)).timestamp() * 1000))
-    
-    # Build indices dynamically
-    indices_current = []
-    curr_idx = start_date
-    while curr_idx <= end_date:
-        indices_current.append(f"analytic_detail_gofood_booking_v1_{curr_idx.strftime('%Y-%m')}")
-        curr_idx = (curr_idx.replace(day=1) + timedelta(days=32)).replace(day=1)
-    indices_current_json = json.dumps(indices_current)
-    
-    indices_past = []
-    curr_idx_past = datetime.fromtimestamp(int(range_from_comp_ms)/1000)
-    end_date_past = datetime.fromtimestamp(int(range_to_comp_ms)/1000)
-    while curr_idx_past <= end_date_past:
-        indices_past.append(f"analytic_detail_gofood_booking_v1_{curr_idx_past.strftime('%Y-%m')}")
-        curr_idx_past = (curr_idx_past.replace(day=1) + timedelta(days=32)).replace(day=1)
-    indices_past_json = json.dumps(indices_past)
-
-    if active_store:
-        merchant_filter = f' AND merchant_id:(\\"{active_store}\\")'
-    else:
-        merchant_filter = ''
-
-    # Reconstruct the full 6-query payload from the curl command
-    payload_batal = (
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_current_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_ms} AND time:<={range_to_ms}{merchant_filter} AND NOT id:FP* AND _exists_:data.restaurant_accepted_timestamp"}}}}]}}}}}}\n'
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_current_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_ms} AND time:<={range_to_ms}{merchant_filter} AND NOT id:FP*"}}}}]}}}}}}\n'
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_past_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_comp_ms} AND time:<={range_to_comp_ms}{merchant_filter} AND NOT id:FP* AND _exists_:data.restaurant_accepted_timestamp"}}}}]}}}}}}\n'
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_past_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_comp_ms} AND time:<={range_to_comp_ms}{merchant_filter} AND NOT id:FP*"}}}}]}}}}}}\n'
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_current_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_ms} AND time:<={range_to_ms}{merchant_filter} AND NOT id:FP* AND _exists_:data.cancel_reason_code AND data.cancel_reason_code:{cancel_reasons_query}"}}}}]}}}},"aggs":{{"2":{{"date_histogram":{{"field":"time","min_doc_count":0,"extended_bounds":{{"min":{range_from_ms},"max":{range_to_ms}}},"format":"epoch_millis","time_zone":"Asia/Jakarta","interval":"1d"}},"aggs":{{}}}}}}}}\n'
-        f'{{"search_type":"query_then_fetch","ignore_unavailable":true,"index":{indices_past_json}}}\n'
-        f'{{"size":0,"query":{{"bool":{{"filter":[{{"query_string":{{"analyze_wildcard":true,"query":"time:>={range_from_comp_ms} AND time:<={range_to_comp_ms}{merchant_filter} AND NOT id:FP* AND _exists_:data.cancel_reason_code AND data.cancel_reason_code:{cancel_reasons_query}"}}}}]}}}}}}\n'
-    )
-
-    headers_batal = headers.copy()
-    headers_batal.update({
-        'Content-Type': 'application/x-ndjson',
-        'x-dashboard-id': '83',
-        'x-panel-id': '40',
-        'x-ref-ids': 'A;B;C;D;E;F',
-        'x-custom-merchant-id': active_store,
-        'x-comp-range-offset': '10d'
-    })
-
-    try:
-        # DEBUG: Check if merchant_id is correctly placed before sending
-        if active_store and active_store not in payload_batal:
-            console.print(f"[warning]   ⚠️ WARNING: Merchant ID {active_store} not found in Order Batal payload![/warning]")
-        
-        with console.status("[bold cyan]Mengambil data Order Batal...", spinner="bouncingBar"):
-            response_batal = session.post(url_batal, headers=headers_batal, data=payload_batal, timeout=15)
-            
-        if response_batal.status_code == 200:
-            data_batal = response_batal.json()
-            console.print(f"[success]✅ Berhasil mengambil data Order Batal.[/success]")
+        # Parse amounts (cents to Rp)
+        gross_amt = commerce.get("gross_amount")
+        if gross_amt is None:
+            gross_amt = (tx.get("gross_amount", 0) or 0) / 100.0
         else:
-            console.print(f"[warning]⚠️ Order Batal endpoint returned status {response_batal.status_code}. Defaulting to 0.[/warning]")
-            data_batal = {'responses': []} # Default to empty on HTTP error
-    except Exception as e:
-        console.print(f"[error]⚠️ Error during Order Batal request: {e}. Defaulting to 0.[/error]")
-        data_batal = {'responses': []} # Default to empty on connection error
+            gross_amt = float(gross_amt)
 
-    # --- 4. PARSING DAN PENGGABUNGAN DATA ---
-    totals = {label: {'revenue': 0.0, 'orders': 0, 'order_batal': 0, 'net_revenue': 0.0, 'komisi': 0.0, 'ojol_commission': 0.0, 'pengeluaran_iklan': 0.0} for _, label in period_iter}
-    print(f"DEBUG [Totals] period count: {len(period_iter)}, sample labels (first 5): {[l for _,l in period_iter[:5]]}")
+        net_amt = (shares.get("merchant_share", 0) or 0) / 100.0
+        gopay_promo = (shares.get("voucher_amount", 0) or 0) / 100.0
+        merchant_promo_contrib = (shares.get("sku_commission_offset_amount", 0) or 0) / 100.0
+        gofood_discount = (shares.get("voucher_amount", 0) or 0) / 100.0
+        voucher_comm = (shares.get("voucher_commission", 0) or 0) / 100.0
+        total_fee = (shares.get("platform_total_fee", 0) or 0) / 100.0
+        vat_val = shares.get("vat", 0)
+        restaurant_tax_val = (shares.get("restaurant_tax", 0) or 0) / 100.0
+        wht_val = (shares.get("wht", 0) or 0) / 100.0
 
-    def get_buckets(d):
-        if isinstance(d, dict):
-            if 'buckets' in d and isinstance(d['buckets'], list):
-                return d['buckets']
-            for k, v in d.items():
-                res = get_buckets(v)
-                if res is not None:
-                    return res
-        elif isinstance(d, list):
-            for item in d:
-                res = get_buckets(item)
-                if res is not None:
-                    return res
-        return None
+        promo_code = promo.get("promo_code", "") or ""
+        voucher_desc = json.dumps(promo) if promo and (promo.get("promo_code") or promo.get("promo_original_amount")) else ""
 
-    def get_period_label(ts_ms):
-        dt = datetime.fromtimestamp(ts_ms / 1000.0)
-        if custom_mode:
-            return dt.strftime('%d %b %Y')
-        return dt.strftime('%B %Y')
+        row = [
+            status_tx,
+            outlet_name_display,
+            tx.get("merchant_id", "") or _store_id,
+            tx.get("service_type", "") or tx.get("channel_type", ""),
+            tx.get("order_id", "") or commerce.get("order_number", ""),
+            tx.get("id", ""),
+            gross_amt,
+            net_amt,
+            tx.get("transaction_time", ""),
+            tx.get("payment_type", ""),
+            gopay_promo,
+            promo_code,
+            promo_code,
+            merchant_promo_contrib,
+            voucher_desc,
+            gofood_discount,
+            voucher_comm,
+            total_fee,
+            vat_val,
+            restaurant_tax_val,
+            tx.get("service_type", ""),
+            wht_val,
+        ]
+        rows_excel.append(row)
 
-    # Ekstraksi Revenue
-    buckets_rev = get_buckets(data_revenue)
-    print(f"DEBUG [Revenue] buckets_rev found: {buckets_rev is not None}, count: {len(buckets_rev) if buckets_rev else 0}")
-    if buckets_rev and len(buckets_rev) > 0:
-        print(f"DEBUG [Revenue] sample bucket[0]: {json.dumps(buckets_rev[0])}")
-    else:
-        print(f"DEBUG [Revenue] raw response keys: {list(data_revenue.keys()) if isinstance(data_revenue, dict) else type(data_revenue)}")
-        print(f"DEBUG [Revenue] raw response (first 500 chars): {json.dumps(data_revenue)[:500]}")
-    if buckets_rev:
-        for b in buckets_rev:
-            ts = b.get('key')
-            if not ts:
-                continue
-            val = 0.0
-            for k, v in b.items():
-                if isinstance(v, dict) and 'value' in v:
-                    val = float(v['value'])
-                    break
-            label = get_period_label(ts)
-            if label in totals:
-                totals[label]['revenue'] += val
+        if status_tx == "SETTLEMENT":
+            total_omzet += gross_amt
+            total_omzet_bersih += net_amt
+            total_komisi += total_fee
+            total_order += 1
+        elif "CANCEL" in status_tx.upper() or "REFUND" in status_tx.upper():
+            total_order_batal += 1
 
-    # Ekstraksi Orders
-    buckets_ord = None
-    if 'responses' in data_orders and len(data_orders['responses']) > 0:
-        buckets_ord = get_buckets(data_orders['responses'][0])
-    print(f"DEBUG [Orders] buckets_ord found: {buckets_ord is not None}, count: {len(buckets_ord) if buckets_ord else 0}")
-    if buckets_ord and len(buckets_ord) > 0:
-        print(f"DEBUG [Orders] sample bucket[0]: {json.dumps(buckets_ord[0])}")
-    else:
-        print(f"DEBUG [Orders] raw data_orders keys: {list(data_orders.keys()) if isinstance(data_orders, dict) else type(data_orders)}")
-
-    if buckets_ord:
-        for b in buckets_ord:
-            ts = b.get('key')
-            if not ts:
-                continue
-            val = int(b.get('doc_count', 0))
-            label = get_period_label(ts)
-            if label in totals:
-                totals[label]['orders'] += val
-
-    # Ekstraksi Omzet Bersih
-    buckets_net = get_buckets(data_net)
-    print(f"DEBUG [OmzetBersih] buckets_net found: {buckets_net is not None}, count: {len(buckets_net) if buckets_net else 0}")
-    if buckets_net and len(buckets_net) > 0:
-        print(f"DEBUG [OmzetBersih] sample bucket[0]: {json.dumps(buckets_net[0])}")
-    else:
-        print(f"DEBUG [OmzetBersih] raw response (first 500 chars): {json.dumps(data_net)[:500]}")
-
-    if buckets_net:
-        for b in buckets_net:
-            ts = b.get('key')
-            if not ts:
-                continue
-            val_net = 0.0
-            for k, v in b.items():
-                if isinstance(v, dict) and 'value' in v:
-                    val_net = float(v['value'])
-                    break
-            label = get_period_label(ts)
-            if label in totals:
-                totals[label]['net_revenue'] += val_net
-
-    # Ekstraksi Komisi
-    buckets_komisi = get_buckets(data_komisi)
-
-    if buckets_komisi:
-        for b in buckets_komisi:
-            ts = b.get('key')
-            if not ts:
-                continue
-            val_komisi = 0.0
-            for k, v in b.items():
-                if isinstance(v, dict) and 'value' in v:
-                    val_komisi = float(v['value'])
-                    break
-            label = get_period_label(ts)
-            if label in totals:
-                totals[label]['komisi'] += val_komisi
-
-    # Ekstraksi Iklan & Diskon
-    buckets_iklan = get_buckets(data_iklan)
-
-    if buckets_iklan:
-        for b in buckets_iklan:
-            ts = b.get('key')
-            if not ts:
-                continue
-            val_iklan = 0.0
-            for k, v in b.items():
-                if isinstance(v, dict) and 'value' in v:
-                    val_iklan = float(v['value'])
-                    break
-            label = get_period_label(ts)
-            if label in totals:
-                totals[label]['pengeluaran_iklan'] += val_iklan
-
-    # Ekstraksi Order Batal dengan Defensive Parsing
-    val_order_batal_total = 0
-    responses = data_batal.get('responses', [])
-    batal_from_buckets = False
-    
-    # Pastikan array responses cukup panjang (minimal ada 5 elemen untuk `responses[4]`)
-    if len(responses) > 4:
-        cancel_data_current = responses[4] # Indeks ke-4 adalah pembatalan saat ini
-        
-        # DEBUG: Cetak mentahan responses[4]
-        print("DEBUG - Raw Response Order Batal [4]:", json.dumps(cancel_data_current))
-        
-        # Cek apakah request sukses (status 200) dan TIDAK ada key 'error'
-        if cancel_data_current.get('status') == 200 and 'error' not in cancel_data_current:
-            # Ambil data dengan aman
-            val_order_batal_total = cancel_data_current.get('hits', {}).get('total', {}).get('value', 0)
-            
-            buckets_batal = get_buckets(cancel_data_current)
-            if buckets_batal:
-                for b in buckets_batal:
-                    ts = b.get('key')
-                    if not ts:
-                        continue
-                    val_batal = int(b.get('doc_count', 0))
-                    label = get_period_label(ts)
-                    if label in totals:
-                        totals[label]['order_batal'] += val_batal
-                batal_from_buckets = True
-        else:
-            # Jika ada error di dalam response, log dan lanjutkan dengan nilai 0
-            error_details = cancel_data_current.get('error', 'Unknown Error')
-            print(f"   -> Info: Elasticsearch returned an error for Order Batal query: {error_details}")
-    else:
-        # Jika jumlah response tidak sesuai, berarti ada masalah besar dengan request
-        print(f"   -> Info: Expected 6 responses for Order Batal, but got {len(responses)}. Defaulting to 0.")
-
-    if val_order_batal_total > 0 and not batal_from_buckets:
-        # Distribusi order batal ke setiap periode secara merata tanpa menghilangkan sisa (remainder)
-        if len(period_iter) > 0:
-            base_val = int(val_order_batal_total / len(period_iter))
-            remainder = val_order_batal_total % len(period_iter)
-            for i, (_, label) in enumerate(period_iter):
-                if label in totals:
-                    totals[label]['order_batal'] = base_val + (1 if i < remainder else 0)
-
-    # Hitung Komisi Ojol (Potongan dari GoFood)
-    for label in totals:
-        totals[label]['ojol_commission'] = totals[label]['revenue'] - totals[label]['net_revenue']
-
-    # Hitung keseluruhan rata-rata
-    num_periods = len(period_iter)
-    total_omzet = sum(totals[label]['revenue'] for _, label in period_iter)
-    total_omzet_bersih = sum(totals[label]['net_revenue'] for _, label in period_iter)
-    total_komisi = sum(totals[label]['komisi'] for _, label in period_iter)
-    total_ojol = sum(totals[label]['ojol_commission'] for _, label in period_iter)
-    total_order = sum(totals[label]['orders'] for _, label in period_iter)
-    total_order_batal = sum(totals[label]['order_batal'] for _, label in period_iter)
-    
-    avg_omzet = int(total_omzet / num_periods) if num_periods > 0 else 0
-    avg_omzet_bersih = int(total_omzet_bersih / num_periods) if num_periods > 0 else 0
-    avg_komisi = int(total_komisi / num_periods) if num_periods > 0 else 0
-    avg_pendapatan_ojol = int(total_ojol / num_periods) if num_periods > 0 else 0
-    avg_order = round(total_order / num_periods) if num_periods > 0 else 0
-    avg_order_batal = round(total_order_batal / num_periods, 2) if num_periods > 0 else 0
-
-    pass
-
-    # --- 5. TULIS KE FILE EXCEL (DINONAKTIFKAN SESUAI PERMINTAAN) ---
-    # File revenue_... (Format Vertikal) tidak lagi dihasilkan
-    pass
-
-    # --- 6. EXPORT KE EXCEL PER OUTLET (Raw Data) ---
-    username = os.getenv('ACTIVE_NOMOR_HP', 'Tidak Diketahui')
-    nama_outlet = os.getenv('ACTIVE_NAMA_OUTLET', 'Tidak Tersedia')
-    cabang = os.getenv('ACTIVE_CABANG', 'Tidak Tersedia')
-    store_id = os.getenv('ACTIVE_STORE_ID', 'Tidak Tersedia')
-
-    safe_name_str = f"{_outlet}_{_cabang}_{store_id}" if _cabang and _cabang.lower() != 'tanpa cabang' else f"{_outlet}_{store_id}"
+    # ── Export ke File Excel Detail Per Outlet ──
+    safe_name_str = f"{_outlet}_{_cabang}_{_store_id}" if _cabang and _cabang.lower() != 'tanpa cabang' else f"{_outlet}_{_store_id}"
     safe_outlet = safe_name_str.strip().replace(" ", "_").replace("/", "_").replace("\\", "_")
     if not safe_outlet or safe_outlet == "Tidak_Tersedia":
         safe_outlet = "Unknown_Outlet"
         
     date_folder = f"{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}"
+    global GLOBAL_OUTPUT_DIR
     if GLOBAL_OUTPUT_DIR:
         raw_gofood_dir = GLOBAL_OUTPUT_DIR
     else:
@@ -1590,76 +1278,38 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     try:
         wb_raw = openpyxl.Workbook()
         ws_raw = wb_raw.active
-        headers_excel = [
-            'Tanggal', 'Outlet Name', 'Store ID', 'Penjualan Kotor', 'Biaya Komisi', 
-            'Pengeluaran Iklan & Diskon', 'Order Sukses', 'Order Batal'
-        ]
+        ws_raw.title = "Transactions"
         ws_raw.append(headers_excel)
-                
-        # Data rows
-        for idx, (raw_date, label) in enumerate(period_iter):
-            omzet = int(totals[label]['revenue'])
-            omzet_bersih = int(totals[label]['net_revenue'])
-            komisi = int(totals[label]['komisi'])
-            pendapatan_ojol = int(totals[label]['ojol_commission'])
-            order = int(totals[label]['orders'])
-            iklan = int(totals[label].get('pengeluaran_iklan', 0))
-            order_sukses = int(totals[label]['orders'])
-            order_batal = int(totals[label]['order_batal'])
-            rata_rata_order_per_cust = int(omzet / order_sukses) if order_sukses > 0 else 0
-            total_order_row = order_sukses
-            
-            row_data = [
-                raw_date,
-                nama_outlet,
-                store_id,
-                omzet,
-                komisi,
-                iklan,
-                order_sukses,
-                order_batal
-            ]
-            ws_raw.append(row_data)
-            
+        for r in rows_excel:
+            ws_raw.append(r)
         wb_raw.save(abs_raw_excel_path)
         wb_raw.close()
-        
-        print(f"✅ Juga di-export ke Excel Raw per outlet:")
-        print(f"   {abs_raw_excel_path}")
-
-        # --- Kirim ke GSheet Harian (Dihapus dari sini karena sudah ditangani via cli.py / send_data secara terpisah) ---
-            
+        console.print(f"[success]✅ Berkas Excel 22 Kolom tersimpan di: {abs_raw_excel_path}[/success]")
     except Exception as e:
-        print(f"⚠️ Peringatan: Gagal membuat file Excel Raw: {e}")
-
-    for label, data in totals.items():
-        console.print(f"[dim]- {label}: Omzet {int(data['revenue'])} | Omzet Bersih {int(data['net_revenue'])} | Komisi {int(data['komisi'])} | Potongan Ojol {int(data['ojol_commission'])} | Pesanan: {data['orders']} | Batal: {data['order_batal']}[/dim]")
+        console.print(f"[warning]⚠️ Gagal menyimpan file Excel GoFood V2: {e}[/warning]")
 
     # Table Ringkasan Per Store
-    table = Table(title=f"Ringkasan: {os.getenv('ACTIVE_NAMA_OUTLET')} ({os.getenv('ACTIVE_STORE_ID')})", show_header=True, header_style="bold magenta")
+    table = Table(title=f"Ringkasan: {_outlet} ({_store_id})", show_header=True, header_style="bold magenta")
     table.add_column("Metrik", style="dim")
     table.add_column("Total", justify="right", style="bold")
-    table.add_column("Rata-rata", justify="right")
 
-    table.add_row("Omzet Kotor", f"Rp {int(total_omzet):,}", f"Rp {avg_omzet:,}")
-    table.add_row("Omzet Bersih", f"Rp {int(total_omzet_bersih):,}", f"Rp {avg_omzet_bersih:,}")
-    table.add_row("Komisi GoBiz", f"Rp {int(total_komisi):,}", f"Rp {avg_komisi:,}")
-    table.add_row("Potongan Ojol", f"Rp {int(total_ojol):,}", f"Rp {avg_pendapatan_ojol:,}")
-    table.add_row("Order Sukses", f"{total_order}", f"{avg_order}")
-    table.add_row("Order Batal", f"{total_order_batal}", f"{avg_order_batal}")
+    table.add_row("Omzet Kotor", f"Rp {int(total_omzet):,}")
+    table.add_row("Omzet Bersih", f"Rp {int(total_omzet_bersih):,}")
+    table.add_row("Komisi GoBiz", f"Rp {int(total_komisi):,}")
+    table.add_row("Order Sukses", f"{total_order}")
+    table.add_row("Order Batal", f"{total_order_batal}")
 
     console.print("\n", table)
     
     DURATION_STORE = time.time() - START_TIME_STORE
     console.print(f"[info]⏱️ Waktu proses untuk store ini: [bold]{DURATION_STORE:.2f} detik[/bold][/info]\n")
     
-    # Return structured data for baseline aggregation if requested
     if return_data:
         return {
-            'period_iter': period_iter,
-            'totals': totals,
-            'avg_omzet_bersih': avg_omzet_bersih,
-            'avg_order': avg_order,
+            'period_iter': [],
+            'totals': {},
+            'avg_omzet_bersih': int(total_omzet_bersih),
+            'avg_order': total_order,
             'total_omzet_bersih': int(total_omzet_bersih),
             'total_order': total_order,
         }
