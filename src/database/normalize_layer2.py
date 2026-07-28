@@ -6,8 +6,26 @@ from sqlalchemy import text
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from db_manager import DatabaseManager
 
+def _ensure_db_schema(db):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    schema_sql_path = os.path.join(base_dir, 'schema.sql')
+    fn_sql_path = os.path.join(base_dir, 'functions.sql')
+    
+    with db.engine.begin() as conn:
+        conn.execute(text('CREATE SCHEMA IF NOT EXISTS layer1_raw;'))
+        conn.execute(text('CREATE SCHEMA IF NOT EXISTS layer2_clean;'))
+        
+        if os.path.exists(schema_sql_path):
+            with open(schema_sql_path) as f:
+                conn.execute(text(f.read()))
+                
+        if os.path.exists(fn_sql_path):
+            with open(fn_sql_path) as f:
+                conn.execute(text(f.read()))
+
 def normalize_all():
     db = DatabaseManager()
+    _ensure_db_schema(db)
     
     print("=" * 60)
     print("   LAYER 2 CLEANING & NORMALIZATION RUNNER")
@@ -144,61 +162,51 @@ def normalize_all():
     
     # 2. GoFood Normalization Query
     gofood_query = """
-    INSERT INTO layer2_clean.stg_go_orders (
-        period_id,
-        month,
-        date,
-        store_name,
-        store_id,
-        gross_sales,
-        commission_fee,
-        marketing_fee_and_discount,
-        total_platform_deduction,
-        net_sales,
-        average_order_customer,
-        completed_order,
-        cancelled_order,
-        total_order
+    TRUNCATE TABLE layer2_clean.stg_go_orders;
+
+    WITH go_ranked AS (
+        SELECT 
+            COALESCE(
+                NULLIF(TRIM(raw."Order ID"), ''),
+                NULLIF(TRIM(raw."Transaction ID"), '')
+            ) AS period_id,
+            TO_CHAR(CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE), 'YYYY-MM') AS month,
+            CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE) AS date,
+            COALESCE(m.branch_name, TRIM(raw."Outlet Name")) AS store_name,
+            TRIM(raw."Merchant ID") AS store_id,
+            CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS gross_sales,
+            CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) AS commission_fee,
+            CAST(COALESCE(NULLIF(TRIM(raw."Merchant Promo Contribution"), ''), '0') AS NUMERIC(15,2)) AS marketing_fee_and_discount,
+            (CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) + 
+             CAST(COALESCE(NULLIF(TRIM(raw."Merchant Promo Contribution"), ''), '0') AS NUMERIC(15,2))) AS total_platform_deduction,
+            CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2)) AS net_sales,
+            CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS average_order_customer,
+            1.00 AS completed_order,
+            0.00 AS cancelled_order,
+            1.00 AS total_order,
+            ROW_NUMBER() OVER(
+                PARTITION BY COALESCE(NULLIF(TRIM(raw."Order ID"), ''), NULLIF(TRIM(raw."Transaction ID"), '')) 
+                ORDER BY raw."Transaction Time" DESC
+            ) as rn
+        FROM layer1_raw.raw_go raw
+        LEFT JOIN public.dim_merchants m ON TRIM(raw."Merchant ID") = m.store_id
+        WHERE (raw."Feature" IS NULL OR raw."Feature" = '' OR raw."Feature" = 'GO_FOOD')
+          AND (raw."Order Status" IS NULL OR raw."Order Status" = '' OR raw."Order Status" = 'SETTLEMENT')
+          AND raw."Transaction Time" IS NOT NULL AND raw."Transaction Time" <> ''
     )
-    SELECT
-        TRIM(raw."Tanggal") || ':' || TRIM(raw."Store ID") AS period_id,
-        TO_CHAR(CAST(TRIM(raw."Tanggal") AS DATE), 'YYYY-MM') AS month,
-        CAST(TRIM(raw."Tanggal") AS DATE) AS date,
-        COALESCE(m.branch_name, TRIM(raw."Store Name")) AS store_name,
-        TRIM(raw."Store ID") AS store_id,
-        CAST(COALESCE(NULLIF(TRIM(raw."Penjualan Kotor"), ''), '0') AS NUMERIC(15,2)) AS gross_sales,
-        CAST(COALESCE(NULLIF(TRIM(raw."Biaya Komisi"), ''), '0') AS NUMERIC(15,2)) AS commission_fee,
-        CAST(COALESCE(NULLIF(TRIM(raw."Pengeluaran Iklan & Diskon"), ''), '0') AS NUMERIC(15,2)) AS marketing_fee_and_discount,
-        (CAST(COALESCE(NULLIF(TRIM(raw."Biaya Komisi"), ''), '0') AS NUMERIC(15,2)) + 
-         CAST(COALESCE(NULLIF(TRIM(raw."Pengeluaran Iklan & Diskon"), ''), '0') AS NUMERIC(15,2))) AS total_platform_deduction,
-        (CAST(COALESCE(NULLIF(TRIM(raw."Penjualan Kotor"), ''), '0') AS NUMERIC(15,2)) - 
-         (CAST(COALESCE(NULLIF(TRIM(raw."Biaya Komisi"), ''), '0') AS NUMERIC(15,2)) + 
-          CAST(COALESCE(NULLIF(TRIM(raw."Pengeluaran Iklan & Diskon"), ''), '0') AS NUMERIC(15,2)))) AS net_sales,
-        CASE 
-            WHEN CAST(COALESCE(NULLIF(TRIM(raw."Order Sukses"), ''), '0') AS NUMERIC(15,2)) > 0 
-            THEN CAST(COALESCE(NULLIF(TRIM(raw."Penjualan Kotor"), ''), '0') AS NUMERIC(15,2)) / CAST(COALESCE(NULLIF(TRIM(raw."Order Sukses"), ''), '0') AS NUMERIC(15,2))
-            ELSE 0.00
-        END AS average_order_customer,
-        CAST(COALESCE(NULLIF(TRIM(raw."Order Sukses"), ''), '0') AS NUMERIC(15,2)) AS completed_order,
-        CAST(COALESCE(NULLIF(TRIM(raw."Order Batal"), ''), '0') AS NUMERIC(15,2)) AS cancelled_order,
-        (CAST(COALESCE(NULLIF(TRIM(raw."Order Sukses"), ''), '0') AS NUMERIC(15,2)) + 
-         CAST(COALESCE(NULLIF(TRIM(raw."Order Batal"), ''), '0') AS NUMERIC(15,2))) AS total_order
-    FROM layer1_raw.raw_go raw
-    LEFT JOIN public.dim_merchants m ON TRIM(raw."Store ID") = m.store_id
-    WHERE raw."Tanggal" IS NOT NULL AND raw."Tanggal" <> ''
-    ON CONFLICT (period_id) DO UPDATE SET
-        store_name = EXCLUDED.store_name,
-        gross_sales = EXCLUDED.gross_sales,
-        commission_fee = EXCLUDED.commission_fee,
-        marketing_fee_and_discount = EXCLUDED.marketing_fee_and_discount,
-        total_platform_deduction = EXCLUDED.total_platform_deduction,
-        net_sales = EXCLUDED.net_sales,
-        average_order_customer = EXCLUDED.average_order_customer,
-        completed_order = EXCLUDED.completed_order,
-        cancelled_order = EXCLUDED.cancelled_order,
-        total_order = EXCLUDED.total_order,
-        date = EXCLUDED.date,
-        ingested_at = CURRENT_TIMESTAMP;
+    INSERT INTO layer2_clean.stg_go_orders (
+        period_id, month, date, store_name, store_id,
+        gross_sales, commission_fee, marketing_fee_and_discount,
+        total_platform_deduction, net_sales, average_order_customer,
+        completed_order, cancelled_order, total_order
+    )
+    SELECT 
+        period_id, month, date, store_name, store_id,
+        gross_sales, commission_fee, marketing_fee_and_discount,
+        total_platform_deduction, net_sales, average_order_customer,
+        completed_order, cancelled_order, total_order
+    FROM go_ranked
+    WHERE rn = 1;
     """
     
     # 3. ShopeeFood Normalization Query
@@ -273,7 +281,6 @@ def normalize_all():
         conn.execute(text(grab_query))
         
         print("[DB] Normalizing GoFood data to layer2_clean.stg_go_orders...")
-        conn.execute(text("TRUNCATE TABLE layer2_clean.stg_go_orders;"))  # Truncate first to be clean
         conn.execute(text(gofood_query))
         
         print("[DB] Normalizing ShopeeFood data to layer2_clean.stg_shopee_orders...")
