@@ -33,6 +33,7 @@ CYAN   = "\033[96m"
 YELLOW = "\033[93m"
 RED    = "\033[91m"
 MAGENTA = "\033[95m"
+BLUE   = "\033[94m"
 DIM    = "\033[2m"
 
 def banner():
@@ -274,23 +275,45 @@ def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch
         return False
 
 
-def ingest_to_db(platform_name: str, start_date: str, end_date: str) -> bool:
+def run_normalization() -> bool:
+    """
+    Menjalankan proses Pembersihan & Normalisasi Layer 2 dan Refresh Master Table (public.fact_transactions).
+    """
+    print(f"\n{CYAN}{BOLD}🧹 [DATA CLEANING] Menjalankan Normalisasi Layer 2 & Refresh Master Table...{RESET}")
+    try:
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        
+        from normalize_layer2 import normalize_all
+        normalize_all()
+        return True
+    except Exception as e:
+        print(f"  {RED}❌ [ERROR] Gagal menjalankan Normalisasi Database: {e}{RESET}")
+        return False
+
+def ingest_to_db(platform_name: str, start_date: str, end_date: str, auto_normalize: bool = True) -> bool:
     """
     Ingests output Excel data for the specified platform into PostgreSQL (layer1_raw)
-    with anti-duplication protection.
+    with anti-duplication protection, and optionally triggers Data Cleaning & Normalization.
     """
     output_dir = _resolve_output_dir(platform_name, start_date, end_date)
     try:
+        success = False
         if platform_name == "grab":
             from core.db_ingest import ingest_grab_to_db
-            return ingest_grab_to_db(output_dir)
+            success = ingest_grab_to_db(output_dir)
         elif platform_name == "shopee":
             from core.db_ingest import ingest_shopee_to_db
-            return ingest_shopee_to_db(output_dir)
+            success = ingest_shopee_to_db(output_dir)
         elif platform_name == "gofood":
             from core.db_ingest import ingest_gofood_to_db
-            return ingest_gofood_to_db(output_dir)
-        return False
+            success = ingest_gofood_to_db(output_dir)
+        
+        if success and auto_normalize:
+            run_normalization()
+        return success
     except Exception as e:
         print(f"{RED}[ERROR]{RESET} Gagal menjalankan DB Ingest untuk {platform_name}: {e}")
         return False
@@ -348,17 +371,19 @@ def interactive_mode():
         if state == "platform":
             os.system('cls' if os.name == 'nt' else 'clear')
             banner()
-            print(f"  {BOLD}Pilih platform:{RESET}")
-            print(f"    {GREEN}[1]{RESET} Grab")
-            print(f"    {MAGENTA}[2]{RESET} Shopee")
-            print(f"    {YELLOW}[3]{RESET} GoFood")
+            print(f"  {BOLD}Pilih platform / aksi:{RESET}")
+            print(f"    {GREEN}[1]{RESET} Grab (Scrape/Download)")
+            print(f"    {MAGENTA}[2]{RESET} Shopee (Scrape/Download)")
+            print(f"    {YELLOW}[3]{RESET} GoFood (Scrape/Download)")
             print(f"    {CYAN}[4]{RESET} Semua Platform (Grab + Shopee + GoFood)")
             print(f"    {MAGENTA}[5]{RESET} Perbaikan Session Shopee")
-            print(f"    {RED}[6]{RESET} Keluar")
+            print(f"    {BLUE}[6]{RESET} Ingest Data Lokal ke Database (Manual Ingestion)")
+            print(f"    {GREEN}[7]{RESET} Cleaning & Normalisasi Database (Layer 2 & Master Table)")
+            print(f"    {RED}[8]{RESET} Keluar")
             print()
             
-            choice = input(f"  {BOLD}Pilihan (1/2/3/4/5/6):{RESET} ").strip()
-            if choice == "6":
+            choice = input(f"  {BOLD}Pilihan (1/2/3/4/5/6/7/8):{RESET} ").strip()
+            if choice == "8":
                 print("  Keluar.")
                 sys.exit(0)
             elif choice == "5":
@@ -373,12 +398,54 @@ def interactive_mode():
                 print(f"\n  {GREEN}Kembali ke menu utama...{RESET}")
                 time.sleep(1)
                 continue
+            elif choice == "6":
+                print(f"\n  {BLUE}{BOLD}══ Manual Ingestion Data Lokal ke Database ══{RESET}")
+                print(f"  Pilih platform:")
+                print(f"    {GREEN}[1]{RESET} Grab")
+                print(f"    {MAGENTA}[2]{RESET} Shopee")
+                print(f"    {YELLOW}[3]{RESET} GoFood")
+                print(f"    {CYAN}[4]{RESET} Semua Platform")
+                p_choice = input(f"  {BOLD}Pilihan (1/2/3/4):{RESET} ").strip()
+                p_map = {"1": ["grab"], "2": ["shopee"], "3": ["gofood"], "4": ["grab", "shopee", "gofood"]}
+                if p_choice not in p_map:
+                    print(f"  {RED}Pilihan tidak valid.{RESET}")
+                    time.sleep(1)
+                    continue
+                
+                print(f"\n  Masukkan Rentang Tanggal Laporan:")
+                s_date_in = input(f"  {BOLD}Tanggal Mulai (YYYY-MM-DD atau DD-MM-YYYY):{RESET} ").strip()
+                e_date_in = input(f"  {BOLD}Tanggal Selesai (YYYY-MM-DD atau DD-MM-YYYY):{RESET} ").strip()
+                try:
+                    s_date_clean = normalize_date_string(s_date_in)
+                    e_date_clean = normalize_date_string(e_date_in)
+                except ValueError as ve:
+                    print(f"  {RED}Error: {ve}{RESET}")
+                    time.sleep(2)
+                    continue
+                
+                selected_platforms = p_map[p_choice]
+                any_success = False
+                for p_name in selected_platforms:
+                    res = ingest_to_db(p_name, s_date_clean, e_date_clean, auto_normalize=False)
+                    if res:
+                        any_success = True
+                
+                if any_success:
+                    run_normalization()
+                
+                input(f"\n  {BOLD}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                continue
+            elif choice == "7":
+                print(f"\n  {GREEN}{BOLD}══ Pembersihan & Normalisasi Database ══{RESET}")
+                run_normalization()
+                input(f"\n  {BOLD}Tekan Enter untuk kembali ke menu utama...{RESET}")
+                continue
             elif choice in ("1", "2", "3", "4"):
                 platform_map = {"1": "grab", "2": "shopee", "3": "gofood", "4": "all"}
                 platform = platform_map[choice]
                 state = "scope"
             else:
-                print(f"  {RED}Input tidak valid. Masukkan angka 1 sampai 6.{RESET}")
+                print(f"  {RED}Input tidak valid. Masukkan angka 1 sampai 8.{RESET}")
                 time.sleep(1)
 
         elif state == "scope":
@@ -685,7 +752,12 @@ def main():
     parser.add_argument("--gofood-outlet", type=str, default=None, help="Filter specific GoFood outlet names (pipe-separated)")
     parser.add_argument("--skip-existing", action="store_true", help="Skip already processed/downloaded outlets/merchants")
     parser.add_argument("--db", action="store_true", help="Kirim data ke database secara otomatis setelah penarikan selesai")
+    parser.add_argument("--clean", "--normalize", dest="clean", action="store_true", help="Jalankan pembersihan dan normalisasi database (Layer 2 & Master Table)")
     args = parser.parse_args()
+
+    if args.clean:
+        run_normalization()
+        sys.exit(0)
 
     # ── Double-run prevention using filelock ──
     try:
