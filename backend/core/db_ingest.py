@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 
 # Path configuration
 core_dir = os.path.dirname(os.path.abspath(__file__))
-agency_dir = os.path.dirname(core_dir)
-root_dir = os.path.dirname(agency_dir)
+backend_dir = os.path.dirname(core_dir)
+root_dir = os.path.dirname(backend_dir)
 src_db_dir = os.path.join(root_dir, "src", "database")
 
-# Load .env priority: agency/.env -> src/database/.env -> root .env
-load_dotenv(os.path.join(agency_dir, ".env"))
+# Load .env priority: backend/.env -> src/database/.env -> root .env
+load_dotenv(os.path.join(backend_dir, ".env"))
 load_dotenv(os.path.join(src_db_dir, ".env"), override=True)
 load_dotenv(os.path.join(root_dir, ".env"), override=True)
 load_dotenv()
