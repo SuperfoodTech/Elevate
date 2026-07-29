@@ -523,7 +523,6 @@
                     <div class="form-group">
                         <label for="tahunSelect" class="form-label">Tahun</label>
                         <select id="tahunSelect" class="form-control" onchange="handleYearMonthChange()">
-                            <option value="">Semua Tahun</option>
                             <option value="2026" selected>2026</option>
                             <option value="2025">2025</option>
                         </select>
@@ -533,7 +532,6 @@
                     <div class="form-group">
                         <label for="bulanSelect" class="form-label">Bulan</label>
                         <select id="bulanSelect" class="form-control" onchange="handleYearMonthChange()">
-                            <option value="">Semua Bulan</option>
                             <option value="01">Januari</option>
                             <option value="02">Februari</option>
                             <option value="03">Maret (Histori)</option>
@@ -553,7 +551,6 @@
                     <div class="form-group" id="mingguGroup">
                         <label for="mingguSelect" class="form-label" style="color: var(--accent-amber);">Minggu</label>
                         <select id="mingguSelect" class="form-control" onchange="handleWeekChange()" style="border-color: var(--accent-amber);">
-                            <option value="">Semua Minggu</option>
                             <option value="W1" selected>Week 1</option>
                             <option value="W2">Week 2</option>
                             <option value="W3">Week 3</option>
@@ -562,10 +559,10 @@
                         </select>
                     </div>
 
-                    <!-- Tanggal Tagihan Header (Calculated Issue Date on Following Monday) -->
+                    <!-- Tanggal Tagihan Header (Calculated Issue Date Badge - Calendar Disabled) -->
                     <div class="form-group">
                         <label for="headerTanggalTagihan" class="form-label" style="color: var(--primary);">Tanggal Tagihan Diterbitkan</label>
-                        <input type="date" id="headerTanggalTagihan" class="form-control" value="2026-06-08" readonly style="opacity: 0.85; border-color: var(--primary); font-weight: 700;" title="Tagihan transaksi Senin - Minggu diterbitkan pada hari Senin berikutnya">
+                        <input type="text" id="headerTanggalTagihan" class="form-control" value="2026-06-08" readonly disabled style="opacity: 0.9; border-color: var(--primary); font-weight: 700; background-color: rgba(56, 189, 248, 0.1); cursor: not-allowed;" title="Tagihan transaksi Senin - Minggu diterbitkan pada hari Senin berikutnya">
                     </div>
 
                     <!-- Status Pembayaran Filter Dropdown -->
