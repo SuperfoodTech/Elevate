@@ -190,24 +190,39 @@ CREATE TABLE IF NOT EXISTS layer3_dim.billing_payments (
 );
 
 -- ============================================================================
--- 5. MATERIALIZED VIEW TAGIHAN BULANAN (MONTHLY BILLING CYCLE & LIVE OUTLETS)
+-- 5. MATERIALIZED VIEW UNIFIED REKAP TAGIHAN (MONTHLY & WEEKLY LIVE OUTLETS)
 -- ============================================================================
 DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan_monthly CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan CASCADE;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_monthly AS
+CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan AS
 SELECT 
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
     COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
     COALESCE(m.brand, 'UNKNOWN') AS brand,
     COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN') AS nama_resto_final,
     ft.merchant_id AS store_id,
-    TO_CHAR(ft.transaction_date, 'YYYY-MM') AS periode,
+    UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) AS billing_cycle,
+    (CASE 
+        WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' 
+            THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W')
+        ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
+    END) AS periode,
     COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END)::BIGINT AS jumlah_order_sukses,
     COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS biaya,
     COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS subtotal_tagihan,
     COALESCE(p.penyesuaian, 0.00) AS penyesuaian,
     (COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00)) + COALESCE(p.penyesuaian, 0.00) AS total_tagihan,
-    p.tanggal_tagihan,
+    COALESCE(p.tanggal_tagihan, 
+        CASE 
+            WHEN (CASE WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W') ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM') END) LIKE '%-W1' THEN (SUBSTRING(TO_CHAR(ft.transaction_date, 'YYYY-MM') FROM 1 FOR 7) || '-08')::DATE
+            WHEN (CASE WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W') ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM') END) LIKE '%-W2' THEN (SUBSTRING(TO_CHAR(ft.transaction_date, 'YYYY-MM') FROM 1 FOR 7) || '-15')::DATE
+            WHEN (CASE WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W') ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM') END) LIKE '%-W3' THEN (SUBSTRING(TO_CHAR(ft.transaction_date, 'YYYY-MM') FROM 1 FOR 7) || '-22')::DATE
+            WHEN (CASE WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W') ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM') END) LIKE '%-W4' THEN (SUBSTRING(TO_CHAR(ft.transaction_date, 'YYYY-MM') FROM 1 FOR 7) || '-29')::DATE
+            WHEN (CASE WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W') ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM') END) LIKE '%-W5' THEN ((SUBSTRING(TO_CHAR(ft.transaction_date, 'YYYY-MM') FROM 1 FOR 7) || '-01')::DATE + INTERVAL '1 month' + INTERVAL '5 days')::DATE
+            ELSE ((SUBSTRING(TO_CHAR(ft.transaction_date, 'YYYY-MM') FROM 1 FOR 7) || '-01')::DATE + INTERVAL '1 month')::DATE
+        END
+    ) AS tanggal_tagihan,
     p.transfer_id,
     p.tanggal_pembayaran,
     p.link_bukti,
@@ -219,15 +234,32 @@ SELECT
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
-LEFT JOIN layer3_dim.billing_payments p ON ft.merchant_id = p.store_id AND TO_CHAR(ft.transaction_date, 'YYYY-MM') = p.periode
+LEFT JOIN layer3_dim.billing_payments p ON ft.merchant_id = p.store_id AND (
+    CASE 
+        WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' 
+            THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W')
+        ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
+    END = p.periode OR REPLACE(p.periode, ' ', '-') = (
+        CASE 
+            WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' 
+                THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W')
+            ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
+        END
+    )
+)
 WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
-  AND UPPER(COALESCE(m.billing_cycle, '')) = 'MONTHLY'
 GROUP BY 
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
     COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
     COALESCE(m.brand, 'UNKNOWN'),
     COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN'),
     ft.merchant_id,
+    UPPER(COALESCE(m.billing_cycle, 'MONTHLY')),
+    (CASE 
+        WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' 
+            THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W')
+        ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
+    END),
     TO_CHAR(ft.transaction_date, 'YYYY-MM'),
     COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
     p.penyesuaian,
@@ -237,17 +269,21 @@ GROUP BY
     p.link_bukti,
     p.status_pembayaran;
 
--- Indeks Unik Pendukung Refresh Concurrent & Query Cepat
+CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_monthly AS SELECT * FROM layer3_dim.mv_rekap_tagihan;
+
+CREATE UNIQUE INDEX idx_mv_rekap_tagihan ON layer3_dim.mv_rekap_tagihan (store_id, periode);
+CREATE INDEX idx_mv_rekap_tagihan_owner ON layer3_dim.mv_rekap_tagihan (owner_name);
+CREATE INDEX idx_mv_rekap_tagihan_periode ON layer3_dim.mv_rekap_tagihan (periode);
+
 CREATE UNIQUE INDEX idx_mv_rekap_tagihan_monthly ON layer3_dim.mv_rekap_tagihan_monthly (store_id, periode);
-CREATE INDEX idx_mv_rekap_tagihan_monthly_owner ON layer3_dim.mv_rekap_tagihan_monthly (owner_name);
-CREATE INDEX idx_mv_rekap_tagihan_monthly_periode ON layer3_dim.mv_rekap_tagihan_monthly (periode);
 
 -- ============================================================================
--- 5B. MATERIALIZED VIEW ALL REKAP TAGIHAN & RIWAYAT PEMBAYARAN (ALL CYCLES)
+-- 5B. MATERIALIZED VIEW BILLING HISTORY (PAYMENT HISTORY RECORDS)
 -- ============================================================================
 DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan_billing_history CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_billing_history CASCADE;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_billing_history AS
+CREATE MATERIALIZED VIEW layer3_dim.mv_billing_history AS
 SELECT 
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
     COALESCE(m.outlet_name, c.merchant_name, 'UNKNOWN') AS outlet_name,
@@ -270,6 +306,12 @@ SELECT
 FROM layer3_dim.billing_payments p
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON p.store_id = m.store_id
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON p.store_id = c.store_id;
+
+CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_billing_history AS SELECT * FROM layer3_dim.mv_billing_history;
+
+CREATE UNIQUE INDEX idx_mv_billing_history ON layer3_dim.mv_billing_history (store_id, periode);
+CREATE INDEX idx_mv_billing_history_owner ON layer3_dim.mv_billing_history (owner_name);
+CREATE INDEX idx_mv_billing_history_periode ON layer3_dim.mv_billing_history (periode);
 
 CREATE UNIQUE INDEX idx_mv_rekap_tagihan_billing_history ON layer3_dim.mv_rekap_tagihan_billing_history (store_id, periode);
 CREATE INDEX idx_mv_rekap_tagihan_billing_history_owner ON layer3_dim.mv_rekap_tagihan_billing_history (owner_name);
