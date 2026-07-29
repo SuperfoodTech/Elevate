@@ -71,7 +71,7 @@ def normalize_all():
         END AS month,
         TRIM(raw."Merchant Name"),
         TRIM(raw."Merchant ID"),
-        COALESCE(m.branch_name, TRIM(raw."Store Name")),
+        COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Store Name")),
         TRIM(raw."Store ID"),
         CASE 
             WHEN raw."Updated On" IS NOT NULL AND raw."Updated On" <> ''
@@ -154,7 +154,7 @@ def normalize_all():
         NULL::TEXT AS attributed_promo,
         to_jsonb(raw) AS raw_metadata
     FROM layer1_raw.raw_grab raw
-    LEFT JOIN public.dim_merchants m ON TRIM(raw."Store ID") = m.store_id
+    LEFT JOIN layer3_dim.dim_merchant_mapping m ON TRIM(raw."Store ID") = m.store_id
     LEFT JOIN grab_chargebacks cb ON raw."Long Order ID" = cb.long_order_id
     WHERE (raw."Order Type" <> 'Auto-Chargeback' OR raw."Order Type" IS NULL)
       AND raw."Created On" IS NOT NULL AND raw."Created On" <> '';
@@ -172,7 +172,7 @@ def normalize_all():
             ) AS period_id,
             TO_CHAR(CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE), 'YYYY-MM') AS month,
             CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE) AS date,
-            COALESCE(m.branch_name, TRIM(raw."Outlet Name")) AS store_name,
+            COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Outlet Name")) AS store_name,
             TRIM(raw."Merchant ID") AS store_id,
             CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS gross_sales,
             CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) AS commission_fee,
@@ -189,7 +189,7 @@ def normalize_all():
                 ORDER BY raw."Transaction Time" DESC
             ) as rn
         FROM layer1_raw.raw_go raw
-        LEFT JOIN public.dim_merchants m ON TRIM(raw."Merchant ID") = m.store_id
+        LEFT JOIN layer3_dim.dim_merchant_mapping m ON TRIM(raw."Merchant ID") = m.store_id
         WHERE (raw."Feature" IS NULL OR raw."Feature" = '' OR raw."Feature" = 'GO_FOOD')
           AND (raw."Order Status" IS NULL OR raw."Order Status" = '' OR raw."Order Status" = 'SETTLEMENT')
           AND raw."Transaction Time" IS NOT NULL AND raw."Transaction Time" <> ''
@@ -244,7 +244,7 @@ def normalize_all():
             ELSE NULL 
         END AS month,
         TRIM(raw."Store ID") AS store_id,
-        COALESCE(m.branch_name, TRIM(raw."Store name")) AS store_name,
+        COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Store name")) AS store_name,
         TRIM(raw."Transaction type") AS transaction_type,
         TRIM(raw."Transaction ID (Order ID)") AS order_id,
         CASE 
@@ -272,7 +272,7 @@ def normalize_all():
          (CAST(COALESCE(NULLIF(REPLACE(TRIM(raw."Transaction amount"), '.', ''), ''), '0') AS NUMERIC(15,2)) * 0.25)) AS revenue,
         to_jsonb(raw) AS raw_metadata
     FROM layer1_raw.raw_shopee raw
-    LEFT JOIN public.dim_merchants m ON TRIM(raw."Store ID") = m.store_id
+    LEFT JOIN layer3_dim.dim_merchant_mapping m ON TRIM(raw."Store ID") = m.store_id
     WHERE raw."Complete Time" IS NOT NULL AND raw."Complete Time" <> '' AND raw."Transaction ID (Order ID)" IS NOT NULL AND raw."Transaction ID (Order ID)" <> '';
     """
     
@@ -294,10 +294,18 @@ def normalize_all():
         print(f"  [VERIFY] stg_grab_orders row count: {grab_cnt}")
         print(f"  [VERIFY] stg_go_orders row count: {go_cnt}")
         print(f"  [VERIFY] stg_shopee_orders row count: {shopee_cnt}")
-        
+
+    # Trigger Auto-Discovery for any unmapped stores
+    try:
+        from auto_detect_new_stores import auto_detect_new_stores
+        auto_detect_new_stores()
+    except Exception as e:
+        print(f"  ⚠️ [AUTO-DETECT WARNING] {e}")
+
     print("=" * 60)
     print("   NORMALIZATION RUN COMPLETE")
     print("=" * 60)
 
 if __name__ == "__main__":
     normalize_all()
+

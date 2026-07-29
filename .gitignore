@@ -36,20 +36,17 @@ session_*.json
 sessions/
 shopee/sessions/
 grab/sessions/
+backend/data/session.json
 
-# Specific ignores for agency and VB folders to avoid pushing large local chrome profiles
-agency/data/chrome_profile/
-agency/data/chrome_profile_*
-agency/data/*_cache.csv
-
-VB/data/chrome_profile/
-VB/data/chrome_profile_*/
-VB/data/chrome_profiles/
-VB/data/*_cache.csv
+# Chrome profiles and temporary runtime data
+**/chrome_profile/
+**/chrome_profile*/
+**/chrome_profiles/
+**/shopee_profile/
+backend/data/chrome_profile/
+src/data/discord_notifications/
 
 # Generic Chrome profile, cache, and DB ignores
-**/chrome_profile*/
-**/chrome_profiles*/
 **/browser_data/
 **/GrShaderCache/
 **/GraphiteDawnCache/
@@ -57,7 +54,6 @@ VB/data/*_cache.csv
 **/Local State
 **/first_party_sets.db
 **/segmentation_platform/
-**/shopee_profile*/
 **/DawnGraphiteCache/
 **/DawnWebGPUCache/
 **/Extension State/
@@ -83,10 +79,6 @@ VB/data/*_cache.csv
 **/Reporting and NEL
 **/Network Action Predictor
 **/Network Persistent State
-
-# Allow VB chrome profiles
-!VB/data/chrome_profiles/
-!VB/data/chrome_profiles/**
 
 # Local development / agent cache
 database.bak/

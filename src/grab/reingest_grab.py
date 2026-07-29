@@ -12,7 +12,7 @@ if os.path.exists(os.path.join(current_dir, "..", "database")):
 elif os.path.exists(os.path.join(current_dir, "..", "..", "database")):
     sys.path.append(os.path.abspath(os.path.join(current_dir, "..", "..", "database")))
 
-from db_manager import DatabaseManager
+from layer1_db_manager import DatabaseManager
 
 def main():
     print("=" * 60)

@@ -202,15 +202,7 @@ def main():
             else:
                 print(f"Error: Normalization script not found at {norm_script}")
 
-            refresh_script = resolve_script_path(base_dir, "database/layer3_refresh_fact.py")
-            if os.path.exists(refresh_script):
-                try:
-                    subprocess.run([venv_python, refresh_script], check=True)
-                    print("\nSUCCESS: Master fact table refresh (Layer 3) completed.")
-                except subprocess.CalledProcessError as e:
-                    print(f"\nError: Refresh failed with exit code {e.returncode}")
-            else:
-                print(f"Error: Refresh script not found at {refresh_script}")
+            # End at Layer 2 Normalization
 
 if __name__ == "__main__":
     main()

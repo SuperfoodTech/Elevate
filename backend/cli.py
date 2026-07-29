@@ -106,12 +106,14 @@ def banner():
 
 def _resolve_python_executable() -> str:
     base = os.path.dirname(os.path.abspath(__file__))
-    venv_python = os.path.join(base, ".venv", "bin", "python")
-    if os.path.isfile(venv_python):
-        return venv_python
-    parent_venv = os.path.join(os.path.dirname(base), "src", ".venv", "bin", "python")
-    if os.path.isfile(parent_venv):
-        return parent_venv
+    candidates = [
+        os.path.join(base, ".venv", "bin", "python"),
+        os.path.join(os.path.dirname(base), ".venv", "bin", "python"),
+        os.path.join(os.path.dirname(base), "src", ".venv", "bin", "python"),
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
     return sys.executable
 
 def _resolve_output_dir(platform_name: str, start_date: str, end_date: str) -> str:
