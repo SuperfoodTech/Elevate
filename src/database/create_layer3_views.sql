@@ -48,11 +48,11 @@ FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id;
 
 -- ============================================================================
--- 2. MATERIALIZED VIEW PAYMENT HARIAN PER OWNER & OUTLET
+-- 2. MATERIALIZED VIEW REKAP TAGIHAN HARIAN PER OWNER & OUTLET
 -- ============================================================================
-DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_payment_daily CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan_daily CASCADE;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_payment_daily AS
+CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_daily AS
 SELECT 
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
     COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
@@ -79,14 +79,13 @@ GROUP BY
     COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
     ft.transaction_date;
 
-DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily;
-DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily_owner;
-DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily_date;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_daily;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_daily_owner;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_daily_date;
 
--- Indeks Unik Pendukung Refresh Concurrent & Query Cepat
-CREATE UNIQUE INDEX idx_mv_payment_daily ON layer3_dim.mv_payment_daily (owner_name, store_id, transaction_date);
-CREATE INDEX idx_mv_payment_daily_owner ON layer3_dim.mv_payment_daily (owner_name);
-CREATE INDEX idx_mv_payment_daily_date ON layer3_dim.mv_payment_daily (transaction_date);
+CREATE UNIQUE INDEX idx_mv_rekap_tagihan_daily ON layer3_dim.mv_rekap_tagihan_daily (owner_name, store_id, transaction_date);
+CREATE INDEX idx_mv_rekap_tagihan_daily_owner ON layer3_dim.mv_rekap_tagihan_daily (owner_name);
+CREATE INDEX idx_mv_rekap_tagihan_daily_date ON layer3_dim.mv_rekap_tagihan_daily (transaction_date);
 
 -- ============================================================================
 -- 3. SQL STORED FUNCTION DYNAMIC REKAP TAGIHAN PER OWNER
@@ -479,5 +478,152 @@ BEGIN
         c.link_bkt AS link_bukti, c.st_bayar AS status_pembayaran
     FROM combined c
     ORDER BY c.s_grp ASC, c.o_name ASC, c.r_name ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 7. MATERIALIZED VIEW OUTLET DAILY PERFORMANCE (FOR BASELINE GROWTH ANALYSIS)
+-- ============================================================================
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_outlet_daily_performance CASCADE;
+
+CREATE MATERIALIZED VIEW layer3_dim.mv_outlet_daily_performance AS
+SELECT 
+    ft.transaction_date,
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
+    ft.merchant_id AS store_id,
+    m.live_date,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS gmv,
+    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) AS total_orders
+FROM layer3_dim.fact_transactions ft
+LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
+LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
+WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+GROUP BY 
+    ft.transaction_date,
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
+    ft.merchant_id,
+    m.live_date;
+
+CREATE UNIQUE INDEX idx_mv_outlet_daily_perf ON layer3_dim.mv_outlet_daily_performance (store_id, transaction_date);
+CREATE INDEX idx_mv_outlet_daily_outlet ON layer3_dim.mv_outlet_daily_performance (outlet_name);
+CREATE INDEX idx_mv_outlet_daily_date ON layer3_dim.mv_outlet_daily_performance (transaction_date);
+
+-- ============================================================================
+-- 8. SQL STORED FUNCTION DYNAMIC BASELINE GROWTH PER OUTLET
+-- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_baseline_growth(text,text,date,date,numeric) CASCADE;
+DROP FUNCTION IF EXISTS layer3_dim.get_baseline_growth(text,date,date,numeric) CASCADE;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_baseline_growth(
+    p_owner TEXT DEFAULT NULL,
+    p_outlet TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-07-01',
+    p_end_date DATE DEFAULT CURRENT_DATE,
+    p_growth_target_pct NUMERIC DEFAULT 0
+)
+RETURNS TABLE (
+    outlet_name TEXT,
+    owner_name TEXT,
+    live_date TEXT,
+    selected_days INT,
+    growth_target_pct NUMERIC,
+    days_to_eom INT,
+    baseline_gmv NUMERIC(15,2),
+    baseline_order BIGINT,
+    target_gmv NUMERIC(15,2),
+    target_order NUMERIC(15,2),
+    current_gmv NUMERIC(15,2),
+    current_daily_gmv_growth NUMERIC(15,4),
+    current_order BIGINT,
+    current_daily_order_growth NUMERIC(15,4),
+    eom_gmv NUMERIC(15,2),
+    eom_gmv_growth NUMERIC(15,4),
+    eom_order NUMERIC(15,2),
+    eom_order_growth NUMERIC(15,4),
+    remaining_gmv NUMERIC(15,2),
+    required_daily_gmv NUMERIC(15,2),
+    remaining_order NUMERIC(15,2),
+    required_daily_order NUMERIC(15,2)
+) AS $$
+DECLARE
+    v_selected_days INT;
+    v_days_in_month INT;
+    v_eom_date DATE;
+    v_days_to_eom INT;
+    v_baseline_start DATE;
+    v_baseline_end DATE;
+BEGIN
+    -- 1. Calculations for date intervals
+    v_selected_days := (p_end_date - p_start_date) + 1;
+    v_eom_date := (DATE_TRUNC('month', p_end_date) + INTERVAL '1 month - 1 day')::DATE;
+    v_days_in_month := EXTRACT(DAY FROM v_eom_date);
+    v_days_to_eom := GREATEST(0, (v_eom_date - p_end_date));
+    
+    -- Baseline range: 30 days prior to p_start_date
+    v_baseline_end := p_start_date - INTERVAL '1 day';
+    v_baseline_start := v_baseline_end - INTERVAL '29 days';
+
+    RETURN QUERY
+    WITH base_agg AS (
+        SELECT 
+            mv.outlet_name,
+            MAX(mv.owner_name) AS owner_name,
+            MAX(mv.live_date) AS live_date,
+            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN v_baseline_start AND v_baseline_end THEN mv.gmv ELSE 0 END), 0.00) AS b_gmv,
+            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN v_baseline_start AND v_baseline_end THEN mv.total_orders ELSE 0 END), 0)::BIGINT AS b_ord,
+            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN p_start_date AND p_end_date THEN mv.gmv ELSE 0 END), 0.00) AS c_gmv,
+            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN p_start_date AND p_end_date THEN mv.total_orders ELSE 0 END), 0)::BIGINT AS c_ord
+        FROM layer3_dim.mv_outlet_daily_performance mv
+        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+        GROUP BY mv.outlet_name
+    ),
+    calc AS (
+        SELECT
+            b.outlet_name,
+            COALESCE(b.owner_name, 'UNKNOWN') AS owner_name,
+            COALESCE(b.live_date, '-') AS live_date,
+            v_selected_days AS sel_days,
+            p_growth_target_pct AS g_target,
+            v_days_to_eom AS d_eom,
+            b.b_gmv,
+            b.b_ord,
+            ROUND(b.b_gmv * (1.00 + (p_growth_target_pct / 100.00)), 2) AS t_gmv,
+            ROUND(b.b_ord * (1.00 + (p_growth_target_pct / 100.00)), 2) AS t_ord,
+            b.c_gmv,
+            b.c_ord,
+            CASE WHEN (b.b_gmv / 30.00) > 0 THEN ROUND(((b.c_gmv / GREATEST(1, v_selected_days)) / (b.b_gmv / 30.00)), 4) ELSE 0.0000 END AS c_daily_gmv_growth,
+            CASE WHEN (b.b_ord / 30.00) > 0 THEN ROUND(((b.c_ord::NUMERIC / GREATEST(1, v_selected_days)) / (b.b_ord::NUMERIC / 30.00)), 4) ELSE 0.0000 END AS c_daily_ord_growth,
+            ROUND((b.c_gmv / GREATEST(1, v_selected_days)) * v_days_in_month, 2) AS e_gmv,
+            ROUND((b.c_ord::NUMERIC / GREATEST(1, v_selected_days)) * v_days_in_month, 2) AS e_ord
+        FROM base_agg b
+    )
+    SELECT 
+        c.outlet_name,
+        c.owner_name,
+        c.live_date,
+        c.sel_days,
+        c.g_target,
+        c.d_eom,
+        c.b_gmv AS baseline_gmv,
+        c.b_ord AS baseline_order,
+        c.t_gmv AS target_gmv,
+        c.t_ord AS target_order,
+        c.c_gmv AS current_gmv,
+        c.c_daily_gmv_growth,
+        c.c_ord AS current_order,
+        c.c_daily_ord_growth,
+        c.e_gmv AS eom_gmv,
+        CASE WHEN c.b_gmv > 0 THEN ROUND((c.e_gmv / c.b_gmv) - 1.00, 4) ELSE 0.0000 END AS eom_gmv_growth,
+        c.e_ord AS eom_order,
+        CASE WHEN c.b_ord > 0 THEN ROUND((c.e_ord / c.b_ord) - 1.00, 4) ELSE 0.0000 END AS eom_order_growth,
+        ROUND(c.t_gmv - c.c_gmv, 2) AS remaining_gmv,
+        CASE WHEN c.d_eom > 0 THEN ROUND((c.t_gmv - c.c_gmv) / c.d_eom, 2) ELSE 0.00 END AS required_daily_gmv,
+        ROUND(c.t_ord - c.c_ord, 2) AS remaining_order,
+        CASE WHEN c.d_eom > 0 THEN ROUND((c.t_ord - c.c_ord) / c.d_eom, 2) ELSE 0.00 END AS required_daily_order
+    FROM calc c
+    ORDER BY c.outlet_name ASC;
 END;
 $$ LANGUAGE plpgsql;

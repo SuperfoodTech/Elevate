@@ -104,249 +104,123 @@ def _execute_scrape_job(job_id: str, req: ScrapeRequest):
             if job_id in jobs_db:
                 jobs_db[job_id]["logs"].append(formatted)
 
-    log(f"Starting pipeline job for platform='{req.platform}' ({req.start_date} to {req.end_date})...")
-    
-    start_time = datetime.now()
-    results = {}
-
+    log(f"Starting scrape pipeline for platform: {req.platform}")
     try:
-        s_clean = normalize_date_string(req.start_date)
-        e_clean = normalize_date_string(req.end_date)
-    except Exception as e:
-        log(f"ERROR: Invalid date format: {e}")
+        start_norm = normalize_date_string(req.start_date)
+        end_norm = normalize_date_string(req.end_date)
+        results = {}
+
+        if req.platform in ["grab", "all"]:
+            log("Running GrabFood scraping task...")
+            grab_outlet = req.grab_outlet or req.outlet
+            grab_res = run_grab(start_norm, end_norm, grab_outlet, req.user, req.skip_existing)
+            results["grab"] = grab_res
+
+        if req.platform in ["shopee", "all"]:
+            log("Running ShopeeFood scraping task...")
+            shopee_merchant = req.shopee_merchant or req.outlet
+            resolved_shopee = _resolve_shopee_merchant(shopee_merchant) if shopee_merchant else None
+            shopee_res = run_shopee(start_norm, end_norm, resolved_shopee, req.skip_existing)
+            results["shopee"] = shopee_res
+
+        if req.platform in ["gofood", "all"]:
+            log("Running GoFood scraping task...")
+            gofood_outlet = req.gofood_outlet or req.outlet
+            gofood_res = run_gofood(start_norm, end_norm, gofood_outlet, req.skip_existing)
+            results["gofood"] = gofood_res
+
+        if req.auto_db:
+            log("Auto-DB ingestion triggered. Ingesting raw JSON data to PostgreSQL...")
+            ingest_res = ingest_to_db(req.platform, start_norm, end_norm)
+            results["ingestion"] = ingest_res
+            log("Triggering Layer 2 Data Normalization & Cleaning...")
+            norm_res = run_normalization()
+            results["normalization"] = norm_res
+
         with jobs_lock:
-            jobs_db[job_id]["status"] = "failed"
-            jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
-        return
+            if job_id in jobs_db:
+                jobs_db[job_id]["status"] = "SUCCESS"
+                jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
+                jobs_db[job_id]["results"] = results
+        log("Pipeline execution finished successfully.")
 
-    # Process Grab
-    if req.platform in ("grab", "all"):
-        log("Executing Grab scraping...")
-        o_str = req.grab_outlet or req.outlet
-        b_str = req.branch
-        try:
-            grab_success = run_grab(s_clean, e_clean, user_filter=req.user, outlet_filter=o_str, branch_filter=b_str, skip_existing=req.skip_existing)
-            results["Grab"] = grab_success
-            log(f"Grab scraping status: {'SUCCESS' if grab_success else 'FAILED'}")
-            
-            if grab_success and req.auto_db:
-                log("Auto-ingesting Grab data to PostgreSQL (layer1_raw & normalization)...")
-                ingest_to_db("grab", s_clean, e_clean, auto_normalize=True)
-        except Exception as ge:
-            log(f"ERROR: Grab scraping failed: {ge}")
-            results["Grab"] = False
+    except Exception as e:
+        err_msg = str(e)
+        log(f"ERROR executing pipeline: {err_msg}")
+        with jobs_lock:
+            if job_id in jobs_db:
+                jobs_db[job_id]["status"] = "FAILED"
+                jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
+                jobs_db[job_id]["results"] = {"error": err_msg}
 
-    # Process Shopee
-    if req.platform in ("shopee", "all"):
-        log("Executing Shopee scraping...")
-        m_str = req.shopee_merchant or req.outlet
-        try:
-            shopee_success = run_shopee(s_clean, e_clean, merchant_filter=m_str, skip_existing=req.skip_existing)
-            results["Shopee"] = shopee_success
-            log(f"Shopee scraping status: {'SUCCESS' if shopee_success else 'FAILED'}")
-            
-            if shopee_success and req.auto_db:
-                log("Auto-ingesting Shopee data to PostgreSQL (layer1_raw & normalization)...")
-                ingest_to_db("shopee", s_clean, e_clean, auto_normalize=True)
-        except Exception as se:
-            log(f"ERROR: Shopee scraping failed: {se}")
-            results["Shopee"] = False
+# ── API Routes ──
 
-    # Process GoFood
-    if req.platform in ("gofood", "all"):
-        log("Executing GoFood scraping...")
-        go_str = req.gofood_outlet or req.outlet
-        b_str = req.branch
-        try:
-            gofood_success = run_gofood(s_clean, e_clean, outlet_filter=go_str, branch_filter=b_str, task_choice="2")
-            results["GoFood"] = gofood_success
-            log(f"GoFood scraping status: {'SUCCESS' if gofood_success else 'FAILED'}")
-            
-            if gofood_success and req.auto_db:
-                log("Auto-ingesting GoFood data to PostgreSQL (layer1_raw & normalization)...")
-                ingest_to_db("gofood", s_clean, e_clean, auto_normalize=True)
-        except Exception as goe:
-            log(f"ERROR: GoFood scraping failed: {goe}")
-            results["GoFood"] = False
-
-    elapsed = datetime.now() - start_time
-    log(f"Pipeline job completed in {int(elapsed.total_seconds() // 60)}m {int(elapsed.total_seconds() % 60)}s.")
-
-    with jobs_lock:
-        jobs_db[job_id]["status"] = "completed"
-        jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
-        jobs_db[job_id]["results"] = results
-
-
-# ── REST API Endpoints ──
-
-@app.get("/", include_in_schema=False)
-def root():
-    return {
-        "service": "Agency OFD Pipeline API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
-    }
-
-@app.get("/health", summary="Service Health Check")
+@app.get("/health", summary="Health Check Endpoint")
 def health_check():
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "active_jobs_count": sum(1 for j in jobs_db.values() if j["status"] == "running")
-    }
+    return {"status": "ok", "service": "Agency OFD Backend API", "timestamp": datetime.now().isoformat()}
 
-@app.post("/api/pipeline/scrape", response_model=JobResponse, summary="Trigger Scraping Pipeline (Async Background Task)")
-def trigger_scrape_pipeline(req: ScrapeRequest, background_tasks: BackgroundTasks):
-    try:
-        s_clean = normalize_date_string(req.start_date)
-        e_clean = normalize_date_string(req.end_date)
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+@app.post("/api/scrape", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED, summary="Trigger Scraping Pipeline")
+def trigger_scrape(req: ScrapeRequest, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    now_iso = datetime.now().isoformat()
 
-    job_id = f"job-{uuid.uuid4().hex[:8]}"
-    created_at = datetime.now().isoformat()
-
-    job_record = {
+    job_data = {
         "job_id": job_id,
         "platform": req.platform,
-        "start_date": s_clean,
-        "end_date": e_clean,
-        "status": "running",
-        "created_at": created_at,
+        "start_date": req.start_date,
+        "end_date": req.end_date,
+        "status": "RUNNING",
+        "created_at": now_iso,
         "finished_at": None,
         "results": None,
-        "logs": []
+        "logs": [f"[{datetime.now().strftime('%H:%M:%S')}] Job initialized with ID: {job_id}"]
     }
 
     with jobs_lock:
-        jobs_db[job_id] = job_record
+        jobs_db[job_id] = job_data
 
     background_tasks.add_task(_execute_scrape_job, job_id, req)
-    return job_record
+    return job_data
 
-@app.post("/api/pipeline/ingest", summary="Manually Trigger Raw DB Ingestion")
-def trigger_db_ingest(req: IngestRequest):
+@app.post("/api/ingest", summary="Ingest Raw JSON Data into PostgreSQL")
+def trigger_ingest(req: IngestRequest):
     try:
-        s_clean = normalize_date_string(req.start_date)
-        e_clean = normalize_date_string(req.end_date)
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+        start_norm = normalize_date_string(req.start_date)
+        end_norm = normalize_date_string(req.end_date)
 
-    platforms = [req.platform] if req.platform != "all" else ["grab", "shopee", "gofood"]
-    results = {}
-
-    for p in platforms:
-        success = ingest_to_db(p, s_clean, e_clean, auto_normalize=req.auto_normalize)
-        results[p] = success
-
-    return {
-        "status": "success",
-        "start_date": s_clean,
-        "end_date": e_clean,
-        "ingest_results": results
-    }
-
-@app.post("/api/pipeline/normalize", summary="Trigger Database Cleaning & Normalization (Layer 2 & Master Table)")
-def trigger_db_normalization():
-    success = run_normalization()
-    if not success:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to run database normalization")
-
-    # Fetch verification counts from PostgreSQL
-    counts = {}
-    try:
-        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
-        db_dir = os.path.join(project_root, "src", "database")
-        if db_dir not in sys.path:
-            sys.path.insert(0, db_dir)
-        from db_manager import DatabaseManager
-        db = DatabaseManager()
-        with db.engine.connect() as conn:
-            counts["stg_grab_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_grab_orders")).scalar()
-            counts["stg_go_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_go_orders")).scalar()
-            counts["stg_shopee_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_shopee_orders")).scalar()
-            counts["fact_transactions"] = conn.execute(text("SELECT COUNT(*) FROM public.fact_transactions")).scalar()
-    except Exception as e:
-        counts["error"] = str(e)
-
-    return {
-        "status": "success",
-        "message": "Database normalization & master refresh complete.",
-        "row_counts": counts
-    }
-
-@app.get("/api/jobs", summary="List All Background Jobs")
-def list_jobs(limit: int = Query(50, ge=1, le=200)):
-    with jobs_lock:
-        all_jobs = list(jobs_db.values())
-    all_jobs.sort(key=lambda j: j["created_at"], reverse=True)
-    return {"total": len(all_jobs), "jobs": all_jobs[:limit]}
-
-@app.get("/api/jobs/{job_id}", response_model=JobResponse, summary="Get Status & Logs of Specific Job")
-def get_job_status(job_id: str):
-    with jobs_lock:
-        job = jobs_db.get(job_id)
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job ID '{job_id}' not found.")
-    return job
-
-@app.get("/api/transactions", summary="Query Master Cleaned Transactions (public.fact_transactions)")
-def get_transactions(
-    platform: Optional[str] = Query(None, description="Filter by platform: GrabFood, ShopeeFood, GoFood"),
-    start_date: Optional[str] = Query(None, description="Filter start date YYYY-MM-DD"),
-    end_date: Optional[str] = Query(None, description="Filter end date YYYY-MM-DD"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0)
-):
-    try:
-        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
-        db_dir = os.path.join(project_root, "src", "database")
-        if db_dir not in sys.path:
-            sys.path.insert(0, db_dir)
-        from db_manager import DatabaseManager
-        db = DatabaseManager()
-
-        where_clauses = ["1=1"]
-        params = {}
-
-        if platform:
-            where_clauses.append("platform = :platform")
-            params["platform"] = platform
-        if start_date:
-            where_clauses.append("transaction_date >= :start_date")
-            params["start_date"] = start_date
-        if end_date:
-            where_clauses.append("transaction_date <= :end_date")
-            params["end_date"] = end_date
-
-        where_sql = " AND ".join(where_clauses)
-        query_sql = f"""
-            SELECT id, platform, external_id, transaction_date, outlet_name, branch_name, store_name,
-                   is_success, gross_amount, discounts, net_sales, commission, ofd_fees, revenue
-            FROM public.fact_transactions
-            WHERE {where_sql}
-            ORDER BY transaction_date DESC, id DESC
-            LIMIT {limit} OFFSET {offset}
-        """
-
-        count_sql = f"SELECT COUNT(*) FROM public.fact_transactions WHERE {where_sql}"
-
-        with db.engine.connect() as conn:
-            total_count = conn.execute(text(count_sql), params).scalar()
-            rows = conn.execute(text(query_sql), params).mappings().all()
+        ingest_res = ingest_to_db(req.platform, start_norm, end_norm)
+        norm_res = None
+        if req.auto_normalize:
+            norm_res = run_normalization()
 
         return {
-            "total": total_count,
-            "limit": limit,
-            "offset": offset,
-            "data": [dict(r) for r in rows]
+            "status": "success",
+            "ingestion": ingest_res,
+            "normalization": norm_res
         }
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database query error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
-# ── Rekap Tagihan Web Dashboard & REST API Endpoints ──
+@app.post("/api/normalize", summary="Trigger Layer 2 Data Normalization & Cleaning")
+def trigger_normalization():
+    try:
+        res = run_normalization()
+        return {"status": "success", "results": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Normalization failed: {str(e)}")
+
+@app.get("/api/jobs/{job_id}", response_model=JobResponse, summary="Get Job Status & Logs")
+def get_job_status(job_id: str):
+    with jobs_lock:
+        if job_id not in jobs_db:
+            raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
+        return jobs_db[job_id]
+
+@app.get("/api/jobs", summary="List Recent Pipeline Jobs")
+def list_jobs(limit: int = Query(20, ge=1, le=100)):
+    with jobs_lock:
+        sorted_jobs = sorted(jobs_db.values(), key=lambda x: x["created_at"], reverse=True)
+        return sorted_jobs[:limit]
 
 # Mount static folder
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -358,6 +232,13 @@ def serve_rekap_tagihan_ui():
     html_file = os.path.join(STATIC_DIR, "rekap_tagihan.html")
     if not os.path.exists(html_file):
         raise HTTPException(status_code=404, detail="Dashboard UI file not found.")
+    return FileResponse(html_file)
+
+@app.get("/baseline-growth", response_class=FileResponse, summary="Serve Baseline Growth Web Dashboard UI")
+def serve_baseline_growth_ui():
+    html_file = os.path.join(STATIC_DIR, "baseline_growth.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="Baseline Growth UI file not found.")
     return FileResponse(html_file)
 
 @app.get("/api/rekap-tagihan/owners", summary="Get Active Owners List for Dropdown")
@@ -394,7 +275,6 @@ def get_rekap_tagihan_data(
     nominal_bagi_hasil: Optional[float] = Query(None, description="Optional override bagi hasil per order (e.g. 1000, 2000)")
 ):
     try:
-        # Unwrap Query default objects if called directly in Python
         if hasattr(owner, 'default'): owner = None
         if hasattr(start_date, 'default'): start_date = '2026-01-01'
         if hasattr(end_date, 'default'): end_date = None
@@ -570,7 +450,6 @@ def update_billing_payment_record(req: MonthlyPaymentUpdateRequest):
 
         with db.engine.begin() as conn:
             conn.execute(text(upsert_sql), params)
-            # Refresh Materialized Views to reflect payment updates
             conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_billing_history;"))
             conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan;"))
 
@@ -598,6 +477,146 @@ def sync_payment_history_from_sheets():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal menyinkronkan riwayat pembayaran: {e}")
+
+# ── Baseline Growth Endpoints ──
+
+@app.get("/api/baseline-growth/outlets", summary="Get Active Outlets List for Dropdown Filter")
+def get_baseline_outlets(owner: Optional[str] = Query(None, description="Owner name filter")):
+    try:
+        if hasattr(owner, 'default'): owner = None
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT DISTINCT outlet_name 
+            FROM layer3_dim.mv_outlet_daily_performance 
+            WHERE outlet_name IS NOT NULL 
+              AND outlet_name <> 'UNKNOWN' 
+              AND TRIM(outlet_name) <> ''
+              AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(owner_name) = LOWER(:p_owner))
+            ORDER BY outlet_name ASC;
+        """
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_owner": owner if owner else None}).fetchall()
+
+        outlets = [r[0] for r in rows]
+        return {"total": len(outlets), "outlets": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+@app.get("/api/baseline-growth", summary="Query Baseline Growth per Outlet")
+def get_baseline_growth_data(
+    owner: Optional[str] = Query(None, description="Owner name filter"),
+    outlet: Optional[str] = Query(None, description="Outlet name filter"),
+    start_date: Optional[str] = Query("2026-07-01", description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    growth_target_pct: Optional[float] = Query(0.0, description="Growth target percentage e.g. 10 for 10%")
+):
+    try:
+        if hasattr(owner, 'default'): owner = None
+        if hasattr(outlet, 'default'): outlet = None
+        if hasattr(start_date, 'default'): start_date = '2026-07-01'
+        if hasattr(end_date, 'default'): end_date = None
+        if hasattr(growth_target_pct, 'default'): growth_target_pct = 0.0
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        sql_params = {
+            "p_owner": owner if owner else None,
+            "p_outlet": outlet if outlet else None,
+            "p_start_date": start_date,
+            "p_end_date": end_date,
+            "p_growth_target_pct": growth_target_pct if growth_target_pct is not None else 0.0
+        }
+
+        query_sql = """
+            SELECT 
+                outlet_name,
+                owner_name,
+                live_date,
+                selected_days,
+                growth_target_pct,
+                days_to_eom,
+                baseline_gmv,
+                baseline_order,
+                target_gmv,
+                target_order,
+                current_gmv,
+                current_daily_gmv_growth,
+                current_order,
+                current_daily_order_growth,
+                eom_gmv,
+                eom_gmv_growth,
+                eom_order,
+                eom_order_growth,
+                remaining_gmv,
+                required_daily_gmv,
+                remaining_order,
+                required_daily_order
+            FROM layer3_dim.get_baseline_growth(
+                :p_owner,
+                :p_outlet,
+                CAST(:p_start_date AS DATE),
+                CAST(:p_end_date AS DATE),
+                :p_growth_target_pct
+            );
+        """
+
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        data_list = [dict(r) for r in rows]
+
+        # Calculate Overall Summary Across Outlets
+        total_baseline_gmv = sum(float(r['baseline_gmv'] or 0) for r in data_list)
+        total_baseline_order = sum(int(r['baseline_order'] or 0) for r in data_list)
+        total_target_gmv = sum(float(r['target_gmv'] or 0) for r in data_list)
+        total_target_order = sum(float(r['target_order'] or 0) for r in data_list)
+        total_current_gmv = sum(float(r['current_gmv'] or 0) for r in data_list)
+        total_current_order = sum(int(r['current_order'] or 0) for r in data_list)
+        total_eom_gmv = sum(float(r['eom_gmv'] or 0) for r in data_list)
+        total_eom_order = sum(float(r['eom_order'] or 0) for r in data_list)
+        total_remaining_gmv = sum(float(r['remaining_gmv'] or 0) for r in data_list)
+        total_required_daily_gmv = sum(float(r['required_daily_gmv'] or 0) for r in data_list)
+
+        summary = {
+            "total_outlets": len(data_list),
+            "total_baseline_gmv": total_baseline_gmv,
+            "total_baseline_order": total_baseline_order,
+            "total_target_gmv": total_target_gmv,
+            "total_target_order": total_target_order,
+            "total_current_gmv": total_current_gmv,
+            "total_current_order": total_current_order,
+            "total_eom_gmv": total_eom_gmv,
+            "total_eom_order": total_eom_order,
+            "total_remaining_gmv": total_remaining_gmv,
+            "total_required_daily_gmv": total_required_daily_gmv
+        }
+
+        return {
+            "owner": owner,
+            "outlet_filter": outlet,
+            "start_date": start_date,
+            "end_date": end_date,
+            "growth_target_pct": growth_target_pct,
+            "summary": summary,
+            "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing get_baseline_growth: {e}")
 
 if __name__ == "__main__":
     import uvicorn
