@@ -460,36 +460,21 @@ def serve_monthly_billing_ui():
         raise HTTPException(status_code=404, detail="Monthly Billing Dashboard UI file not found.")
     return FileResponse(html_file)
 
-@app.get("/api/rekap-tagihan-monthly/periodes", summary="Get Distinct Monthly Periodes")
-def get_monthly_periodes():
-    try:
-        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
-        db_dir = os.path.join(project_root, "src", "database")
-        if db_dir not in sys.path:
-            sys.path.insert(0, db_dir)
-        from layer1_db_manager import DatabaseManager
-        db = DatabaseManager()
+@app.get("/rekap-tagihan-billing", response_class=FileResponse, summary="Serve Unified Rekap Tagihan Billing Dashboard Page")
+@app.get("/rekap-tagihan-monthly", response_class=FileResponse, summary="Serve Unified Rekap Tagihan Billing Dashboard Page (Alias)")
+def serve_rekap_tagihan_billing_page():
+    file_path = os.path.join(STATIC_DIR, "rekap_tagihan_billing.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="rekap_tagihan_billing.html not found.")
+    return FileResponse(file_path)
 
-        query_sql = """
-            SELECT DISTINCT periode 
-            FROM layer3_dim.mv_rekap_tagihan_monthly 
-            WHERE periode IS NOT NULL AND periode <> '-'
-            ORDER BY periode DESC;
-        """
-        with db.engine.connect() as conn:
-            rows = conn.execute(text(query_sql)).fetchall()
-
-        periodes = [r[0] for r in rows]
-        return {"total": len(periodes), "periodes": periodes}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching periodes: {e}")
-
-@app.get("/api/rekap-tagihan-monthly", summary="Query Monthly or Weekly Billing Records")
-def get_monthly_billing_data(
-    billing_cycle: Optional[str] = Query("Monthly", description="Billing cycle: Monthly or Weekly"),
-    owner: Optional[str] = Query(None, description="Filter owner name"),
-    periode: Optional[str] = Query(None, description="Filter periode YYYY-MM or YYYY-MM W1..W5"),
-    status_pembayaran: Optional[str] = Query(None, description="Filter payment status")
+@app.get("/api/rekap-tagihan-billing", summary="Get Unified Rekap Tagihan Data (Monthly & Weekly)")
+@app.get("/api/rekap-tagihan-monthly", summary="Get Unified Rekap Tagihan Data (Alias)")
+def get_rekap_tagihan_billing_data(
+    billing_cycle: Optional[str] = Query(default="Weekly", description="Billing cycle: 'Monthly' or 'Weekly'"),
+    owner: Optional[str] = Query(default=None, description="Filter by Owner Name"),
+    periode: Optional[str] = Query(default=None, description="Filter by Periode (e.g. '2026-06' or '2026-06-W1')"),
+    status_pembayaran: Optional[str] = Query(default=None, description="Filter by Payment Status ('LUNAS', 'BELUM DIBAYAR', 'PENDING')")
 ):
     try:
         if hasattr(billing_cycle, 'default'): billing_cycle = "Monthly"
@@ -539,8 +524,9 @@ def get_monthly_billing_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan_billing: {e}")
 
-@app.post("/api/rekap-tagihan-monthly/update-payment", summary="Update or Save Administrative Payment Details")
-def update_monthly_payment_record(req: MonthlyPaymentUpdateRequest):
+@app.post("/api/rekap-tagihan-billing/update-payment", summary="Update or Save Administrative Payment Details")
+@app.post("/api/rekap-tagihan-monthly/update-payment", summary="Update or Save Administrative Payment Details (Alias)")
+def update_billing_payment_record(req: MonthlyPaymentUpdateRequest):
     try:
         project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
         db_dir = os.path.join(project_root, "src", "database")
@@ -600,7 +586,24 @@ def update_monthly_payment_record(req: MonthlyPaymentUpdateRequest):
             "data": params
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update payment record: {e}")
+        raise HTTPException(status_code=500, detail=f"Error updating payment record: {e}")
+
+@app.post("/api/rekap-tagihan-billing/sync-history", summary="Trigger Sync Payment History from Google Sheets CSV")
+def sync_payment_history_from_sheets():
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        import seed_payment_history
+        seed_payment_history.run_seed_payment_history()
+
+        return {
+            "status": "success",
+            "message": "Berhasil meng-import dan menyinkronkan riwayat pembayaran dari Google Sheets ke PostgreSQL Database."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal menyinkronkan riwayat pembayaran: {e}")
 
 if __name__ == "__main__":
     import uvicorn
