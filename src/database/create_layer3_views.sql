@@ -59,12 +59,13 @@ SELECT
     COALESCE(m.brand, 'UNKNOWN') AS brand,
     COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN') AS nama_resto_final,
     ft.merchant_id AS store_id,
+    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS nominal_bagi_hasil_per_order,
     ft.transaction_date,
     SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS pendapatan_kotor,
     SUM(CASE WHEN ft.is_success = 1 THEN ft.ofd_fees ELSE 0.00 END) AS potongan_ojol,
     SUM(CASE WHEN ft.is_success = 1 THEN ft.revenue ELSE 0.00 END) AS pendapatan_bersih,
     COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) AS total_order_sukses,
-    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * 1000.00 AS default_total_bagi_hasil
+    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS total_bagi_hasil
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
@@ -74,6 +75,7 @@ GROUP BY
     COALESCE(m.brand, 'UNKNOWN'),
     COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN'),
     ft.merchant_id,
+    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
     ft.transaction_date;
 
 -- Indeks Unik Pendukung Refresh Concurrent & Query Cepat
@@ -84,11 +86,13 @@ CREATE INDEX idx_mv_rekap_tagihan_date ON layer3_dim.mv_rekap_tagihan_daily (tra
 -- ============================================================================
 -- 3. SQL STORED FUNCTION DYNAMIC REKAP TAGIHAN PER OWNER
 -- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_rekap_tagihan(text,date,date,numeric) CASCADE;
+
 CREATE OR REPLACE FUNCTION layer3_dim.get_rekap_tagihan(
     p_owner TEXT DEFAULT NULL,
     p_start_date DATE DEFAULT '2026-01-01',
     p_end_date DATE DEFAULT CURRENT_DATE,
-    p_nominal_bagi_hasil NUMERIC DEFAULT 1000
+    p_override_nominal_bagi_hasil NUMERIC DEFAULT NULL
 )
 RETURNS TABLE (
     tanggal TEXT,
@@ -108,7 +112,12 @@ BEGIN
             SUM(mv.potongan_ojol) AS po,
             SUM(mv.pendapatan_bersih) AS pb,
             SUM(mv.total_order_sukses)::BIGINT AS os,
-            SUM(mv.total_order_sukses) * p_nominal_bagi_hasil AS bh
+            SUM(
+                CASE 
+                    WHEN p_override_nominal_bagi_hasil IS NOT NULL THEN mv.total_order_sukses * p_override_nominal_bagi_hasil
+                    ELSE mv.total_bagi_hasil
+                END
+            ) AS bh
         FROM layer3_dim.mv_rekap_tagihan_daily mv
         WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
           AND mv.transaction_date >= p_start_date
