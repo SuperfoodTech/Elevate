@@ -1023,3 +1023,85 @@ BEGIN
         mv.jam ASC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 11. MATERIALIZED VIEW ORDER SUKSES VS ORDER BATAL (ORDER STATUS ANALYSIS)
+-- ============================================================================
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_order_status CASCADE;
+
+CREATE MATERIALIZED VIEW layer3_dim.mv_order_status AS
+SELECT 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
+    COALESCE(m.brand, 'UNKNOWN') AS brand,
+    ft.merchant_id AS store_id,
+    ft.transaction_date,
+    ft.platform AS channel,
+    COUNT(*)::BIGINT AS total_order,
+    COUNT(CASE WHEN ft.is_success = 1 THEN 1 END)::BIGINT AS order_sukses,
+    COUNT(CASE WHEN ft.is_cancelled = 1 OR ft.is_success = 0 THEN 1 END)::BIGINT AS order_batal,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS pendapatan_kotor,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.revenue ELSE 0.00 END) AS pendapatan_bersih
+FROM layer3_dim.fact_transactions ft
+LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
+LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
+WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+GROUP BY 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
+    COALESCE(m.brand, 'UNKNOWN'),
+    ft.merchant_id,
+    ft.transaction_date,
+    ft.platform;
+
+DROP INDEX IF EXISTS layer3_dim.idx_mv_order_status;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_order_status_outlet;
+
+CREATE UNIQUE INDEX idx_mv_order_status ON layer3_dim.mv_order_status (store_id, transaction_date, channel);
+CREATE INDEX idx_mv_order_status_outlet ON layer3_dim.mv_order_status (outlet_name);
+
+-- ============================================================================
+-- 12. STORED FUNCTION GET LAPORAN ORDER STATUS
+-- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_laporan_order_status(text,text,date,date) CASCADE;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_order_status(
+    p_outlet TEXT DEFAULT NULL,
+    p_brand TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT,
+    pct_sukses NUMERIC(5,2),
+    pct_batal NUMERIC(5,2),
+    pendapatan_kotor NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2)
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH filtered AS (
+        SELECT 
+            COALESCE(SUM(mv.total_order), 0) AS tot_ord,
+            COALESCE(SUM(mv.order_sukses), 0) AS suk_ord,
+            COALESCE(SUM(mv.order_batal), 0) AS bat_ord,
+            COALESCE(SUM(mv.pendapatan_kotor), 0.00) AS pk,
+            COALESCE(SUM(mv.pendapatan_bersih), 0.00) AS pb
+        FROM layer3_dim.mv_order_status mv
+        WHERE (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+          AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+          AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+    )
+    SELECT 
+        f.tot_ord::BIGINT AS total_order,
+        f.suk_ord::BIGINT AS order_sukses,
+        f.bat_ord::BIGINT AS order_batal,
+        ROUND(CASE WHEN f.tot_ord > 0 THEN (f.suk_ord::NUMERIC / f.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_sukses,
+        ROUND(CASE WHEN f.tot_ord > 0 THEN (f.bat_ord::NUMERIC / f.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_batal,
+        f.pk AS pendapatan_kotor,
+        f.pb AS pendapatan_bersih
+    FROM filtered f;
+END;
+$$ LANGUAGE plpgsql;

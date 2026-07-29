@@ -863,6 +863,69 @@ def get_laporan_jam_ramai_by_day(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching Jam Ramai by day matrix: {e}")
 
+# ============================================================================
+# ORDER SUKSES VS ORDER BATAL ROUTES
+# ============================================================================
+
+@app.get("/order-sukses-vs-batal", response_class=FileResponse, summary="Serve Order Sukses vs Order Batal Web Dashboard Page")
+def serve_order_status_ui():
+    file_path = os.path.join(STATIC_DIR, "order_sukses_vs_batal.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="order_sukses_vs_batal.html not found.")
+    return FileResponse(file_path)
+
+@app.get("/api/order-status/filters", summary="Get Filter Options for Order Status")
+def get_order_status_filter_options():
+    try:
+        with db_manager.engine.connect() as conn:
+            outlets = [row[0] for row in conn.execute(text("SELECT DISTINCT outlet_name FROM layer3_dim.mv_order_status WHERE outlet_name IS NOT NULL ORDER BY outlet_name;")).fetchall()]
+            brands = [row[0] for row in conn.execute(text("SELECT DISTINCT brand FROM layer3_dim.mv_order_status WHERE brand IS NOT NULL ORDER BY brand;")).fetchall()]
+            date_range = conn.execute(text("SELECT MIN(transaction_date), MAX(transaction_date) FROM layer3_dim.mv_order_status;")).fetchone()
+            
+            return {
+                "status": "success",
+                "outlets": outlets,
+                "brands": brands,
+                "min_date": str(date_range[0]) if date_range and date_range[0] else "2026-01-01",
+                "max_date": str(date_range[1]) if date_range and date_range[1] else "2026-06-30"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching filters: {e}")
+
+@app.get("/api/order-status/summary", summary="Get Order Sukses vs Order Batal Summary")
+def get_order_status_summary(
+    outlet: Optional[str] = Query(default=None),
+    brand: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default="2026-04-01"),
+    end_date: Optional[str] = Query(default="2026-06-30")
+):
+    try:
+        sql = text("""
+            SELECT total_order, order_sukses, order_batal, pct_sukses, pct_batal,
+                   pendapatan_kotor, pendapatan_bersih
+            FROM layer3_dim.get_laporan_order_status(:outlet, :brand, CAST(:start_date AS DATE), CAST(:end_date AS DATE));
+        """)
+        params = {
+            "outlet": outlet,
+            "brand": brand,
+            "start_date": start_date or "2026-01-01",
+            "end_date": end_date or "2026-12-31"
+        }
+        with db_manager.engine.connect() as conn:
+            row = conn.execute(sql, params).mappings().fetchone()
+            if not row:
+                return {"status": "success", "data": {}}
+            row_dict = dict(row)
+            for k, v in row_dict.items():
+                if isinstance(v, Decimal):
+                    row_dict[k] = float(v)
+            return {
+                "status": "success",
+                "data": row_dict
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching order status summary: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
