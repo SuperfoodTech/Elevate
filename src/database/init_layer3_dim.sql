@@ -5,6 +5,7 @@ CREATE SCHEMA IF NOT EXISTS layer3_dim;
 CREATE TABLE IF NOT EXISTS layer3_dim.dim_merchant_credentials (
     store_id TEXT PRIMARY KEY,
     platform TEXT,                         -- Aplikasi (GoFood / GrabFood / ShopeeFood)
+    owner_name TEXT,                       -- Nama Pemilik / Owner
     merchant_id TEXT,
     merchant_name TEXT,                    -- Merchant Name (Identitas switch merchant jika multi-store)
     
