@@ -593,10 +593,6 @@
                 <span class="kpi-title">Subtotal Tagihan</span>
                 <span class="kpi-value" id="kpiSubtotal">Rp 0</span>
             </div>
-            <div class="kpi-card" style="--card-accent: #fbbf24;">
-                <span class="kpi-title">Penyesuaian (Manual)</span>
-                <span class="kpi-value" id="kpiPenyesuaian">Rp 0</span>
-            </div>
             <div class="kpi-card" style="--card-accent: #34d399;">
                 <span class="kpi-title">Total Tagihan Final</span>
                 <span class="kpi-value" id="kpiTotal">Rp 0</span>
@@ -1096,7 +1092,6 @@
         // Update KPI Cards
         function updateKPIs(subtotal, penyesuaian, total, sukses, paid, unpaid) {
             document.getElementById('kpiSubtotal').textContent = formatIDR(subtotal);
-            document.getElementById('kpiPenyesuaian').textContent = formatIDR(penyesuaian);
             document.getElementById('kpiTotal').textContent = formatIDR(total);
             document.getElementById('kpiSukses').textContent = `${sukses.toLocaleString('id-ID')} Order`;
             document.getElementById('kpiPaidStatus').textContent = `${paid} Lunas / ${unpaid} Belum Dibayar`;
