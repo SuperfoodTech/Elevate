@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS layer3_dim.monthly_billing_payments (
     transfer_id TEXT,
     tanggal_pembayaran DATE,
     link_bukti TEXT,
-    status_pembayaran TEXT DEFAULT 'Unpaid',
+    status_pembayaran TEXT DEFAULT 'BELUM DIBAYAR',
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -203,7 +203,7 @@ SELECT
     p.transfer_id,
     p.tanggal_pembayaran,
     p.link_bukti,
-    COALESCE(p.status_pembayaran, 'Unpaid') AS status_pembayaran
+    COALESCE(p.status_pembayaran, 'BELUM DIBAYAR') AS status_pembayaran
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
