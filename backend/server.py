@@ -453,13 +453,6 @@ class MonthlyPaymentUpdateRequest(BaseModel):
     status_pembayaran: Optional[str] = Field("Unpaid", description="Payment status: Unpaid, Paid, Pending")
     notes: Optional[str] = Field(None, description="Internal notes")
 
-@app.get("/rekap-tagihan-monthly", response_class=FileResponse, summary="Serve Monthly Billing Web Dashboard UI")
-def serve_monthly_billing_ui():
-    html_file = os.path.join(STATIC_DIR, "rekap_tagihan_monthly.html")
-    if not os.path.exists(html_file):
-        raise HTTPException(status_code=404, detail="Monthly Billing Dashboard UI file not found.")
-    return FileResponse(html_file)
-
 @app.get("/rekap-tagihan-billing", response_class=FileResponse, summary="Serve Unified Rekap Tagihan Billing Dashboard Page")
 @app.get("/rekap-tagihan-monthly", response_class=FileResponse, summary="Serve Unified Rekap Tagihan Billing Dashboard Page (Alias)")
 def serve_rekap_tagihan_billing_page():
