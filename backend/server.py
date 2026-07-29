@@ -104,249 +104,123 @@ def _execute_scrape_job(job_id: str, req: ScrapeRequest):
             if job_id in jobs_db:
                 jobs_db[job_id]["logs"].append(formatted)
 
-    log(f"Starting pipeline job for platform='{req.platform}' ({req.start_date} to {req.end_date})...")
-    
-    start_time = datetime.now()
-    results = {}
-
+    log(f"Starting scrape pipeline for platform: {req.platform}")
     try:
-        s_clean = normalize_date_string(req.start_date)
-        e_clean = normalize_date_string(req.end_date)
-    except Exception as e:
-        log(f"ERROR: Invalid date format: {e}")
+        start_norm = normalize_date_string(req.start_date)
+        end_norm = normalize_date_string(req.end_date)
+        results = {}
+
+        if req.platform in ["grab", "all"]:
+            log("Running GrabFood scraping task...")
+            grab_outlet = req.grab_outlet or req.outlet
+            grab_res = run_grab(start_norm, end_norm, grab_outlet, req.user, req.skip_existing)
+            results["grab"] = grab_res
+
+        if req.platform in ["shopee", "all"]:
+            log("Running ShopeeFood scraping task...")
+            shopee_merchant = req.shopee_merchant or req.outlet
+            resolved_shopee = _resolve_shopee_merchant(shopee_merchant) if shopee_merchant else None
+            shopee_res = run_shopee(start_norm, end_norm, resolved_shopee, req.skip_existing)
+            results["shopee"] = shopee_res
+
+        if req.platform in ["gofood", "all"]:
+            log("Running GoFood scraping task...")
+            gofood_outlet = req.gofood_outlet or req.outlet
+            gofood_res = run_gofood(start_norm, end_norm, gofood_outlet, req.skip_existing)
+            results["gofood"] = gofood_res
+
+        if req.auto_db:
+            log("Auto-DB ingestion triggered. Ingesting raw JSON data to PostgreSQL...")
+            ingest_res = ingest_to_db(req.platform, start_norm, end_norm)
+            results["ingestion"] = ingest_res
+            log("Triggering Layer 2 Data Normalization & Cleaning...")
+            norm_res = run_normalization()
+            results["normalization"] = norm_res
+
         with jobs_lock:
-            jobs_db[job_id]["status"] = "failed"
-            jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
-        return
+            if job_id in jobs_db:
+                jobs_db[job_id]["status"] = "SUCCESS"
+                jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
+                jobs_db[job_id]["results"] = results
+        log("Pipeline execution finished successfully.")
 
-    # Process Grab
-    if req.platform in ("grab", "all"):
-        log("Executing Grab scraping...")
-        o_str = req.grab_outlet or req.outlet
-        b_str = req.branch
-        try:
-            grab_success = run_grab(s_clean, e_clean, user_filter=req.user, outlet_filter=o_str, branch_filter=b_str, skip_existing=req.skip_existing)
-            results["Grab"] = grab_success
-            log(f"Grab scraping status: {'SUCCESS' if grab_success else 'FAILED'}")
-            
-            if grab_success and req.auto_db:
-                log("Auto-ingesting Grab data to PostgreSQL (layer1_raw & normalization)...")
-                ingest_to_db("grab", s_clean, e_clean, auto_normalize=True)
-        except Exception as ge:
-            log(f"ERROR: Grab scraping failed: {ge}")
-            results["Grab"] = False
+    except Exception as e:
+        err_msg = str(e)
+        log(f"ERROR executing pipeline: {err_msg}")
+        with jobs_lock:
+            if job_id in jobs_db:
+                jobs_db[job_id]["status"] = "FAILED"
+                jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
+                jobs_db[job_id]["results"] = {"error": err_msg}
 
-    # Process Shopee
-    if req.platform in ("shopee", "all"):
-        log("Executing Shopee scraping...")
-        m_str = req.shopee_merchant or req.outlet
-        try:
-            shopee_success = run_shopee(s_clean, e_clean, merchant_filter=m_str, skip_existing=req.skip_existing)
-            results["Shopee"] = shopee_success
-            log(f"Shopee scraping status: {'SUCCESS' if shopee_success else 'FAILED'}")
-            
-            if shopee_success and req.auto_db:
-                log("Auto-ingesting Shopee data to PostgreSQL (layer1_raw & normalization)...")
-                ingest_to_db("shopee", s_clean, e_clean, auto_normalize=True)
-        except Exception as se:
-            log(f"ERROR: Shopee scraping failed: {se}")
-            results["Shopee"] = False
+# ── API Routes ──
 
-    # Process GoFood
-    if req.platform in ("gofood", "all"):
-        log("Executing GoFood scraping...")
-        go_str = req.gofood_outlet or req.outlet
-        b_str = req.branch
-        try:
-            gofood_success = run_gofood(s_clean, e_clean, outlet_filter=go_str, branch_filter=b_str, task_choice="2")
-            results["GoFood"] = gofood_success
-            log(f"GoFood scraping status: {'SUCCESS' if gofood_success else 'FAILED'}")
-            
-            if gofood_success and req.auto_db:
-                log("Auto-ingesting GoFood data to PostgreSQL (layer1_raw & normalization)...")
-                ingest_to_db("gofood", s_clean, e_clean, auto_normalize=True)
-        except Exception as goe:
-            log(f"ERROR: GoFood scraping failed: {goe}")
-            results["GoFood"] = False
-
-    elapsed = datetime.now() - start_time
-    log(f"Pipeline job completed in {int(elapsed.total_seconds() // 60)}m {int(elapsed.total_seconds() % 60)}s.")
-
-    with jobs_lock:
-        jobs_db[job_id]["status"] = "completed"
-        jobs_db[job_id]["finished_at"] = datetime.now().isoformat()
-        jobs_db[job_id]["results"] = results
-
-
-# ── REST API Endpoints ──
-
-@app.get("/", include_in_schema=False)
-def root():
-    return {
-        "service": "Agency OFD Pipeline API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
-    }
-
-@app.get("/health", summary="Service Health Check")
+@app.get("/health", summary="Health Check Endpoint")
 def health_check():
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "active_jobs_count": sum(1 for j in jobs_db.values() if j["status"] == "running")
-    }
+    return {"status": "ok", "service": "Agency OFD Backend API", "timestamp": datetime.now().isoformat()}
 
-@app.post("/api/pipeline/scrape", response_model=JobResponse, summary="Trigger Scraping Pipeline (Async Background Task)")
-def trigger_scrape_pipeline(req: ScrapeRequest, background_tasks: BackgroundTasks):
-    try:
-        s_clean = normalize_date_string(req.start_date)
-        e_clean = normalize_date_string(req.end_date)
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+@app.post("/api/scrape", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED, summary="Trigger Scraping Pipeline")
+def trigger_scrape(req: ScrapeRequest, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    now_iso = datetime.now().isoformat()
 
-    job_id = f"job-{uuid.uuid4().hex[:8]}"
-    created_at = datetime.now().isoformat()
-
-    job_record = {
+    job_data = {
         "job_id": job_id,
         "platform": req.platform,
-        "start_date": s_clean,
-        "end_date": e_clean,
-        "status": "running",
-        "created_at": created_at,
+        "start_date": req.start_date,
+        "end_date": req.end_date,
+        "status": "RUNNING",
+        "created_at": now_iso,
         "finished_at": None,
         "results": None,
-        "logs": []
+        "logs": [f"[{datetime.now().strftime('%H:%M:%S')}] Job initialized with ID: {job_id}"]
     }
 
     with jobs_lock:
-        jobs_db[job_id] = job_record
+        jobs_db[job_id] = job_data
 
     background_tasks.add_task(_execute_scrape_job, job_id, req)
-    return job_record
+    return job_data
 
-@app.post("/api/pipeline/ingest", summary="Manually Trigger Raw DB Ingestion")
-def trigger_db_ingest(req: IngestRequest):
+@app.post("/api/ingest", summary="Ingest Raw JSON Data into PostgreSQL")
+def trigger_ingest(req: IngestRequest):
     try:
-        s_clean = normalize_date_string(req.start_date)
-        e_clean = normalize_date_string(req.end_date)
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+        start_norm = normalize_date_string(req.start_date)
+        end_norm = normalize_date_string(req.end_date)
 
-    platforms = [req.platform] if req.platform != "all" else ["grab", "shopee", "gofood"]
-    results = {}
-
-    for p in platforms:
-        success = ingest_to_db(p, s_clean, e_clean, auto_normalize=req.auto_normalize)
-        results[p] = success
-
-    return {
-        "status": "success",
-        "start_date": s_clean,
-        "end_date": e_clean,
-        "ingest_results": results
-    }
-
-@app.post("/api/pipeline/normalize", summary="Trigger Database Cleaning & Normalization (Layer 2 & Master Table)")
-def trigger_db_normalization():
-    success = run_normalization()
-    if not success:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to run database normalization")
-
-    # Fetch verification counts from PostgreSQL
-    counts = {}
-    try:
-        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
-        db_dir = os.path.join(project_root, "src", "database")
-        if db_dir not in sys.path:
-            sys.path.insert(0, db_dir)
-        from db_manager import DatabaseManager
-        db = DatabaseManager()
-        with db.engine.connect() as conn:
-            counts["stg_grab_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_grab_orders")).scalar()
-            counts["stg_go_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_go_orders")).scalar()
-            counts["stg_shopee_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_shopee_orders")).scalar()
-            counts["fact_transactions"] = conn.execute(text("SELECT COUNT(*) FROM public.fact_transactions")).scalar()
-    except Exception as e:
-        counts["error"] = str(e)
-
-    return {
-        "status": "success",
-        "message": "Database normalization & master refresh complete.",
-        "row_counts": counts
-    }
-
-@app.get("/api/jobs", summary="List All Background Jobs")
-def list_jobs(limit: int = Query(50, ge=1, le=200)):
-    with jobs_lock:
-        all_jobs = list(jobs_db.values())
-    all_jobs.sort(key=lambda j: j["created_at"], reverse=True)
-    return {"total": len(all_jobs), "jobs": all_jobs[:limit]}
-
-@app.get("/api/jobs/{job_id}", response_model=JobResponse, summary="Get Status & Logs of Specific Job")
-def get_job_status(job_id: str):
-    with jobs_lock:
-        job = jobs_db.get(job_id)
-    if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job ID '{job_id}' not found.")
-    return job
-
-@app.get("/api/transactions", summary="Query Master Cleaned Transactions (public.fact_transactions)")
-def get_transactions(
-    platform: Optional[str] = Query(None, description="Filter by platform: GrabFood, ShopeeFood, GoFood"),
-    start_date: Optional[str] = Query(None, description="Filter start date YYYY-MM-DD"),
-    end_date: Optional[str] = Query(None, description="Filter end date YYYY-MM-DD"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0)
-):
-    try:
-        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
-        db_dir = os.path.join(project_root, "src", "database")
-        if db_dir not in sys.path:
-            sys.path.insert(0, db_dir)
-        from db_manager import DatabaseManager
-        db = DatabaseManager()
-
-        where_clauses = ["1=1"]
-        params = {}
-
-        if platform:
-            where_clauses.append("platform = :platform")
-            params["platform"] = platform
-        if start_date:
-            where_clauses.append("transaction_date >= :start_date")
-            params["start_date"] = start_date
-        if end_date:
-            where_clauses.append("transaction_date <= :end_date")
-            params["end_date"] = end_date
-
-        where_sql = " AND ".join(where_clauses)
-        query_sql = f"""
-            SELECT id, platform, external_id, transaction_date, outlet_name, branch_name, store_name,
-                   is_success, gross_amount, discounts, net_sales, commission, ofd_fees, revenue
-            FROM public.fact_transactions
-            WHERE {where_sql}
-            ORDER BY transaction_date DESC, id DESC
-            LIMIT {limit} OFFSET {offset}
-        """
-
-        count_sql = f"SELECT COUNT(*) FROM public.fact_transactions WHERE {where_sql}"
-
-        with db.engine.connect() as conn:
-            total_count = conn.execute(text(count_sql), params).scalar()
-            rows = conn.execute(text(query_sql), params).mappings().all()
+        ingest_res = ingest_to_db(req.platform, start_norm, end_norm)
+        norm_res = None
+        if req.auto_normalize:
+            norm_res = run_normalization()
 
         return {
-            "total": total_count,
-            "limit": limit,
-            "offset": offset,
-            "data": [dict(r) for r in rows]
+            "status": "success",
+            "ingestion": ingest_res,
+            "normalization": norm_res
         }
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database query error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
-# ── Rekap Tagihan Web Dashboard & REST API Endpoints ──
+@app.post("/api/normalize", summary="Trigger Layer 2 Data Normalization & Cleaning")
+def trigger_normalization():
+    try:
+        res = run_normalization()
+        return {"status": "success", "results": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Normalization failed: {str(e)}")
+
+@app.get("/api/jobs/{job_id}", response_model=JobResponse, summary="Get Job Status & Logs")
+def get_job_status(job_id: str):
+    with jobs_lock:
+        if job_id not in jobs_db:
+            raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
+        return jobs_db[job_id]
+
+@app.get("/api/jobs", summary="List Recent Pipeline Jobs")
+def list_jobs(limit: int = Query(20, ge=1, le=100)):
+    with jobs_lock:
+        sorted_jobs = sorted(jobs_db.values(), key=lambda x: x["created_at"], reverse=True)
+        return sorted_jobs[:limit]
 
 # Mount static folder
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -366,8 +240,6 @@ def serve_baseline_growth_ui():
     if not os.path.exists(html_file):
         raise HTTPException(status_code=404, detail="Baseline Growth UI file not found.")
     return FileResponse(html_file)
-
-
 
 @app.get("/api/rekap-tagihan/owners", summary="Get Active Owners List for Dropdown")
 def get_rekap_owners():
@@ -403,7 +275,6 @@ def get_rekap_tagihan_data(
     nominal_bagi_hasil: Optional[float] = Query(None, description="Optional override bagi hasil per order (e.g. 1000, 2000)")
 ):
     try:
-        # Unwrap Query default objects if called directly in Python
         if hasattr(owner, 'default'): owner = None
         if hasattr(start_date, 'default'): start_date = '2026-01-01'
         if hasattr(end_date, 'default'): end_date = None
@@ -449,6 +320,166 @@ def get_rekap_tagihan_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan: {e}")
 
+# ── Tagihan Bulanan (Monthly Billing) Endpoints ──
+
+class MonthlyPaymentUpdateRequest(BaseModel):
+    store_id: str = Field(..., description="Store/Merchant ID")
+    periode: str = Field(..., description="Periode YYYY-MM")
+    penyesuaian: Optional[float] = Field(0.00, description="Manual fee adjustment amount")
+    tanggal_tagihan: Optional[str] = Field(None, description="Billing date YYYY-MM-DD")
+    transfer_id: Optional[str] = Field(None, description="Transfer transaction ID")
+    tanggal_pembayaran: Optional[str] = Field(None, description="Payment date YYYY-MM-DD")
+    link_bukti: Optional[str] = Field(None, description="Proof URL link")
+    status_pembayaran: Optional[str] = Field("Unpaid", description="Payment status: Unpaid, Paid, Pending")
+    notes: Optional[str] = Field(None, description="Internal notes")
+
+@app.get("/rekap-tagihan-billing", response_class=FileResponse, summary="Serve Unified Rekap Tagihan Billing Dashboard Page")
+@app.get("/rekap-tagihan-monthly", response_class=FileResponse, summary="Serve Unified Rekap Tagihan Billing Dashboard Page (Alias)")
+def serve_rekap_tagihan_billing_page():
+    file_path = os.path.join(STATIC_DIR, "rekap_tagihan_billing.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="rekap_tagihan_billing.html not found.")
+    return FileResponse(file_path)
+
+@app.get("/api/rekap-tagihan-billing", summary="Get Unified Rekap Tagihan Data (Monthly & Weekly)")
+@app.get("/api/rekap-tagihan-monthly", summary="Get Unified Rekap Tagihan Data (Alias)")
+def get_rekap_tagihan_billing_data(
+    billing_cycle: Optional[str] = Query(default="Weekly", description="Billing cycle: 'Monthly' or 'Weekly'"),
+    owner: Optional[str] = Query(default=None, description="Filter by Owner Name"),
+    periode: Optional[str] = Query(default=None, description="Filter by Periode (e.g. '2026-06' or '2026-06-W1')"),
+    status_pembayaran: Optional[str] = Query(default=None, description="Filter by Payment Status ('LUNAS', 'BELUM DIBAYAR', 'PENDING')")
+):
+    try:
+        if hasattr(billing_cycle, 'default'): billing_cycle = "Monthly"
+        if hasattr(owner, 'default'): owner = None
+        if hasattr(periode, 'default'): periode = None
+        if hasattr(status_pembayaran, 'default'): status_pembayaran = None
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        sql_params = {
+            "p_billing_cycle": billing_cycle,
+            "p_owner": owner if owner else None,
+            "p_periode": periode if periode else None,
+            "p_status_pembayaran": status_pembayaran if status_pembayaran else None
+        }
+
+        query_sql = """
+            SELECT owner_name, outlet_name, brand, nama_resto_final, store_id, periode,
+                   jumlah_order_sukses, biaya, subtotal_tagihan, penyesuaian, total_tagihan,
+                   TO_CHAR(tanggal_tagihan, 'YYYY-MM-DD') AS tanggal_tagihan,
+                   transfer_id,
+                   TO_CHAR(tanggal_pembayaran, 'YYYY-MM-DD') AS tanggal_pembayaran,
+                   link_bukti, status_pembayaran
+            FROM layer3_dim.get_rekap_tagihan_billing(
+                :p_billing_cycle,
+                :p_owner,
+                :p_periode,
+                :p_status_pembayaran
+            );
+        """
+
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        return {
+            "billing_cycle": billing_cycle,
+            "owner": owner,
+            "periode": periode,
+            "status_pembayaran": status_pembayaran,
+            "data": [dict(r) for r in rows]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan_billing: {e}")
+
+@app.post("/api/rekap-tagihan-billing/update-payment", summary="Update or Save Administrative Payment Details")
+@app.post("/api/rekap-tagihan-monthly/update-payment", summary="Update or Save Administrative Payment Details (Alias)")
+def update_billing_payment_record(req: MonthlyPaymentUpdateRequest):
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        tgl_tagihan = req.tanggal_tagihan if req.tanggal_tagihan and req.tanggal_tagihan.strip() else None
+        tgl_bayar = req.tanggal_pembayaran if req.tanggal_pembayaran and req.tanggal_pembayaran.strip() else None
+
+        upsert_sql = """
+            INSERT INTO layer3_dim.billing_payments (
+                store_id, periode, penyesuaian, tanggal_tagihan, transfer_id,
+                tanggal_pembayaran, link_bukti, status_pembayaran, notes, updated_at
+            ) VALUES (
+                :store_id, :periode, :penyesuaian, CAST(:tanggal_tagihan AS DATE), :transfer_id,
+                CAST(:tanggal_pembayaran AS DATE), :link_bukti, :status_pembayaran, :notes, CURRENT_TIMESTAMP
+            )
+            ON CONFLICT (store_id, periode) DO UPDATE SET
+                penyesuaian = EXCLUDED.penyesuaian,
+                tanggal_tagihan = EXCLUDED.tanggal_tagihan,
+                transfer_id = EXCLUDED.transfer_id,
+                tanggal_pembayaran = EXCLUDED.tanggal_pembayaran,
+                link_bukti = EXCLUDED.link_bukti,
+                status_pembayaran = EXCLUDED.status_pembayaran,
+                notes = EXCLUDED.notes,
+                updated_at = CURRENT_TIMESTAMP;
+        """
+
+        st_input = (req.status_pembayaran or 'BELUM DIBAYAR').strip()
+        if st_input.upper() in ('PAID', 'SUDAH DIBAYAR', 'LUNAS'):
+            st_input = 'LUNAS'
+        elif st_input.upper() in ('UNPAID', 'BELUM DIBAYAR'):
+            st_input = 'BELUM DIBAYAR'
+
+        params = {
+            "store_id": req.store_id,
+            "periode": req.periode,
+            "penyesuaian": req.penyesuaian or 0.00,
+            "tanggal_tagihan": tgl_tagihan,
+            "transfer_id": req.transfer_id,
+            "tanggal_pembayaran": tgl_bayar,
+            "link_bukti": req.link_bukti,
+            "status_pembayaran": st_input,
+            "notes": req.notes
+        }
+
+        with db.engine.begin() as conn:
+            conn.execute(text(upsert_sql), params)
+            conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_billing_history;"))
+            conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan;"))
+
+        return {
+            "status": "success",
+            "message": f"Payment record for store_id '{req.store_id}' ({req.periode}) successfully updated.",
+            "data": params
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating payment record: {e}")
+
+@app.post("/api/rekap-tagihan-billing/sync-history", summary="Trigger Sync Payment History from Google Sheets CSV")
+def sync_payment_history_from_sheets():
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        import seed_payment_history
+        seed_payment_history.run_seed_payment_history()
+
+        return {
+            "status": "success",
+            "message": "Berhasil meng-import dan menyinkronkan riwayat pembayaran dari Google Sheets ke PostgreSQL Database."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal menyinkronkan riwayat pembayaran: {e}")
+
+# ── Baseline Growth Endpoints ──
+
 @app.get("/api/baseline-growth/outlets", summary="Get Active Outlets List for Dropdown Filter")
 def get_baseline_outlets(owner: Optional[str] = Query(None, description="Owner name filter")):
     try:
@@ -477,7 +508,6 @@ def get_baseline_outlets(owner: Optional[str] = Query(None, description="Owner n
         return {"total": len(outlets), "outlets": outlets}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
-
 
 @app.get("/api/baseline-growth", summary="Query Baseline Growth per Outlet")
 def get_baseline_growth_data(
@@ -548,7 +578,6 @@ def get_baseline_growth_data(
         with db.engine.connect() as conn:
             rows = conn.execute(text(query_sql), sql_params).mappings().all()
 
-
         data_list = [dict(r) for r in rows]
 
         # Calculate Overall Summary Across Outlets
@@ -578,6 +607,7 @@ def get_baseline_growth_data(
         }
 
         return {
+            "owner": owner,
             "outlet_filter": outlet,
             "start_date": start_date,
             "end_date": end_date,
@@ -591,4 +621,3 @@ def get_baseline_growth_data(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
-
