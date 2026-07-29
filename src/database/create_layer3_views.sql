@@ -627,3 +627,133 @@ BEGIN
     ORDER BY c.outlet_name ASC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 9. SQL STORED FUNCTION WEEK TO WEEK COMPARISON
+-- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_week_to_week_comparison(text,text,text,date,date,date,date,numeric) CASCADE;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_week_to_week_comparison(
+    p_pic TEXT DEFAULT NULL,
+    p_owner TEXT DEFAULT NULL,
+    p_outlet TEXT DEFAULT NULL,
+    p_start_date_a DATE DEFAULT '2026-07-13',
+    p_end_date_a DATE DEFAULT '2026-07-19',
+    p_start_date_b DATE DEFAULT '2026-07-20',
+    p_end_date_b DATE DEFAULT '2026-07-26',
+    p_target_growth_pct NUMERIC DEFAULT 10.0
+)
+RETURNS TABLE (
+    pic TEXT,
+    owner_name TEXT,
+    outlet_name TEXT,
+    live_date TEXT,
+    age TEXT,
+    selected_days INT,
+    gmv_a NUMERIC(15,2),
+    gmv_b NUMERIC(15,2),
+    daily_gmv_a NUMERIC(15,2),
+    daily_gmv_b NUMERIC(15,2),
+    daily_gmv_growth NUMERIC(15,4),
+    order_a BIGINT,
+    order_b BIGINT,
+    daily_order_a NUMERIC(15,2),
+    daily_order_b NUMERIC(15,2),
+    daily_order_growth NUMERIC(15,4),
+    status TEXT
+) AS $$
+DECLARE
+    v_days_a INT;
+    v_days_b INT;
+    v_target_dec NUMERIC;
+BEGIN
+    v_days_a := GREATEST(1, (p_end_date_a - p_start_date_a) + 1);
+    v_days_b := GREATEST(1, (p_end_date_b - p_start_date_b) + 1);
+    v_target_dec := p_target_growth_pct / 100.00;
+
+    RETURN QUERY
+    WITH target_outlets AS (
+        SELECT DISTINCT
+            COALESCE(NULLIF(TRIM(m.pic), ''), NULLIF(TRIM(m.bd_pic), ''), 'UNKNOWN') AS pic_val,
+            COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS o_val,
+            COALESCE(m.outlet_name, c.merchant_name, 'UNKNOWN') AS ot_val,
+            m.store_id AS s_id,
+            m.live_date AS l_date
+        FROM layer3_dim.dim_merchant_mapping m
+        LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+        WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+          AND (p_pic IS NULL OR p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(p_pic))
+          AND (p_owner IS NULL OR p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name, '')) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(COALESCE(m.outlet_name, c.merchant_name, '')) = LOWER(p_outlet))
+    ),
+    raw_agg AS (
+        SELECT 
+            t.pic_val,
+            t.o_val,
+            t.ot_val,
+            t.l_date,
+            COALESCE(SUM(CASE WHEN ft.transaction_date BETWEEN p_start_date_a AND p_end_date_a AND ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END), 0.00) AS gmv_a_raw,
+            COALESCE(SUM(CASE WHEN ft.transaction_date BETWEEN p_start_date_b AND p_end_date_b AND ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END), 0.00) AS gmv_b_raw,
+            COALESCE(COUNT(CASE WHEN ft.transaction_date BETWEEN p_start_date_a AND p_end_date_a AND ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END), 0)::BIGINT AS ord_a_raw,
+            COALESCE(COUNT(CASE WHEN ft.transaction_date BETWEEN p_start_date_b AND p_end_date_b AND ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END), 0)::BIGINT AS ord_b_raw
+        FROM target_outlets t
+        LEFT JOIN layer3_dim.fact_transactions ft ON t.s_id = ft.merchant_id
+        GROUP BY t.pic_val, t.o_val, t.ot_val, t.l_date
+    ),
+    calc AS (
+        SELECT
+            r.pic_val,
+            r.o_val,
+            r.ot_val,
+            COALESCE(r.l_date, '-') AS l_date_str,
+            CASE 
+                WHEN r.l_date IS NOT NULL AND r.l_date ~ '^\d{4}-\d{2}-\d{2}$' THEN
+                    (
+                        EXTRACT(YEAR FROM AGE(p_end_date_b, r.l_date::DATE)) * 12 +
+                        EXTRACT(MONTH FROM AGE(p_end_date_b, r.l_date::DATE))
+                    )::TEXT || 'mo ' ||
+                    (
+                        FLOOR(EXTRACT(DAY FROM AGE(p_end_date_b, r.l_date::DATE)) / 7.0)
+                    )::TEXT || 'w'
+                ELSE '-'
+            END AS age_str,
+            v_days_a AS sel_days,
+            r.gmv_a_raw AS g_a,
+            r.gmv_b_raw AS g_b,
+            ROUND(r.gmv_a_raw / v_days_a, 2) AS d_g_a,
+            ROUND(r.gmv_b_raw / v_days_b, 2) AS d_g_b,
+            CASE WHEN (r.gmv_a_raw / v_days_a) > 0 THEN ROUND(((r.gmv_b_raw / v_days_b) / (r.gmv_a_raw / v_days_a)) - 1.00, 4) ELSE NULL END AS d_g_growth,
+            r.ord_a_raw AS o_a,
+            r.ord_b_raw AS o_b,
+            ROUND(r.ord_a_raw::NUMERIC / v_days_a, 2) AS d_o_a,
+            ROUND(r.ord_b_raw::NUMERIC / v_days_b, 2) AS d_o_b,
+            CASE WHEN (r.ord_a_raw::NUMERIC / v_days_a) > 0 THEN ROUND(((r.ord_b_raw::NUMERIC / v_days_b) / (r.ord_a_raw::NUMERIC / v_days_a)) - 1.00, 4) ELSE NULL END AS d_o_growth
+        FROM raw_agg r
+    )
+    SELECT
+        c.pic_val AS pic,
+        c.o_val AS owner_name,
+        c.ot_val AS outlet_name,
+        c.l_date_str AS live_date,
+        c.age_str AS age,
+        c.sel_days AS selected_days,
+        c.g_a AS gmv_a,
+        c.g_b AS gmv_b,
+        c.d_g_a AS daily_gmv_a,
+        c.d_g_b AS daily_gmv_b,
+        c.d_g_growth AS daily_gmv_growth,
+        c.o_a AS order_a,
+        c.o_b AS order_b,
+        c.d_o_a AS daily_order_a,
+        c.d_o_b AS daily_order_b,
+        c.d_o_growth AS daily_order_growth,
+        CASE
+            WHEN COALESCE(c.d_g_growth, -1.0) >= v_target_dec AND COALESCE(c.d_o_growth, -1.0) >= v_target_dec THEN 'Achieved'
+            WHEN COALESCE(c.d_g_growth, -1.0) < v_target_dec AND COALESCE(c.d_o_growth, -1.0) >= v_target_dec THEN 'GMV Below Target'
+            WHEN COALESCE(c.d_g_growth, -1.0) >= v_target_dec AND COALESCE(c.d_o_growth, -1.0) < v_target_dec THEN 'Order Below Target'
+            ELSE 'Not Achieved'
+        END AS status
+    FROM calc c
+    ORDER BY c.ot_val ASC;
+END;
+$$ LANGUAGE plpgsql;
