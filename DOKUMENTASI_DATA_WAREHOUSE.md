@@ -27,18 +27,13 @@ Dalam arsitektur Data Warehouse berbasis **Kimball Star Schema**, data dipisahka
                                             (Dimensi Kalender 2020-2030)
 ```
 
-### A. Catatan Penting Mengenai `dim_platform`, `settlement_type`, dan `commission_rate`:
-* **Tabel `dim_platform` Opsi/Diabaikan**: Seluruh data transaksi di `fact_transactions` sudah menyimpan nama platform secara langsung (`'GrabFood'`, `'ShopeeFood'`, `'GoFood'`). Oleh karena itu, tabel `dim_platform` **opsional dan tidak wajib digunakan** dalam query pelaporan BI.
-* **Properti `settlement_type` Tidak Digunakan**: Jenis pencairan dana tidak lagi diperlukan dalam analisis transaksi utama.
-* **Properti `commission_rate` Menggunakan Angka Riil**: Perhitungan komisi tidak menggunakan *commission_rate* tetap dari `dim_platform`, melainkan diambil langsung dari angka rupiah komisi riil aplikator (Grab/GoFood) atau dikalkulasi 25% sesuai tarif Shopee di `fact_transactions`.
-
 ---
 
 ## 2. INVENTARIS LENGKAP SCHEMAS & TABEL DATABASE (`165.232.165.241`)
 
-Database **`db_superfood`** terdiri dari 3 layer utama dan 15 tabel/view aktif:
+Database **`db_superfood`** terdiri dari 3 layer utama dan 14 base tables:
 
-| Schema | Nama Tabel / View | Tipe | Jumlah Baris Data | Deskripsi & Peran |
+| Schema | Nama Tabel | Tipe | Jumlah Baris Data | Deskripsi & Peran |
 |---|---|---|---|---|
 | **`layer1_raw`** | `raw_shopee` | BASE TABLE | **63,327 baris** | Transaksi mentah ShopeeFood |
 | **`layer1_raw`** | `raw_grab` | BASE TABLE | **38,128 baris** | Transaksi mentah GrabFood |
@@ -54,7 +49,6 @@ Database **`db_superfood`** terdiri dari 3 layer utama dan 15 tabel/view aktif:
 | **`layer3_dim`** | **`dim_portal_credentials`** | BASE TABLE | **20 baris** | **Referensi Statis Portal, OTP WA/SMS & BD Profile** |
 | **`layer3_dim`** | **`fact_transactions`** | BASE TABLE | **91,955 baris** | **Unified Fact Table** Transaksi Detail 3 Platform |
 | **`layer3_dim`** | **`fact_daily_merchant_performance`** | BASE TABLE | **14,101 baris** | **Agregat Fakta Harian** Performa Toko (BI Ready) |
-| **`layer3_dim`** | **`v_fact_transactions`** | VIEW | **91,955 baris** | **Live SQL View** Pelaporan BI Tools |
 
 ---
 
@@ -82,58 +76,3 @@ Tabel unified **`fact_transactions`** menyatukan data transaksi dari 3 aplikator
 | **`net_sales`** | NUMERIC | `stg.net_sales` | `stg.net_sales` | `stg.net_sales` | **Omzet bersih toko** (`gross_amount` - `discounts`). |
 | **`commission`** | NUMERIC | `stg.order_commission` | `stg.commission` | `stg.commission_fee` | Komisi resmi aplikator. |
 | **`revenue`** | NUMERIC | `stg.total` | `stg.revenue` | `stg.net_sales` | **Net Payout** (Dana bersih ditransfer ke rekening). |
-
----
-
-## 4. LIVE SQL VIEW PELAPORAN BI (`layer3_dim.v_fact_transactions`)
-
-SQL View live yang menyambungkan `fact_transactions` secara efisien tanpa memerlukan `dim_platform`:
-
-```sql
-CREATE OR REPLACE VIEW layer3_dim.v_fact_transactions AS
-SELECT 
-    ft.id AS transaction_id,
-    ft.external_id AS order_id,
-    ft.platform AS platform_name,
-    CASE 
-        WHEN UPPER(ft.platform) LIKE '%GRAB%' THEN '#00B14F'
-        WHEN UPPER(ft.platform) LIKE '%SHOPEE%' THEN '#EE4D2D'
-        WHEN UPPER(ft.platform) LIKE '%GO%' THEN '#00AA13'
-        ELSE '#888888'
-    END AS platform_color,
-    ft.transaction_date,
-    CAST(TO_CHAR(ft.transaction_date, 'YYYYMMDD') AS INTEGER) AS date_key,
-    d.year,
-    d.quarter_name,
-    d.month_number,
-    d.month_name_id AS nama_bulan,
-    d.week_of_year,
-    d.day_name_id AS nama_hari,
-    d.is_weekend,
-    ft.merchant_id AS store_id,
-    m.owner_name,
-    COALESCE(m.outlet_name, ft.outlet_name) AS outlet_name,
-    m.brand,
-    COALESCE(m.nama_resto_final, ft.branch_name, 'PENDING_REVIEW') AS nama_resto_final,
-    COALESCE(m.group_code, ft.group_code) AS group_code,
-    m.bd_pic,
-    COALESCE(m.status, 'Live') AS merchant_status,
-    ft.status AS order_status,
-    ft.is_success,
-    ft.is_cancelled,
-    ft.gross_amount,
-    ft.discounts,
-    ft.delivery_discount,
-    ft.net_sales,
-    ft.marketing_fee,
-    ft.commission,
-    ft.ofd_fees,
-    ft.revenue AS net_payout,
-    ft.context,
-    ft.created_on,
-    ft.updated_at
-FROM layer3_dim.fact_transactions ft
-LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
-LEFT JOIN layer3_dim.dim_date d ON ft.transaction_date = d.full_date
-WHERE COALESCE(m.status, 'Live') != 'Never';
-```
