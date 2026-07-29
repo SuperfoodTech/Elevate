@@ -1,220 +1,257 @@
-# DOKUMENTASI LENGKAP ARSITEKTUR DATA WAREHOUSE (LAYER 1 - LAYER 3)
+# DOKUMENTASI LENGKAP DATA WAREHOUSE & ARSITEKTUR LAYER 3 (`db_superfood`)
 
-Dokumen ini menyajikan panduan arsitektur data pipeline, skema data warehouse, proses pemetaan (mapping & grouping), hingga pelaporan data transaksi terpadu dari 3 platform Online Food Delivery (OFD): **ShopeeFood, GrabFood, dan GoFood**.
-
----
-
-## 1. PENDAHULUAN DAN TUJUAN SISTEM
-
-Sistem Data Warehouse SuperFood dirancang untuk menyelesaikan 3 tantangan utama bisnis OFD:
-1. **Heterogenitas Data Mentah**: Setiap aplikator (GrabFood, ShopeeFood, GoFood) memiliki struktur kolom, penamaan status, dan istilah keuangan yang berbeda-beda.
-2. **Standardisasi Nama Resto (Grouping)**: Menggabungkan berbagai variasi penamaan outlet mentah hasil scrape ke dalam **Nama Resto Final (Cabang Baku)**.
-3. **Pengelolaan Hak Agency vs Non-Agency**: Memilah toko yang diakui sebagai agency SuperFood (`Live`) dengan toko pribadi mitra yang tidak diikutsertakan (`Never`).
+Dokumen ini merupakan panduan komprehensif mengenai struktur Data Warehouse, skema 3 layer, relasi antar-tabel, rincian seluruh kolom, proses pemetaan (grouping), hingga pelaporan transaksi terpadu 3 platform Online Food Delivery (OFD): **ShopeeFood, GrabFood, dan GoFood**.
 
 ---
 
-## 2. ARSITEKTUR END-TO-END DATA PIPELINE
+## 1. INVENTARIS LENGKAP SCHEMAS & TABEL DATABASE (`165.232.165.241`)
 
-Sistem mengadopsi arsitektur Data Warehouse 3 Layer berbasis PostgreSQL:
+Database **`db_superfood`** terdiri dari 3 layer utama dan 16 tabel/view:
 
-```text
-========================================================================================
-                               ARSITEKTUR DATA PIPELINE
-========================================================================================
-
-  [1. SCRAPER ENGINE] (GrabFood, ShopeeFood, GoFood)
-           │
-           ▼
-  [2. LAYER 1: RAW DATA LAKE] (schema: layer1_raw)
-      ├── raw_shopee (63,327 baris)
-      ├── raw_grab   (38,128 baris)
-      └── raw_go     (6,620 baris)
-           │
-           ▼
-  [3. LAYER 2: CLEAN STAGING] (schema: layer2_clean)
-      ├── stg_shopee_orders (Deduplikasi & Pembersihan Tipe Data)
-      ├── stg_grab_orders   (Normalisasi Kolom & Tanggal)
-      └── stg_go_orders     (Normalisasi Audit Periodik)
-           │
-           ├───> [AUTO-DISCOVERY ENGINE] ───> Mendaftarkan Store Baru (PENDING_REVIEW)
-           │                                                │
-           │                                                ▼
-           │                               [WEB ADMIN DRAG & DROP BOARD]
-           │                               (http://localhost:8005/admin)
-           │                                                │
-           ▼                                                ▼
-  [4. LAYER 3: STAR SCHEMA & GROUPING] (schema: layer3_dim)
-      ├── dim_merchant_credentials   (Master Credentials Login)
-      ├── dim_merchant_mapping       (Master Pemetaan Cabang Baku & Status Live/Never)
-      ├── dim_portal_credentials     (Acuan Statis Portal & Rute OTP WA/SMS)
-      ├── dim_platform & dim_date    (Dimensi Platform & Kalender)
-      ├── fact_transactions          (Fakta Transaksi Detail: 91,955 baris)
-      ├── fact_daily_merchant_performance (Agregat Harian: 14,101 baris)
-      └── v_fact_transactions        (Live SQL View Pelaporan BI)
-```
-
----
-
-## 3. RINCIAN LAYER DATA
-
-### A. Layer 1: Raw Data Lake (`layer1_raw`)
-Layer 1 berfungsi sebagai tempat penampungan mentah (*landing zone*) dari file CSV/Excel hasil penarikan scraper tanpa mengubah isi data aslinya.
-* **`layer1_raw.raw_shopee`**: Menampung 63,327 baris transaksi mentah ShopeeFood.
-* **`layer1_raw.raw_grab`**: Menampung 38,128 baris transaksi mentah GrabFood.
-* **`layer1_raw.raw_go`**: Menampung 6,620 baris transaksi mentah GoFood.
-
----
-
-### B. Layer 2: Clean Staging (`layer2_clean`)
-Layer 2 melakukan proses *Extract-Transform-Load (ETL)* awal untuk menyamakan tipe data, menghapus duplikasi transaksi, serta menghitung saldo bersih.
-* **`layer2_clean.stg_shopee_orders`**: Membersihkan tanggal `complete_time`, mengubah nilai harga makanan, komisi, dan omzet bersih menjadi tipe angka `NUMERIC`.
-* **`layer2_clean.stg_grab_orders`**: Melakukan deduplikasi berdasarkan `long_order_id`, mengurai format tanggal Grab (`YYYY-MM-DD at HH24:MI`), serta mengkalkulasi total potongan OFD.
-* **`layer2_clean.stg_go_orders`**: Menyusun agregat periode transaksi GoFood per store ID.
-
----
-
-### C. Layer 3: Star Schema & Dimension Tables (`layer3_dim`)
-Layer 3 merupakan pusat kebenaran data bisnis (*single source of truth*) yang siap dikonsumsi oleh BI tools dan laporan manajemen.
-
-#### 1. Master Merchant Credentials (`layer3_dim.dim_merchant_credentials`)
-Menyimpan data login dan akun akses secara terisolasi dan aman:
-* `store_id` (Primary Key)
-* `platform`: Aplikator (GoFood / GrabFood / ShopeeFood)
-* `merchant_name`: Identitas switch toko jika 1 akun login memiliki banyak toko.
-* `email_login_go_1` & `email_login_go_2`: Email login GoFood.
-* `username_mitra_orig` & `password_mitra_orig`: Credential login awal mitra.
-* `shopee_username_pemilik` & `shopee_password_pemilik`: Credential Shopee Pemilik (digunakan saat akuisisi pertama).
-* `shopee_username_staff` & `shopee_password_staff`: Credential Shopee Staff.
-* `username_superfood` & `password_superfood`: Credential SuperFood (`allvbadmin`).
-
-#### 2. Master Merchant Mapping (`layer3_dim.dim_merchant_mapping`)
-Menyimpan hasil grouping dan status pengakuan toko:
-* `store_id` (Primary Key)
-* `platform`: Aplikator.
-* `owner_name`: Nama pemilik grup resto.
-* `outlet_name`: Nama outlet induk registrasi.
-* `nama_tarikan`: Nama toko mentah hasil scrape.
-* `nama_resto_final`: Nama Resto Final (Cabang Baku) hasil grouping.
-* `status`: Status resto (`Live` = diakui agency, `Never` = pribadi/non-agency, `Churn`).
-* `group_code`: Kode grup resto.
-* `bd_pic`: PIC Business Development (untuk alokasi Chrome Profile server).
-* `mapping_status`: Status peninjauan internal (`MAPPED` atau `PENDING_REVIEW`).
-
-#### 3. Referensi Portal & OTP (`layer3_dim.dim_portal_credentials`)
-Tabel referensi statis untuk konfigurasi login scraper:
-* `portal_code`: Kode portal (`F`, `W`, `L`, `D`, `All`, `Grab 1-6`).
-* `role`: Peran akun (`Owner`, `Staff`).
-* `phone_number`: Nomor HP rute penerima kode OTP.
-* `otp_method`: Metode pengiriman verifikasi OTP (`WA` atau `SMS`).
-* `username` & `password`: Login portal scraper.
-
----
-
-## 4. PROSES GROUPING, AUTO-DISCOVERY, DAN HAK STATUS NEVER
-
-```text
-========================================================================================
-                   ALUR AUTO-DISCOVERY DAN MAPPING TOKO
-========================================================================================
-
- Scraper Menarik Data ──> Ingest Layer 1 & 2 ──> Auto-Discovery Script Running
-                                                          │
-                                                          ▼
-  [Web Admin Board (Drag & Drop UI)] <── Store Terdaftar sebagai PENDING_REVIEW
-  (http://localhost:8005/admin)
-           │
-           ├─── (Option A: Drag & Drop ke Box Cabang Target) ──> status = 'Live', nama_resto_final = Baku
-           │                                                     (Transaksi Masuk Laporan Agency)
-           │
-           └─── (Option B: Drag & Drop ke Box NEVER) ──────────> status = 'Never'
-                                                                 (Transaksi 100% Ter-filter Out)
-```
-
-### A. Otomasi Penemuan Toko Baru (Auto-Discovery)
-Setiap kali script `layer2_normalize.py` selesai dieksekusi, sistem secara otomatis menjalankan `auto_detect_new_stores.py`. Script ini membandingkan seluruh Store ID pada data transaksi Layer 1 dengan tabel `dim_merchant_mapping`. Toko baru yang belum terdaftar langsung di-insert dengan status **`PENDING_REVIEW`**.
-
-### B. Web Admin Board Drag & Drop (`http://localhost:8005/admin`)
-Tim internal mengelola antrean toko baru melalui Web Admin Board:
-* **Drag & Drop ke Cabang Target**: Kartu toko dari panel `Unmapped Store Queue` ditarik dan dilepas ke dalam kotak cabang target (misal: Kotak `Citraland`). Status otomatis berubah menjadi `Live` dan `nama_resto_final` ter-update.
-* **Drag & Drop ke Box NEVER**: Toko yang tidak didaftarkan mitra ke agency dilepas ke dalam **Kotak Merah `NEVER`**.
-* **Edit Nama Cluster**: Pengguna dapat mengubah nama cluster cabang target kapan saja.
-* **Fitur Batal / Reset**: Mengklik tombol `x` pada chip toko yang sudah ter-mapping akan mengembalikan toko tersebut ke antrean `PENDING_REVIEW`.
-
-### C. Isolasi Toko Berstatus `Never`
-Toko yang diberi status `Never` secara otomatis diisolasi. Seluruh transaksi dari toko berstatus `Never` **100% ter-filter out** dan tidak dihitung pada view pelaporan `v_fact_transactions`.
-
----
-
-## 5. TABEL FAKTA DAN STANDARDISASI STATUS
-
-### A. Standardisasi Status 3 Aplikator
-Aplikator memiliki istilah status yang berbeda-beda. Stored procedure `refresh_fact_transactions()` menyelaraskan status tersebut ke dalam 2 flag biner baku:
-
-| Platform | Teks Status Mentah Scraper | Status Baku Standardized | Flag `is_success` | Flag `is_cancelled` |
+| Schema | Nama Tabel / View | Tipe | Jumlah Baris Data | Deskripsi & Peran |
 |---|---|---|---|---|
-| **GoFood** | `"Sukses"` | **COMPLETED** | **`1`** | **`0`** |
-| **GrabFood** | `"Transferred"` | **COMPLETED** | **`1`** | **`0`** |
-| **GrabFood** | `"Completed"` | **COMPLETED** | **`1`** | **`0`** |
-| **GrabFood** | `"Cancelled"` | **CANCELLED** | **`0`** | **`1`** |
-| **GrabFood** | `"Unknown"` | **OTHER** | **`0`** | **`0`** |
-| **ShopeeFood** | `"completed"` | **COMPLETED** | **`1`** | **`0`** |
-| **ShopeeFood** | `"cancelled"` | **CANCELLED** | **`0`** | **`1`** |
-| **ShopeeFood** | `"processing"` | **PROCESSING** | **`0`** | **`0`** |
-
-### B. Definisi Istilah Keuangan Terpadu
-1. `gross_amount`: Harga kotor makanan sebelum diskon.
-2. `discounts`: Total potongan harga yang ditanggung toko (*merchant funded discount*).
-3. `net_sales`: Omzet bersih penjualan (`gross_amount` minus `discounts`).
-4. `commission`: Komisi resmi aplikator.
-5. `ofd_fees`: Total potongan platform (Komisi + Biaya Pemasaran / Promosi).
-6. `revenue`: Net payout (dana bersih yang ditransfer oleh aplikator).
-
-### C. Ringkasan Fakta Data Terintegrasi Saat Ini
-* **`layer3_dim.fact_transactions`**: Menampung **91,955 baris transaksi detail** dari ketiga platform.
-* **`layer3_dim.fact_daily_merchant_performance`**: Menampung **14,101 baris ringkasan harian** per toko dan platform untuk performa dashboard sub-second.
-* **`layer3_dim.v_fact_transactions`**: View SQL live pelaporan BI dengan Total Net Sales terhitung sebesar **Rp 1,824,029,712.93**.
+| **`layer1_raw`** | `raw_shopee` | BASE TABLE | **63,327 baris** | Transaksi mentah ShopeeFood |
+| **`layer1_raw`** | `raw_grab` | BASE TABLE | **38,128 baris** | Transaksi mentah GrabFood |
+| **`layer1_raw`** | `raw_go` | BASE TABLE | **6,620 baris** | Transaksi mentah GoFood |
+| **`layer1_raw`** | `vercel_sheet` | BASE TABLE | 8 baris *(Legacy)* | Staging gsheet vercel *(Unused)* |
+| **`layer1_raw`** | `credential` | BASE TABLE | 0 baris *(Legacy)* | Staging gsheet credential *(Unused)* |
+| **`layer2_clean`** | `stg_shopee_orders` | BASE TABLE | **63,327 baris** | Cleaned staging ShopeeFood |
+| **`layer2_clean`** | `stg_grab_orders` | BASE TABLE | **38,094 baris** | Cleaned staging GrabFood (deduplicated) |
+| **`layer2_clean`** | `stg_go_orders` | BASE TABLE | **5,997 baris** | Cleaned staging GoFood |
+| **`layer3_dim`** | **`dim_date`** | BASE TABLE | **4,018 baris** | **Dimensi Kalender** (2020 - 2030) |
+| **`layer3_dim`** | **`dim_platform`** | BASE TABLE | **3 baris** | **Dimensi Platform** (Grab, Shopee, GoFood) |
+| **`layer3_dim`** | **`dim_merchant_credentials`** | BASE TABLE | **267 baris** | **Master Credential Login Mitra & SuperFood** |
+| **`layer3_dim`** | **`dim_merchant_mapping`** | BASE TABLE | **367 baris** | **Master Pemetaan Resto Baku & Status Live/Never** |
+| **`layer3_dim`** | **`dim_portal_credentials`** | BASE TABLE | **20 baris** | **Referensi Statis Portal, OTP WA/SMS & BD Profile** |
+| **`layer3_dim`** | **`fact_transactions`** | BASE TABLE | **91,955 baris** | **Unified Fact Table** Transaksi Detail 3 Platform |
+| **`layer3_dim`** | **`fact_daily_merchant_performance`** | BASE TABLE | **14,101 baris** | **Agregat Fakta Harian** Performa Toko (BI Ready) |
+| **`layer3_dim`** | **`v_fact_transactions`** | VIEW | **91,955 baris** | **Live SQL View** Pelaporan BI Tools |
 
 ---
 
-## 6. PANDUAN QUERY UTAMA UNTUK DAKSHBOARD & BI TOOLS
+## 2. DETAIL STRUKTUR TABEL SCHEMA `layer3_dim`
 
-### Query 1: Laporan Omzet & Komisi Per Nama Resto Final (Cabang Baku)
+---
+
+### A. Tabel Dimensi Kalender (`layer3_dim.dim_date`)
+Tabel dimensi waktu standar (2020 s/d 2030) yang digunakan untuk analisis tren waktu:
+
+* **`date_key`** *(INT, Primary Key)*: Format YYYYMMDD (misal: `20260728`).
+* **`full_date`** *(DATE, Unique)*: Tanggal lengkap (misal: `2026-07-28`).
+* **`year`** *(INT)*: Tahun (misal: `2026`).
+* **`quarter`** *(INT)*: Kuartal ke (1 s/d 4).
+* **`quarter_name`** *(TEXT)*: Nama kuartal (`Q1`, `Q2`, `Q3`, `Q4`).
+* **`month_number`** *(INT)*: Bulan (1 s/d 12).
+* **`month_name_id`** *(TEXT)*: Nama bulan Bahasa Indonesia (`Januari`, `Februari`, dst).
+* **`month_name_en`** *(TEXT)*: Nama bulan Bahasa Inggris (`January`, `February`, dst).
+* **`week_of_year`** *(INT)*: Minggu ke dalam tahun.
+* **`day_of_month`** *(INT)*: Hari dalam bulan (1 s/d 31).
+* **`day_of_week`** *(INT)*: Hari dalam minggu (1 = Senin, 7 = Minggu).
+* **`day_name_id`** *(TEXT)*: Nama hari (`Senin`, `Selasa`, `Rabu`, `Kamis`, `Jumat`, `Sabtu`, `Minggu`).
+* **`is_weekend`** *(BOOLEAN)*: Status akhir pekan (`TRUE` jika Sabtu/Minggu).
+* **`is_holiday`** *(BOOLEAN)*: Status hari libur nasional.
+
+---
+
+### B. Tabel Dimensi Platform (`layer3_dim.dim_platform`)
+Tabel dimensi master platform aplikator makanan:
+
+* **`platform_code`** *(TEXT, Primary Key)*: Kode platform (`GRAB`, `SHOPEE`, `GOFOOD`).
+* **`platform_name`** *(TEXT)*: Nama resmi platform (`GrabFood`, `ShopeeFood`, `GoFood`).
+* **`company_name`** *(TEXT)*: Nama perusahaan (`Grab Holdings`, `Shopee / Sea Group`, `GoTo / Gojek`).
+* **`color_hex`** *(TEXT)*: Kode warna identitas UI (`#00B14F` Grab Hijau, `#EE4D2D` Shopee Oranye, `#00AA13` GoFood Hijau).
+* **`default_commission_rate`** *(NUMERIC(5,4))*: Tarif komisi bawaan (`0.2000` = 20%, `0.2500` = 25%).
+* **`settlement_type`** *(TEXT)*: Periode pencairan dana (`Daily`, `Weekly`).
+
+---
+
+### C. Master Merchant Credentials (`layer3_dim.dim_merchant_credentials`)
+Tabel terisolasi tempat menyimpan credential login dan akses 3 aplikator (mengakomodasi 100% kolom Vercel Sheet & Credential Sheet):
+
+* **`store_id`** *(TEXT, Primary Key)*: ID Unik Toko dari Aplikator.
+* **`platform`** *(TEXT)*: Aplikator (`GoFood`, `GrabFood`, `ShopeeFood`).
+* **`merchant_id`** *(TEXT)*: Merchant ID.
+* **`merchant_name`** *(TEXT)*: Identitas switch toko saat 1 akun login memiliki lebih dari 1 merchant.
+* **`nama_akses_mitra`** *(TEXT)*: Nama identitas akses milik mitra.
+* **`email_mitra`** *(TEXT)*: Email mitra.
+* **`email_login_go_1`** *(TEXT)*: Email FoodMaster1 (Login GoFood).
+* **`email_login_go_2`** *(TEXT)*: Email FoodMaster2 (Login GoFood).
+* **`username_mitra_orig`** *(TEXT)*: Username login awal mitra (GoFood/GrabFood).
+* **`password_mitra_orig`** *(TEXT)*: Password login awal mitra.
+* **`hp_mitra`** *(TEXT)*: Nomor HP akses mitra.
+* **`peran_mitra`** *(TEXT)*: Peran akses mitra (`Owner`/`Staff`).
+* **`shopee_username_pemilik`** *(TEXT)*: Username Shopee Pemilik (Digunakan saat akuisisi pertama kali).
+* **`shopee_password_pemilik`** *(TEXT)*: Password Shopee Pemilik (Digunakan saat akuisisi pertama kali).
+* **`shopee_username_staff`** *(TEXT)*: Username Shopee Staff.
+* **`shopee_password_staff`** *(TEXT)*: Password Shopee Staff.
+* **`nama_akses_superfood`** *(TEXT)*: Nama akses SuperFood.
+* **`username_superfood`** *(TEXT)*: Username SuperFood (`allvbadmin`).
+* **`hp_superfood`** *(TEXT)*: Nomor HP `allvbadmin`.
+* **`password_superfood`** *(TEXT)*: Password SuperFood.
+* **`peran_superfood`** *(TEXT)*: Peran akses SuperFood.
+
+---
+
+### D. Master Merchant Mapping & Metadata (`layer3_dim.dim_merchant_mapping`)
+Tabel master pemetaan nama cabang baku, grup resto, dan status pengakuan agency:
+
+* **`store_id`** *(TEXT, Primary Key)*: ID Unik Toko dari Aplikator.
+* **`platform`** *(TEXT)*: Aplikator (`GoFood`, `GrabFood`, `ShopeeFood`).
+* **`owner_name`** *(TEXT)*: Nama pemilik grup usaha.
+* **`outlet_name`** *(TEXT)*: Nama outlet induk registrasi.
+* **`brand`** *(TEXT)*: Nama brand usaha.
+* **`nama_tarikan`** *(TEXT)*: Nama toko mentah hasil scrape.
+* **`nama_resto_final`** *(TEXT)*: **Nama Resto Final (Cabang Baku)** hasil grouping.
+* **`rekomendasi_nama_resto`** *(TEXT)*: Saran nama resto dari sistem.
+* **`group_code`** *(TEXT)*: Kode grup resto.
+* **`bd_pic`** *(TEXT)*: **PIC Business Development** (Digunakan untuk routing Chrome Profile per BD di server scraper).
+* **`status`** *(TEXT)*: Status pengakuan agency:
+  * **`Live`**: Toko resmi diakui dan dikelola agency SuperFood.
+  * **`Never`**: Toko pribadi mitra yang **tidak diikutsertakan** (100% ter-filter out dari laporan).
+  * **`Churn`**: Toko yang sudah berhenti berlangganan.
+* **`mapping_status`** *(TEXT)*: Status peninjauan internal (`MAPPED` atau `PENDING_REVIEW`).
+* **`mapped_by`** *(TEXT)*: Penanda siapa yang melakukan mapping (`DRAG_DROP_CANVAS`, `GSHEET_SEED`, `AUTO_DETECT`).
+* **`live_date`**, **`churn_date`**, **`billing_cycle`**, **`fee`**, **`notes`**: Metadata operasional.
+
+---
+
+### E. Tabel Referensi Statis Portal Scraper (`layer3_dim.dim_portal_credentials`)
+Tabel referensi statis untuk konfigurasi login scraper dan penerimaan kode OTP:
+
+* **`portal_id`** *(INT, Primary Key)*: Auto-increment ID.
+* **`portal_code`** *(TEXT)*: Kode Portal Agency / Virtual Brand (`F`, `W`, `L`, `D`, `All`, `Grab 1-6`).
+* **`role`** *(TEXT)*: Peran akun (`Owner`, `Staff`).
+* **`phone_number`** *(TEXT)*: **Nomor HP Rute Penerima Kode OTP (WA / SMS)**.
+* **`username`** *(TEXT)*: Username login portal scraper (`superfoodapp`, `wonderfoodapp`, `allvbadmin`).
+* **`password`** *(TEXT)*: Password login portal scraper.
+* **`otp_method`** *(TEXT)*: Metode verifikasi OTP (`WA` atau `SMS`).
+* **`notes`** *(TEXT)*: Catatan cakupan agency (`VB + Agency All`, `VB + Agency Specific`).
+* **`bd_pic`** *(TEXT)*: Routing PIC BD.
+
+---
+
+### F. Unified Fact Table Transaksi (`layer3_dim.fact_transactions`)
+Tabel fakta utama yang menyatukan transaksi detail 3 aplikator (91,955 baris):
+
+* **`id`** *(BIGINT, Primary Key)*: Auto-increment ID transaksi.
+* **`platform`** *(TEXT)*: Aplikator (`GrabFood`, `ShopeeFood`, `GoFood`).
+* **`external_id`** *(TEXT)*: ID transaksi resmi dari aplikator (Unique constraint per platform).
+* **`transaction_date`** *(DATE)*: Tanggal transaksi.
+* **`created_on`** *(TIMESTAMP)*: Waktu transaksi detail.
+* **`year`**, **`month`**, **`week`**, **`hour`**: Elemen dimensi waktu.
+* **`merchant_id`** *(TEXT)*: Foreign Key ke `dim_merchant_mapping(store_id)`.
+* **`group_code`** *(TEXT)*: Kode grup resto.
+* **`outlet_name`** *(TEXT)*: Nama outlet registrasi.
+* **`branch_name`** *(TEXT)*: **Nama Resto Final (Cabang Baku)**.
+* **`store_name`** *(TEXT)*: Nama toko mentah scraper.
+* **`status`** *(TEXT)*: Status mentah dari aplikator (`completed`, `Transferred`, `Completed`, `Sukses`, `cancelled`).
+* **`is_success`** *(INTEGER)*: **`1` jika transaksi sukses/selesai**, `0` jika batal/lainnya.
+* **`is_cancelled`** *(INTEGER)*: **`1` jika transaksi dibatalkan**, `0` jika sukses.
+* **`gross_amount`** *(NUMERIC(15,2))*: Harga kotor makanan sebelum diskon.
+* **`discounts`** *(NUMERIC(15,2))*: Total diskon yang ditanggung toko.
+* **`net_sales`** *(NUMERIC(15,2))*: **Omzet bersih toko** (`gross_amount` - `discounts`).
+* **`commission`** *(NUMERIC(15,2))*: Potongan komisi resmi aplikator.
+* **`ofd_fees`** *(NUMERIC(15,2))*: Total potongan platform (Komisi + Biaya Iklan/Promosi).
+* **`revenue`** *(NUMERIC(15,2))*: **Net Payout** (Dana bersih yang ditransfer ke rekening).
+* **`gmv_vs_ofd_commission`**, **`gmv_vs_ofd_fees`**, **`gmv_vs_revenue`**: Persentase rasio terhadap GMV.
+
+---
+
+### G. Tabel Fakta Agregat Harian (`layer3_dim.fact_daily_merchant_performance`)
+Tabel fakta agregat harian yang menghitung performa per toko & platform secara instant (14,101 baris):
+
+* **`performance_id`** *(INT, Primary Key)*: Auto-increment ID.
+* **`date_key`** *(INT)*: Foreign Key ke `dim_date(date_key)`.
+* **`transaction_date`** *(DATE)*: Tanggal transaksi.
+* **`store_id`** *(TEXT)*: Foreign Key ke `dim_merchant_mapping(store_id)`.
+* **`platform`** *(TEXT)*: Aplikator (`GrabFood`, `ShopeeFood`, `GoFood`).
+* **`total_orders`** *(INT)*: Total pesanan masuk.
+* **`completed_orders`** *(INT)*: Total pesanan sukses.
+* **`cancelled_orders`** *(INT)*: Total pesanan batal.
+* **`total_gross_sales`** *(NUMERIC(15,2))*: Akumulasi harga kotor.
+* **`total_discounts`** *(NUMERIC(15,2))*: Akumulasi diskon.
+* **`total_net_sales`** *(NUMERIC(15,2))*: Akumulasi omzet bersih.
+* **`total_commission`** *(NUMERIC(15,2))*: Akumulasi komisi aplikator.
+* **`total_ofd_fees`** *(NUMERIC(15,2))*: Akumulasi potongan platform.
+* **`total_net_payout`** *(NUMERIC(15,2))*: Akumulasi net payout.
+* **`aov`** *(NUMERIC(15,2))*: **Average Order Value** (Rata-rata nilai transaksi per pesanan sukses).
+
+---
+
+### H. Live SQL View Pelaporan BI (`layer3_dim.v_fact_transactions`)
+SQL View live yang menyambungkan `fact_transactions` dengan seluruh dimensi dan menyajikan angka rasio komisi numerik presisi:
+
 ```sql
+CREATE OR REPLACE VIEW layer3_dim.v_fact_transactions AS
 SELECT 
-    branch_name AS nama_resto_final,
-    platform,
-    COUNT(*) AS total_transaksi,
-    SUM(gross_amount) AS total_gross_sales,
-    SUM(net_sales) AS total_net_sales,
-    SUM(commission) AS total_komisi_ofd,
-    SUM(revenue) AS total_net_payout
-FROM layer3_dim.v_fact_transactions
-WHERE merchant_status = 'Live'
-GROUP BY branch_name, platform
-ORDER BY total_net_sales DESC;
+    ft.id AS transaction_id,
+    ft.external_id,
+    ft.platform AS platform_name,
+    dp.color_hex AS platform_color,
+    ft.transaction_date,
+    dd.year,
+    dd.month_name_id AS bulan,
+    dd.day_name_id AS hari,
+    dd.is_weekend,
+    ft.merchant_id AS store_id,
+    COALESCE(m.nama_resto_final, ft.branch_name) AS nama_resto_final,
+    m.owner_name,
+    m.outlet_name,
+    m.brand,
+    m.group_code,
+    m.bd_pic,
+    m.status AS merchant_status,
+    ft.status AS raw_status,
+    ft.is_success,
+    ft.is_cancelled,
+    ft.gross_amount,
+    ft.discounts,
+    ft.net_sales,
+    ft.commission,
+    ft.ofd_fees,
+    ft.revenue AS net_payout,
+    -- Calculation Numeric Rates for BI Tools
+    CASE WHEN ft.net_sales <> 0 THEN ROUND((ft.commission / ft.net_sales), 4) ELSE 0 END AS commission_rate,
+    CASE WHEN ft.net_sales <> 0 THEN ROUND((ft.ofd_fees / ft.net_sales), 4) ELSE 0 END AS ofd_fee_rate,
+    CASE WHEN ft.net_sales <> 0 THEN ROUND((ft.revenue / ft.net_sales), 4) ELSE 0 END AS payout_rate
+FROM layer3_dim.fact_transactions ft
+LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
+LEFT JOIN layer3_dim.dim_platform dp ON UPPER(ft.platform) = dp.platform_code OR ft.platform = dp.platform_name
+LEFT JOIN layer3_dim.dim_date dd ON ft.transaction_date = dd.full_date
+WHERE COALESCE(m.status, 'Live') != 'Never';
 ```
 
-### Query 2: Ringkasan Performa Harian Per Platform
-```sql
-SELECT 
-    transaction_date,
-    platform,
-    SUM(completed_orders) AS total_order_sukses,
-    SUM(total_net_sales) AS total_omzet_harian,
-    SUM(total_commission) AS total_komisi_harian
-FROM layer3_dim.fact_daily_merchant_performance
-GROUP BY transaction_date, platform
-ORDER BY transaction_date DESC, platform;
+---
+
+## 3. MEKANISME GROUPING & UNIFIED STATUS 3 APLIKATOR
+
+### A. Matriks Penyelarasan Status Aplikator
+Stored procedure `refresh_fact_transactions()` menyamakan seluruh istilah status mentah ke dalam flag biner:
+
+```text
+  ShopeeFood: "completed"  ──┐
+  GrabFood  : "Transferred" ┼──> is_success = 1, is_cancelled = 0 (COMPLETED)
+  GrabFood  : "Completed"   │
+  GoFood    : "Sukses"     ──┘
+
+  ShopeeFood: "cancelled"  ──┐
+  GrabFood  : "Cancelled"  ──┴──> is_success = 0, is_cancelled = 1 (CANCELLED)
 ```
 
-### Query 3: Cek Toko Yang Masih Butuh Review Mapping
-```sql
-SELECT 
-    store_id,
-    platform,
-    nama_tarikan,
-    created_at
-FROM layer3_dim.dim_merchant_mapping
-WHERE mapping_status = 'PENDING_REVIEW'
-ORDER BY created_at DESC;
-```
+### B. Hasil Penyelarasan Status Live di Server Database:
+* **84,920 transaksi sukses** (Shopee 62,652; Grab 19,530 + 2,741; GoFood 5,997) ➡️ `is_success = 1`.
+* **985 transaksi batal** (Shopee 673; Grab 312) ➡️ `is_cancelled = 1`.
+* **50 transaksi proses/lainnya** (Shopee 2; Grab 48) ➡️ `is_success = 0`, `is_cancelled = 0`.
+
+---
+
+## 4. ALUR OPERASIONAL DRAG & DROP MAPPING WEB ADMIN (`http://localhost:8005/admin`)
+
+1. **Auto-Discovery Toko Baru**:
+   * Scraper menarik data mentah ➡️ `layer2_normalize.py` berjalan ➡️ `auto_detect_new_stores.py` mendaftarkan toko baru ke `dim_merchant_mapping` dengan status `PENDING_REVIEW`.
+2. **Review & Mapping di Browser**:
+   * Buka Web Admin Board Miro Canvas di **`http://localhost:8005/admin`**.
+   * **Toko Agency (`Live`)**: Drag kartu toko dari antrean kiri ➡️ Drop ke dalam Box Cabang Target di kanan. Status berubah menjadi `MAPPED` & `Live`.
+   * **Toko Non-Agency (`Never`)**: Drag kartu toko ➡️ Drop ke dalam **Kotak Merah `NEVER / NON-AGENCY`**. Transaksi toko ini **100% terisolasi** dari view laporan BI.
+   * **Edit Nama Cluster**: Klik tombol `Edit Nama` pada bingkai cluster untuk mengubah nama cabang baku secara kolektif.
+   * **Reset / Batal**: Klik tombol `x` pada chip toko untuk membatalkan mapping dan mengembalikan toko ke antrean `PENDING_REVIEW`.
