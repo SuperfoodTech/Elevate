@@ -142,8 +142,8 @@
         }
 
         .btn-submit {
-            background-color: #0284c7;
-            color: #ffffff;
+            background-color: var(--primary);
+            color: #0f172a;
             font-weight: 700;
             border: none;
             padding: 0.8rem 1.5rem;
@@ -155,7 +155,8 @@
         }
 
         .btn-submit:hover {
-            background-color: #0369a1;
+            background-color: var(--primary-hover);
+            color: #ffffff;
             transform: translateY(-1px);
         }
 
@@ -163,11 +164,15 @@
             transform: translateY(0);
         }
 
-        /* Penyesuaian Row Styling */
-        tr.row-penyesuaian td {
-            color: var(--accent-amber);
+        /* Adjustment Row Style */
+        tr.row-adjustment {
+            background-color: rgba(251, 191, 36, 0.08) !important;
             font-weight: 600;
-            background-color: rgba(251, 191, 36, 0.05);
+        }
+
+        tr.row-adjustment td {
+            color: var(--accent-amber);
+            font-size: 0.9rem;
         }
 
         /* KPI Cards Summary */
@@ -326,10 +331,6 @@
         <header>
             <div>
                 <h1 class="brand-title">Laporan Rekap Tagihan Mitra Owner</h1>
-                <p class="brand-subtitle">SuperFood Elevate Data Warehouse — Materialized View & Stored Procedure Engine</p>
-            </div>
-            <div>
-                <span class="badge-status">LIVE DATA STREAM</span>
             </div>
         </header>
 
@@ -363,13 +364,13 @@
                         <input type="number" id="nominalInput" class="form-control" placeholder="Dinamis Fee Mapping" min="0" step="500">
                     </div>
 
-                    <!-- Penyesuaian Agency -->
+                    <!-- Input Penyesuaian Agency -->
                     <div class="form-group">
-                        <label for="penyesuaianInput" class="form-label">Penyesuaian Agency (Rp)</label>
-                        <input type="number" id="penyesuaianInput" class="form-control" placeholder="0" value="0" step="1000" oninput="triggerPenyesuaianUpdate()">
+                        <label for="adjustmentInput" class="form-label">Penyesuaian Agency (Rp)</label>
+                        <input type="number" id="adjustmentInput" class="form-control" placeholder="0" step="1000" value="0">
                     </div>
 
-                    <!-- Submit Button (Solid Color Background) -->
+                    <!-- Submit Button -->
                     <div class="form-group">
                         <button type="submit" class="btn-submit">Tampilkan Rekap</button>
                     </div>
@@ -435,8 +436,6 @@
     <!-- Frontend Script -->
     <script>
         const API_BASE = window.location.origin;
-        let cachedData = null;
-        let cachedOwner = '';
 
         // Cached Intl.NumberFormat instance for O(1) performance
         const idrFormatter = new Intl.NumberFormat('id-ID', {
@@ -526,12 +525,9 @@
                     `;
                     updateKPIs(0, 0, 0, 0, 0);
                     document.getElementById('recordCountBadge').textContent = '0 Baris';
-                    cachedData = null;
                     return;
                 }
 
-                cachedData = json.data;
-                cachedOwner = owner;
                 renderTable(json.data, owner);
             } catch (err) {
                 console.error('Error fetching rekap data:', err);
@@ -545,67 +541,56 @@
             }
         }
 
-        // Instant update when Penyesuaian Agency input is typed
-        function triggerPenyesuaianUpdate() {
-            if (cachedData && cachedOwner) {
-                renderTable(cachedData, cachedOwner);
-            }
-        }
-
         // Single-pass O(N) DOM builder to prevent re-renders (Rules Section 2 & 3)
         function renderTable(data, owner) {
             const tbody = document.getElementById('tableBody');
-            const penyesuaianVal = parseFloat(document.getElementById('penyesuaianInput').value) || 0;
+            const agencyAdjustment = parseFloat(document.getElementById('adjustmentInput').value) || 0;
 
             let grandTotalRow = null;
-            const rowsArr = [];
+            const dailyRows = [];
 
             data.forEach(row => {
-                const isGrandTotal = (row.tanggal === 'Grand Total');
-                if (isGrandTotal) {
+                if (row.tanggal === 'Grand Total') {
                     grandTotalRow = { ...row };
                 } else {
-                    const formattedKotor = formatIDR(row.pendapatan_kotor);
-                    const formattedOjol = formatIDR(row.potongan_ojol);
-                    const formattedBersih = formatIDR(row.pendapatan_bersih);
-                    const formattedSukses = row.total_order_sukses.toLocaleString('id-ID');
-                    const formattedBagiHasil = formatIDR(row.total_bagi_hasil);
-
-                    rowsArr.push(`<tr>
-                        <td>${row.tanggal}</td>
-                        <td class="text-right">${formattedKotor}</td>
-                        <td class="text-right">${formattedOjol}</td>
-                        <td class="text-right">${formattedBersih}</td>
-                        <td class="text-center">${formattedSukses}</td>
-                        <td class="text-right">${formattedBagiHasil}</td>
-                    </tr>`);
+                    dailyRows.push(row);
                 }
             });
 
-            // Insert Penyesuaian Agency row if entered
-            if (penyesuaianVal !== 0) {
-                rowsArr.push(`<tr class="row-penyesuaian">
+            // Build daily transaction rows
+            let htmlContent = dailyRows.map(row => `<tr>
+                <td>${row.tanggal}</td>
+                <td class="text-right">${formatIDR(row.pendapatan_kotor)}</td>
+                <td class="text-right">${formatIDR(row.potongan_ojol)}</td>
+                <td class="text-right">${formatIDR(row.pendapatan_bersih)}</td>
+                <td class="text-center">${row.total_order_sukses.toLocaleString('id-ID')}</td>
+                <td class="text-right">${formatIDR(row.total_bagi_hasil)}</td>
+            </tr>`).join('');
+
+            // Insert Penyesuaian Agency row if value is non-zero
+            if (agencyAdjustment !== 0) {
+                htmlContent += `<tr class="row-adjustment">
                     <td>Penyesuaian Agency</td>
                     <td class="text-right">-</td>
                     <td class="text-right">-</td>
                     <td class="text-right">-</td>
                     <td class="text-center">-</td>
-                    <td class="text-right">${formatIDR(penyesuaianVal)}</td>
-                </tr>`);
+                    <td class="text-right">${formatIDR(agencyAdjustment)}</td>
+                </tr>`;
             }
 
-            // Insert updated Grand Total row
+            // Render Grand Total row with Penyesuaian Agency added to Total Bagi Hasil
             if (grandTotalRow) {
-                const finalBagiHasil = (parseFloat(grandTotalRow.total_bagi_hasil) || 0) + penyesuaianVal;
+                const finalBagiHasil = parseFloat(grandTotalRow.total_bagi_hasil) + agencyAdjustment;
 
-                rowsArr.push(`<tr class="row-grand-total">
+                htmlContent += `<tr class="row-grand-total">
                     <td>Grand Total</td>
                     <td class="text-right">${formatIDR(grandTotalRow.pendapatan_kotor)}</td>
                     <td class="text-right">${formatIDR(grandTotalRow.potongan_ojol)}</td>
                     <td class="text-right">${formatIDR(grandTotalRow.pendapatan_bersih)}</td>
                     <td class="text-center">${grandTotalRow.total_order_sukses.toLocaleString('id-ID')}</td>
                     <td class="text-right">${formatIDR(finalBagiHasil)}</td>
-                </tr>`);
+                </tr>`;
 
                 updateKPIs(
                     grandTotalRow.pendapatan_kotor,
@@ -616,9 +601,9 @@
                 );
             }
 
-            tbody.innerHTML = rowsArr.join('');
+            tbody.innerHTML = htmlContent;
             document.getElementById('tableHeaderTitle').textContent = `Rincian Agregat Harian - ${owner}`;
-            document.getElementById('recordCountBadge').textContent = `${data.length - 1} Hari Transaksi`;
+            document.getElementById('recordCountBadge').textContent = `${dailyRows.length} Hari Transaksi`;
         }
 
         // Update Summary KPI Card Elements
