@@ -203,7 +203,11 @@ SELECT
     p.transfer_id,
     p.tanggal_pembayaran,
     p.link_bukti,
-    COALESCE(p.status_pembayaran, 'BELUM DIBAYAR') AS status_pembayaran
+    CASE 
+        WHEN UPPER(COALESCE(p.status_pembayaran, 'BELUM DIBAYAR')) IN ('PAID', 'LUNAS', 'SUDAH DIBAYAR') THEN 'LUNAS'
+        WHEN UPPER(COALESCE(p.status_pembayaran, 'BELUM DIBAYAR')) = 'PENDING' THEN 'PENDING'
+        ELSE 'BELUM DIBAYAR'
+    END AS status_pembayaran
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
@@ -248,7 +252,11 @@ SELECT
     p.transfer_id,
     p.tanggal_pembayaran,
     p.link_bukti,
-    COALESCE(p.status_pembayaran, 'BELUM DIBAYAR') AS status_pembayaran,
+    CASE 
+        WHEN UPPER(COALESCE(p.status_pembayaran, 'BELUM DIBAYAR')) IN ('PAID', 'LUNAS', 'SUDAH DIBAYAR') THEN 'LUNAS'
+        WHEN UPPER(COALESCE(p.status_pembayaran, 'BELUM DIBAYAR')) = 'PENDING' THEN 'PENDING'
+        ELSE 'BELUM DIBAYAR'
+    END AS status_pembayaran,
     p.notes,
     p.updated_at
 FROM layer3_dim.billing_payments p
