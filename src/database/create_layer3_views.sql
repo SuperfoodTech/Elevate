@@ -730,3 +730,296 @@ BEGIN
     ORDER BY c.sort_bulan ASC, c.sort_grp ASC, c.channel ASC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 9. MATERIALIZED VIEW LAPORAN JAM RAMAI (HOURLY TRAFFIC & PEAK HOURS)
+-- ============================================================================
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_jam_ramai CASCADE;
+
+CREATE MATERIALIZED VIEW layer3_dim.mv_jam_ramai AS
+SELECT 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
+    COALESCE(m.brand, 'UNKNOWN') AS brand,
+    ft.merchant_id AS store_id,
+    ft.transaction_date,
+    TO_CHAR(ft.transaction_date, 'YYYY-MM') AS bulan,
+    CASE EXTRACT(DOW FROM ft.transaction_date)
+        WHEN 0 THEN 'Minggu'
+        WHEN 1 THEN 'Senin'
+        WHEN 2 THEN 'Selasa'
+        WHEN 3 THEN 'Rabu'
+        WHEN 4 THEN 'Kamis'
+        WHEN 5 THEN 'Jumat'
+        WHEN 6 THEN 'Sabtu'
+    END AS hari_name,
+    EXTRACT(DOW FROM ft.transaction_date)::INT AS dow_num,
+    COALESCE(ft.hour, 0) AS jam,
+    CASE 
+        WHEN COALESCE(ft.hour, 0) BETWEEN 6 AND 9 THEN 'Breakfast (06:00-09:59)'
+        WHEN COALESCE(ft.hour, 0) BETWEEN 10 AND 13 THEN 'Lunch (10:00-13:59)'
+        WHEN COALESCE(ft.hour, 0) BETWEEN 14 AND 16 THEN 'Afternoon (14:00-16:59)'
+        WHEN COALESCE(ft.hour, 0) BETWEEN 17 AND 20 THEN 'Dinner (17:00-20:59)'
+        ELSE 'Late Night (21:00-05:59)'
+    END AS slot_waktu,
+    ft.platform AS channel,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS pendapatan_kotor,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.ofd_fees ELSE 0.00 END) AS potongan_ojol,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.revenue ELSE 0.00 END) AS pendapatan_bersih,
+    COUNT(*)::BIGINT AS total_order,
+    COUNT(CASE WHEN ft.is_success = 1 THEN 1 END)::BIGINT AS order_sukses,
+    COUNT(CASE WHEN ft.is_cancelled = 1 OR ft.is_success = 0 THEN 1 END)::BIGINT AS order_batal
+FROM layer3_dim.fact_transactions ft
+LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
+LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
+WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+GROUP BY 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
+    COALESCE(m.brand, 'UNKNOWN'),
+    ft.merchant_id,
+    ft.transaction_date,
+    EXTRACT(DOW FROM ft.transaction_date),
+    COALESCE(ft.hour, 0),
+    ft.platform;
+
+DROP INDEX IF EXISTS layer3_dim.idx_mv_jam_ramai;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_jam_ramai_owner;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_jam_ramai_jam;
+
+CREATE UNIQUE INDEX idx_mv_jam_ramai ON layer3_dim.mv_jam_ramai (store_id, transaction_date, jam, channel);
+CREATE INDEX idx_mv_jam_ramai_owner ON layer3_dim.mv_jam_ramai (owner_name);
+CREATE INDEX idx_mv_jam_ramai_jam ON layer3_dim.mv_jam_ramai (jam);
+
+-- -- ============================================================================
+-- 10. STORED FUNCTIONS LAPORAN JAM RAMAI (SUMMARY, SLOT WAKTU, MATRIKS HARI)
+-- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_laporan_jam_ramai_summary(text,text,text,date,date) CASCADE;
+DROP FUNCTION IF EXISTS layer3_dim.get_laporan_jam_ramai_by_slot(text,text,text,date,date) CASCADE;
+DROP FUNCTION IF EXISTS layer3_dim.get_laporan_jam_ramai_by_day(text,text,text,date,date) CASCADE;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_jam_ramai_summary(
+    p_owner TEXT DEFAULT NULL,
+    p_outlet TEXT DEFAULT NULL,
+    p_brand TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+    jam INT,
+    jam_label TEXT,
+    slot_waktu TEXT,
+    pendapatan_kotor NUMERIC(15,2),
+    potongan_ojol NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2),
+    rata_rata_order_per_customer NUMERIC(15,2),
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT,
+    pct_batal NUMERIC(5,2),
+    is_peak_hour_orders INT,
+    is_peak_hour_sales INT
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH filtered AS (
+        SELECT 
+            mv.jam,
+            MIN(mv.slot_waktu) AS slot_waktu,
+            SUM(mv.pendapatan_kotor) AS pk,
+            SUM(mv.potongan_ojol) AS po,
+            SUM(mv.pendapatan_bersih) AS pb,
+            SUM(mv.total_order) AS tot_ord,
+            SUM(mv.order_sukses) AS suk_ord,
+            SUM(mv.order_batal) AS bat_ord
+        FROM layer3_dim.mv_jam_ramai mv
+        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+          AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+          AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+        GROUP BY mv.jam
+    ),
+    max_stats AS (
+        SELECT 
+            COALESCE(MAX(f.suk_ord), 0) AS max_suk,
+            COALESCE(MAX(f.pk), 0.00) AS max_pk
+        FROM filtered f
+    ),
+    combined AS (
+        SELECT 
+            f.jam,
+            TO_CHAR(f.jam, 'FM00') || ':00 - ' || TO_CHAR(f.jam, 'FM00') || ':59' AS jam_label,
+            f.slot_waktu,
+            f.pk,
+            f.po,
+            f.pb,
+            ROUND(CASE WHEN f.suk_ord > 0 THEN f.pk / f.suk_ord ELSE 0.00 END, 2) AS avg_ord,
+            f.tot_ord,
+            f.suk_ord,
+            f.bat_ord,
+            ROUND(CASE WHEN f.tot_ord > 0 THEN (f.bat_ord::NUMERIC / f.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_batal,
+            CASE WHEN f.suk_ord = m.max_suk AND f.suk_ord > 0 THEN 1 ELSE 0 END AS is_peak_ord,
+            CASE WHEN f.pk = m.max_pk AND f.pk > 0 THEN 1 ELSE 0 END AS is_peak_sales,
+            1 AS s_grp
+        FROM filtered f
+        CROSS JOIN max_stats m
+
+        UNION ALL
+
+        SELECT 
+            99 AS jam,
+            'Grand Total' AS jam_label,
+            '' AS slot_waktu,
+            COALESCE(SUM(f.pk), 0.00) AS pk,
+            COALESCE(SUM(f.po), 0.00) AS po,
+            COALESCE(SUM(f.pb), 0.00) AS pb,
+            ROUND(CASE WHEN SUM(f.suk_ord) > 0 THEN SUM(f.pk) / SUM(f.suk_ord) ELSE 0.00 END, 2) AS avg_ord,
+            COALESCE(SUM(f.tot_ord), 0)::BIGINT AS tot_ord,
+            COALESCE(SUM(f.suk_ord), 0)::BIGINT AS suk_ord,
+            COALESCE(SUM(f.bat_ord), 0)::BIGINT AS bat_ord,
+            ROUND(CASE WHEN SUM(f.tot_ord) > 0 THEN (SUM(f.bat_ord)::NUMERIC / SUM(f.tot_ord)::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_batal,
+            0 AS is_peak_ord,
+            0 AS is_peak_sales,
+            2 AS s_grp
+        FROM filtered f
+    )
+    SELECT 
+        c.jam::INT,
+        c.jam_label::TEXT,
+        c.slot_waktu::TEXT,
+        c.pk AS pendapatan_kotor,
+        c.po AS potongan_ojol,
+        c.pb AS pendapatan_bersih,
+        c.avg_ord AS rata_rata_order_per_customer,
+        c.tot_ord::BIGINT AS total_order,
+        c.suk_ord::BIGINT AS order_sukses,
+        c.bat_ord::BIGINT AS order_batal,
+        c.pct_batal AS pct_batal,
+        c.is_peak_ord::INT,
+        c.is_peak_sales::INT
+    FROM combined c
+    ORDER BY c.s_grp ASC, c.jam ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_jam_ramai_by_slot(
+    p_owner TEXT DEFAULT NULL,
+    p_outlet TEXT DEFAULT NULL,
+    p_brand TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+    slot_waktu TEXT,
+    pendapatan_kotor NUMERIC(15,2),
+    potongan_ojol NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2),
+    rata_rata_order_per_customer NUMERIC(15,2),
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT,
+    pct_batal NUMERIC(5,2)
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH filtered AS (
+        SELECT 
+            mv.slot_waktu,
+            SUM(mv.pendapatan_kotor) AS pk,
+            SUM(mv.potongan_ojol) AS po,
+            SUM(mv.pendapatan_bersih) AS pb,
+            SUM(mv.total_order) AS tot_ord,
+            SUM(mv.order_sukses) AS suk_ord,
+            SUM(mv.order_batal) AS bat_ord
+        FROM layer3_dim.mv_jam_ramai mv
+        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+          AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+          AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+        GROUP BY mv.slot_waktu
+    ),
+    combined AS (
+        SELECT 
+            f.slot_waktu,
+            f.pk,
+            f.po,
+            f.pb,
+            ROUND(CASE WHEN f.suk_ord > 0 THEN f.pk / f.suk_ord ELSE 0.00 END, 2) AS avg_ord,
+            f.tot_ord,
+            f.suk_ord,
+            f.bat_ord,
+            ROUND(CASE WHEN f.tot_ord > 0 THEN (f.bat_ord::NUMERIC / f.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_batal,
+            1 AS s_grp
+        FROM filtered f
+
+        UNION ALL
+
+        SELECT 
+            'Grand Total' AS slot_waktu,
+            COALESCE(SUM(f.pk), 0.00) AS pk,
+            COALESCE(SUM(f.po), 0.00) AS po,
+            COALESCE(SUM(f.pb), 0.00) AS pb,
+            ROUND(CASE WHEN SUM(f.suk_ord) > 0 THEN SUM(f.pk) / SUM(f.suk_ord) ELSE 0.00 END, 2) AS avg_ord,
+            COALESCE(SUM(f.tot_ord), 0)::BIGINT AS tot_ord,
+            COALESCE(SUM(f.suk_ord), 0)::BIGINT AS suk_ord,
+            COALESCE(SUM(f.bat_ord), 0)::BIGINT AS bat_ord,
+            ROUND(CASE WHEN SUM(f.tot_ord) > 0 THEN (SUM(f.bat_ord)::NUMERIC / SUM(f.tot_ord)::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_batal,
+            2 AS s_grp
+        FROM filtered f
+    )
+    SELECT 
+        c.slot_waktu::TEXT,
+        c.pk AS pendapatan_kotor,
+        c.po AS potongan_ojol,
+        c.pb AS pendapatan_bersih,
+        c.avg_ord AS rata_rata_order_per_customer,
+        c.tot_ord::BIGINT AS total_order,
+        c.suk_ord::BIGINT AS order_sukses,
+        c.bat_ord::BIGINT AS order_batal,
+        c.pct_batal AS pct_batal
+    FROM combined c
+    ORDER BY c.s_grp ASC, c.slot_waktu ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_jam_ramai_by_day(
+    p_owner TEXT DEFAULT NULL,
+    p_outlet TEXT DEFAULT NULL,
+    p_brand TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+    dow_num INT,
+    hari_name TEXT,
+    jam INT,
+    jam_label TEXT,
+    pendapatan_kotor NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2),
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        mv.dow_num::INT,
+        mv.hari_name::TEXT,
+        mv.jam::INT,
+        (TO_CHAR(mv.jam, 'FM00') || ':00 - ' || TO_CHAR(mv.jam, 'FM00') || ':59')::TEXT AS jam_label,
+        SUM(mv.pendapatan_kotor) AS pendapatan_kotor,
+        SUM(mv.pendapatan_bersih) AS pendapatan_bersih,
+        SUM(mv.total_order)::BIGINT AS total_order,
+        SUM(mv.order_sukses)::BIGINT AS order_sukses,
+        SUM(mv.order_batal)::BIGINT AS order_batal
+    FROM layer3_dim.mv_jam_ramai mv
+    WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
+      AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+      AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+      AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+    GROUP BY mv.dow_num, mv.hari_name, mv.jam
+    ORDER BY 
+        CASE WHEN mv.dow_num = 0 THEN 7 ELSE mv.dow_num END ASC,
+        mv.jam ASC;
+END;
+$$ LANGUAGE plpgsql;
