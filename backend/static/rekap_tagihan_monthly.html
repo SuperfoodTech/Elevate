@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laporan Tagihan Rekonsiliasi - SuperFood Elevate</title>
+    <title>Laporan Rekap Tagihan - SuperFood Elevate</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -45,7 +45,7 @@
         }
 
         .container {
-            max-width: 1540px;
+            max-width: 1560px;
             margin: 0 auto;
         }
 
@@ -54,9 +54,11 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
             padding-bottom: 1rem;
             border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 1rem;
         }
 
         .brand-title {
@@ -67,6 +69,34 @@
             letter-spacing: -0.02em;
         }
 
+        /* Segmented Mode Switcher (Bulanan vs Mingguan) */
+        .tab-switcher {
+            display: flex;
+            background: #1e293b;
+            padding: 0.3rem;
+            border-radius: 0.6rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            padding: 0.6rem 1.25rem;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.9rem;
+            border-radius: 0.4rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: #0f172a;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+        }
+
         /* Controls Panel (Filter Glassmorphism Card) */
         .filter-card {
             background: var(--bg-card);
@@ -74,8 +104,8 @@
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid var(--bg-card-border);
             border-radius: 1rem;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
             box-shadow: var(--shadow-glow);
         }
 
@@ -89,11 +119,11 @@
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
+            gap: 0.4rem;
         }
 
         .form-label {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 600;
             color: var(--text-muted);
             text-transform: uppercase;
@@ -104,9 +134,9 @@
             background-color: var(--bg-input);
             border: 1px solid var(--border-color);
             color: var(--text-main);
-            padding: 0.75rem 1rem;
+            padding: 0.65rem 0.9rem;
             border-radius: 0.5rem;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-family: inherit;
             transition: all 0.2s ease;
             outline: none;
@@ -127,10 +157,10 @@
             color: #0f172a;
             font-weight: 700;
             border: none;
-            padding: 0.8rem 1.5rem;
+            padding: 0.7rem 1.5rem;
             border-radius: 0.5rem;
             cursor: pointer;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-family: 'Outfit', sans-serif;
             transition: background-color 0.15s ease, transform 0.15s ease;
         }
@@ -141,16 +171,12 @@
             transform: translateY(-1px);
         }
 
-        .btn-submit:active {
-            transform: translateY(0);
-        }
-
         /* KPI Cards Summary */
         .kpi-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }
 
         .kpi-card {
@@ -158,10 +184,10 @@
             backdrop-filter: blur(12px);
             border: 1px solid var(--bg-card-border);
             border-radius: 0.85rem;
-            padding: 1.25rem;
+            padding: 1.1rem 1.25rem;
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
+            gap: 0.4rem;
             position: relative;
             overflow: hidden;
         }
@@ -186,7 +212,7 @@
 
         .kpi-value {
             font-family: 'Outfit', sans-serif;
-            font-size: 1.4rem;
+            font-size: 1.35rem;
             font-weight: 700;
             color: var(--text-main);
         }
@@ -203,7 +229,7 @@
         }
 
         .table-header-bar {
-            padding: 1.25rem 1.5rem;
+            padding: 1rem 1.5rem;
             border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
@@ -214,12 +240,12 @@
 
         .table-title {
             font-family: 'Outfit', sans-serif;
-            font-size: 1.2rem;
+            font-size: 1.15rem;
             font-weight: 600;
         }
 
         .table-search-box {
-            width: 320px;
+            width: 340px;
             max-width: 100%;
         }
 
@@ -241,13 +267,13 @@
             text-transform: uppercase;
             font-size: 0.75rem;
             letter-spacing: 0.05em;
-            padding: 0.85rem 0.85rem;
+            padding: 0.8rem 0.75rem;
             border-bottom: 1px solid var(--border-color);
             white-space: nowrap;
         }
 
         td {
-            padding: 0.85rem 0.85rem;
+            padding: 0.75rem 0.75rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
             color: var(--text-main);
             white-space: nowrap;
@@ -272,34 +298,52 @@
         }
 
         /* Status Badges */
+        .badge-status-lunas {
+            background: rgba(52, 211, 153, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(52, 211, 153, 0.4);
+            padding: 0.25rem 0.7rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+
+        .badge-status-lunas:hover {
+            transform: scale(1.05);
+        }
+
         .badge-status-belum-dibayar {
             background: rgba(248, 113, 113, 0.15);
             color: var(--accent-red);
-            border: 1px solid rgba(248, 113, 113, 0.3);
-            padding: 0.25rem 0.65rem;
+            border: 1px solid rgba(248, 113, 113, 0.4);
+            padding: 0.25rem 0.7rem;
             border-radius: 9999px;
             font-size: 0.75rem;
-            font-weight: 600;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.15s ease;
         }
 
-        .badge-status-sudah-dibayar {
-            background: rgba(52, 211, 153, 0.15);
-            color: var(--accent-green);
-            border: 1px solid rgba(52, 211, 153, 0.3);
-            padding: 0.25rem 0.65rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
+        .badge-status-belum-dibayar:hover {
+            transform: scale(1.05);
         }
 
         .badge-status-pending {
             background: rgba(192, 132, 252, 0.15);
             color: var(--accent-purple);
-            border: 1px solid rgba(192, 132, 252, 0.3);
-            padding: 0.25rem 0.65rem;
+            border: 1px solid rgba(192, 132, 252, 0.4);
+            padding: 0.25rem 0.7rem;
             border-radius: 9999px;
             font-size: 0.75rem;
-            font-weight: 600;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+
+        .badge-status-pending:hover {
+            transform: scale(1.05);
         }
 
         .btn-action {
@@ -426,26 +470,25 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
+        <!-- Header & Pill Tab Switcher -->
         <header>
             <div>
-                <h1 class="brand-title">Laporan Rekap Tagihan (Billing Reconciliation)</h1>
+                <h1 class="brand-title">Laporan Rekap Tagihan Rekonsiliasi</h1>
+            </div>
+
+            <!-- Segmented Pill Switcher -->
+            <div class="tab-switcher">
+                <button type="button" class="tab-btn active" id="btnTabWeekly" onclick="switchMode('Weekly')">Tagihan Mingguan (Weekly)</button>
+                <button type="button" class="tab-btn" id="btnTabMonthly" onclick="switchMode('Monthly')">Tagihan Bulanan (Monthly)</button>
             </div>
         </header>
 
         <!-- Filter Controls Form matching Google Sheet Header 1:1 -->
         <div class="filter-card">
             <form id="filterForm" onsubmit="handleFilterSubmit(event)">
-                <div class="filter-grid">
-                    <!-- Tipe Tagihan (Billing Cycle Dropdown) -->
-                    <div class="form-group">
-                        <label for="cycleSelect" class="form-label" style="color: var(--primary);">Tipe Tagihan</label>
-                        <select id="cycleSelect" class="form-control" onchange="handleCycleChange()" style="border-color: var(--primary); font-weight: 700;">
-                            <option value="Monthly">Monthly (Bulanan)</option>
-                            <option value="Weekly" selected>Weekly (Mingguan)</option>
-                        </select>
-                    </div>
+                <input type="hidden" id="cycleSelect" value="Weekly">
 
+                <div class="filter-grid">
                     <!-- Tahun Dropdown -->
                     <div class="form-group">
                         <label for="tahunSelect" class="form-label">Tahun</label>
@@ -500,8 +543,8 @@
                         <label for="statusSelect" class="form-label">Status Pembayaran</label>
                         <select id="statusSelect" class="form-control">
                             <option value="">Semua Status</option>
+                            <option value="LUNAS">LUNAS</option>
                             <option value="BELUM DIBAYAR">BELUM DIBAYAR</option>
-                            <option value="SUDAH DIBAYAR">SUDAH DIBAYAR</option>
                             <option value="PENDING">PENDING</option>
                         </select>
                     </div>
@@ -534,7 +577,7 @@
             </div>
             <div class="kpi-card" style="--card-accent: #818cf8;">
                 <span class="kpi-title">Status Pembayaran</span>
-                <span class="kpi-value" id="kpiPaidStatus">0 Dibayar / 0 Belum Dibayar</span>
+                <span class="kpi-value" id="kpiPaidStatus">0 Lunas / 0 Belum Dibayar</span>
             </div>
         </div>
 
@@ -629,8 +672,8 @@
                     <div class="form-group">
                         <label class="form-label">Status Pembayaran</label>
                         <select id="editStatusPembayaran" class="form-control" required>
+                            <option value="LUNAS">LUNAS</option>
                             <option value="BELUM DIBAYAR">BELUM DIBAYAR</option>
-                            <option value="SUDAH DIBAYAR">SUDAH DIBAYAR</option>
                             <option value="PENDING">PENDING</option>
                         </select>
                     </div>
@@ -666,19 +709,28 @@
 
         let rawMonthlyData = [];
 
-        function handleCycleChange() {
-            const cycle = document.getElementById('cycleSelect').value;
+        function switchMode(mode) {
+            document.getElementById('cycleSelect').value = mode;
+
+            const btnWeekly = document.getElementById('btnTabWeekly');
+            const btnMonthly = document.getElementById('btnTabMonthly');
             const mingguGroup = document.getElementById('mingguGroup');
             const titleEl = document.getElementById('tableHeaderTitle');
 
-            if (cycle === 'Weekly') {
+            if (mode === 'Weekly') {
+                btnWeekly.classList.add('active');
+                btnMonthly.classList.remove('active');
                 mingguGroup.style.display = 'flex';
                 titleEl.textContent = 'Daftar Tagihan Outlet Live (Weekly Cycle)';
             } else {
+                btnMonthly.classList.add('active');
+                btnWeekly.classList.remove('active');
                 mingguGroup.style.display = 'none';
                 titleEl.textContent = 'Daftar Tagihan Outlet Live (Monthly Cycle)';
             }
+
             handleYearMonthChange();
+            fetchMonthlyData();
         }
 
         function handleYearMonthChange() {
@@ -716,8 +768,7 @@
 
         // Initialize Page Data
         async function initPage() {
-            handleCycleChange();
-            fetchMonthlyData();
+            switchMode('Weekly');
         }
 
         // Form Submit Handler
@@ -738,7 +789,7 @@
             if (tahun && bulan) {
                 periode = `${tahun}-${bulan}`;
                 if (cycle === 'Weekly' && minggu) {
-                    periode += ` ${minggu}`;
+                    periode += `-${minggu}`;
                 }
             } else if (tahun) {
                 periode = `${tahun}`;
@@ -810,6 +861,38 @@
             renderTable(filtered);
         }
 
+        // 1-Click Quick Status Toggle for Maximum Operational Efficiency
+        async function quickToggleStatus(storeId, periode, currentStatus) {
+            const newStatus = (currentStatus === 'LUNAS' || currentStatus === 'Paid' || currentStatus === 'SUDAH DIBAYAR') ? 'BELUM DIBAYAR' : 'LUNAS';
+            const record = rawMonthlyData.find(r => r.store_id === storeId && r.periode === periode);
+            if (!record) return;
+
+            record.status_pembayaran = newStatus;
+            renderTable(rawMonthlyData);
+
+            // Persist to DB in background
+            const payload = {
+                store_id: record.store_id,
+                periode: record.periode,
+                penyesuaian: parseFloat(record.penyesuaian) || 0,
+                tanggal_tagihan: record.tanggal_tagihan || document.getElementById('headerTanggalTagihan').value || null,
+                transfer_id: record.transfer_id || null,
+                tanggal_pembayaran: newStatus === 'LUNAS' ? (record.tanggal_pembayaran || new Date().toISOString().split('T')[0]) : null,
+                link_bukti: record.link_bukti || null,
+                status_pembayaran: newStatus
+            };
+
+            try {
+                await fetch(`${API_BASE}/api/rekap-tagihan-monthly/update-payment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (err) {
+                console.error('Error toggling status:', err);
+            }
+        }
+
         // Clean O(N) Table Renderer (Rules Section 2 & 3)
         function renderTable(data) {
             const tbody = document.getElementById('tableBody');
@@ -842,7 +925,9 @@
                 }
 
                 const currentStatus = row.status_pembayaran || 'BELUM DIBAYAR';
-                if (currentStatus === 'SUDAH DIBAYAR' || currentStatus === 'Paid') paidCount++;
+                const isLunas = (currentStatus === 'LUNAS' || currentStatus === 'SUDAH DIBAYAR' || currentStatus === 'Paid');
+                
+                if (isLunas) paidCount++;
                 else unpaidCount++;
 
                 const formattedBiaya = formatIDR(row.biaya);
@@ -856,11 +941,11 @@
                 const tglBayar = row.tanggal_pembayaran || '-';
                 const linkBukti = row.link_bukti ? `<a href="${row.link_bukti}" target="_blank" style="color: var(--primary);">Lihat Bukti</a>` : '-';
 
-                const badgeClass = (currentStatus === 'SUDAH DIBAYAR' || currentStatus === 'Paid') 
-                    ? 'badge-status-sudah-dibayar' 
-                    : ((currentStatus === 'PENDING' || currentStatus === 'Pending') ? 'badge-status-pending' : 'badge-status-belum-dibayar');
+                const badgeClass = isLunas ? 'badge-status-lunas' : ((currentStatus === 'PENDING' || currentStatus === 'Pending') ? 'badge-status-pending' : 'badge-status-belum-dibayar');
+                const displayStatusLabel = isLunas ? 'LUNAS' : (currentStatus === 'PENDING' ? 'PENDING' : 'BELUM DIBAYAR');
 
-                const statusBadge = `<span class="${badgeClass}">${currentStatus}</span>`;
+                // Interactive 1-click status badge toggle for high efficiency
+                const statusBadge = `<span class="${badgeClass}" title="Klik untuk ubah status cepat" onclick="quickToggleStatus('${row.store_id}', '${row.periode}', '${displayStatusLabel}')">${displayStatusLabel}</span>`;
                 const actionBtn = `<button class="btn-action" onclick="openEditModal('${row.store_id}', '${row.periode}')">Input / Edit</button>`;
 
                 return `<tr>
@@ -912,7 +997,10 @@
             document.getElementById('editTransferId').value = record.transfer_id || '';
             document.getElementById('editTanggalPembayaran').value = record.tanggal_pembayaran || '';
             document.getElementById('editLinkBukti').value = record.link_bukti || '';
-            document.getElementById('editStatusPembayaran').value = record.status_pembayaran || 'BELUM DIBAYAR';
+            
+            const st = record.status_pembayaran || 'BELUM DIBAYAR';
+            const normSt = (st === 'LUNAS' || st === 'SUDAH DIBAYAR' || st === 'Paid') ? 'LUNAS' : (st === 'PENDING' ? 'PENDING' : 'BELUM DIBAYAR');
+            document.getElementById('editStatusPembayaran').value = normSt;
 
             document.getElementById('editModal').classList.add('active');
         }
@@ -958,7 +1046,7 @@
             document.getElementById('kpiPenyesuaian').textContent = formatIDR(penyesuaian);
             document.getElementById('kpiTotal').textContent = formatIDR(total);
             document.getElementById('kpiSukses').textContent = `${sukses.toLocaleString('id-ID')} Order`;
-            document.getElementById('kpiPaidStatus').textContent = `${paid} Dibayar / ${unpaid} Belum Dibayar`;
+            document.getElementById('kpiPaidStatus').textContent = `${paid} Lunas / ${unpaid} Belum Dibayar`;
         }
 
         window.addEventListener('DOMContentLoaded', initPage);

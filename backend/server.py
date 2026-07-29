@@ -571,6 +571,12 @@ def update_monthly_payment_record(req: MonthlyPaymentUpdateRequest):
                 updated_at = CURRENT_TIMESTAMP;
         """
 
+        st_input = (req.status_pembayaran or 'BELUM DIBAYAR').strip()
+        if st_input.upper() in ('PAID', 'SUDAH DIBAYAR', 'LUNAS'):
+            st_input = 'LUNAS'
+        elif st_input.upper() in ('UNPAID', 'BELUM DIBAYAR'):
+            st_input = 'BELUM DIBAYAR'
+
         params = {
             "store_id": req.store_id,
             "periode": req.periode,
@@ -579,7 +585,7 @@ def update_monthly_payment_record(req: MonthlyPaymentUpdateRequest):
             "transfer_id": req.transfer_id,
             "tanggal_pembayaran": tgl_bayar,
             "link_bukti": req.link_bukti,
-            "status_pembayaran": req.status_pembayaran or 'Unpaid',
+            "status_pembayaran": st_input,
             "notes": req.notes
         }
 

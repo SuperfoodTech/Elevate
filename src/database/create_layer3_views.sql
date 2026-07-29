@@ -239,7 +239,7 @@ DROP FUNCTION IF EXISTS layer3_dim.get_rekap_tagihan_billing(text,text,text,text
 CREATE OR REPLACE FUNCTION layer3_dim.get_rekap_tagihan_billing(
     p_billing_cycle TEXT DEFAULT 'Monthly', -- 'Monthly' or 'Weekly'
     p_owner TEXT DEFAULT NULL,
-    p_periode TEXT DEFAULT NULL,           -- 'YYYY-MM' for Monthly, or 'YYYY-MM W1'..'W5' for Weekly
+    p_periode TEXT DEFAULT NULL,           -- 'YYYY-MM' for Monthly, or 'YYYY-MM-W1'..'W5' / 'YYYY-MM W1' for Weekly
     p_status_pembayaran TEXT DEFAULT NULL
 )
 RETURNS TABLE (
@@ -268,6 +268,9 @@ BEGIN
             ELSE 'MONTHLY'
         END AS cycle_code
     ),
+    clean_params AS (
+        SELECT REPLACE(REPLACE(p_periode, ' ', '-'), 'W', 'W') AS norm_periode
+    ),
     live_outlets AS (
         SELECT 
             COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS o_name,
@@ -288,7 +291,7 @@ BEGIN
             SELECT 
                 CASE 
                     WHEN (SELECT cycle_code FROM target_cycle) = 'WEEKLY' 
-                        THEN TO_CHAR(transaction_date, 'YYYY-MM') || ' W' || TO_CHAR(transaction_date, 'W')
+                        THEN TO_CHAR(transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(transaction_date, 'W')
                     ELSE TO_CHAR(transaction_date, 'YYYY-MM')
                 END AS p_code 
             FROM layer3_dim.fact_transactions 
@@ -296,15 +299,18 @@ BEGIN
             
             UNION
             
-            SELECT COALESCE(NULLIF(p_periode, ''), 
+            SELECT COALESCE(NULLIF((SELECT norm_periode FROM clean_params), ''), 
                 CASE 
                     WHEN (SELECT cycle_code FROM target_cycle) = 'WEEKLY' 
-                        THEN TO_CHAR(CURRENT_DATE, 'YYYY-MM') || ' W1'
+                        THEN TO_CHAR(CURRENT_DATE, 'YYYY-MM') || '-W1'
                     ELSE TO_CHAR(CURRENT_DATE, 'YYYY-MM')
                 END
             ) AS p_code
         ) p
-        WHERE (p_periode IS NULL OR p_periode = '' OR p.p_code = p_periode)
+        CROSS JOIN clean_params cp
+        WHERE (cp.norm_periode IS NULL OR cp.norm_periode = '' 
+               OR REPLACE(p.p_code, ' ', '-') = cp.norm_periode
+               OR p.p_code LIKE cp.norm_periode || '%')
     ),
     grid AS (
         SELECT o.*, p.p_code
@@ -328,7 +334,11 @@ BEGIN
             pm.transfer_id AS trf_id,
             pm.tanggal_pembayaran AS tgl_bayar,
             pm.link_bukti AS link_bkt,
-            COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR') AS st_bayar
+            CASE 
+                WHEN UPPER(COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR')) IN ('PAID', 'LUNAS', 'SUDAH DIBAYAR') THEN 'LUNAS'
+                WHEN UPPER(COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR')) = 'PENDING' THEN 'PENDING'
+                ELSE 'BELUM DIBAYAR'
+            END AS st_bayar
         FROM grid g
         CROSS JOIN target_cycle tc
         LEFT JOIN layer3_dim.fact_transactions ft 
@@ -336,15 +346,20 @@ BEGIN
            AND (
                CASE 
                    WHEN tc.cycle_code = 'WEEKLY' 
-                       THEN (TO_CHAR(ft.transaction_date, 'YYYY-MM') || ' W' || TO_CHAR(ft.transaction_date, 'W'))
+                       THEN (TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W'))
                    ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
                END
            ) = g.p_code
         LEFT JOIN layer3_dim.monthly_billing_payments pm 
             ON g.s_id = pm.store_id 
-           AND g.p_code = pm.periode
+           AND (pm.periode = g.p_code OR REPLACE(pm.periode, ' ', '-') = g.p_code)
         WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(g.o_name) = LOWER(p_owner))
-          AND (p_status_pembayaran IS NULL OR p_status_pembayaran = '' OR LOWER(COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR')) = LOWER(p_status_pembayaran))
+          AND (
+              p_status_pembayaran IS NULL OR p_status_pembayaran = '' OR 
+              LOWER(COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR')) = LOWER(p_status_pembayaran) OR
+              (LOWER(p_status_pembayaran) IN ('lunas', 'paid', 'sudah dibayar') AND UPPER(COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR')) IN ('PAID', 'LUNAS', 'SUDAH DIBAYAR')) OR
+              (LOWER(p_status_pembayaran) IN ('belum dibayar', 'unpaid') AND UPPER(COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR')) IN ('UNPAID', 'BELUM DIBAYAR'))
+          )
         GROUP BY 
             g.o_name, g.ot_name, g.b_name, g.r_name, g.s_id, g.p_code, g.fee_val,
             pm.penyesuaian, pm.tanggal_tagihan, pm.transfer_id, pm.tanggal_pembayaran, pm.link_bukti, pm.status_pembayaran
