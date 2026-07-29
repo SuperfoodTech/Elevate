@@ -730,3 +730,153 @@ BEGIN
     ORDER BY c.sort_bulan ASC, c.sort_grp ASC, c.channel ASC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Baseline vs Current Performance Function
+-- Objective: Compare each outlet GMV & Order from 30-day baseline window
+-- vs current period (p_start_date..p_end_date from filter Date Range)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION layer3_dim.get_baseline_vs_current(
+    p_pic          TEXT    DEFAULT NULL,
+    p_owner        TEXT    DEFAULT NULL,
+    p_outlet       TEXT    DEFAULT NULL,
+    p_start_date   DATE    DEFAULT CURRENT_DATE - INTERVAL '6 days',
+    p_end_date     DATE    DEFAULT CURRENT_DATE,
+    p_target_growth_pct NUMERIC DEFAULT 10.0
+)
+RETURNS TABLE (
+    pic                  TEXT,
+    owner_name           TEXT,
+    outlet_name          TEXT,
+    live_date            TEXT,
+    age                  TEXT,
+    selected_days        INT,
+    baseline_gmv         NUMERIC(15,2),
+    current_gmv          NUMERIC(15,2),
+    baseline_daily_gmv   NUMERIC(15,2),
+    current_daily_gmv    NUMERIC(15,2),
+    daily_gmv_growth     NUMERIC(15,4),
+    baseline_order       BIGINT,
+    current_order        BIGINT,
+    baseline_daily_order NUMERIC(15,2),
+    current_daily_order  NUMERIC(15,2),
+    daily_order_growth   NUMERIC(15,4),
+    status               TEXT
+) AS $$
+DECLARE
+    v_selected_days   INT;
+    v_baseline_end    DATE;
+    v_baseline_start  DATE;
+BEGIN
+    v_selected_days  := GREATEST((p_end_date - p_start_date) + 1, 1);
+    v_baseline_end   := p_start_date - INTERVAL '1 day';
+    v_baseline_start := v_baseline_end - INTERVAL '29 days';
+
+    RETURN QUERY
+    WITH target_outlets AS (
+        SELECT DISTINCT
+            COALESCE(NULLIF(TRIM(m.pic), ''), NULLIF(TRIM(m.bd_pic), ''), 'UNKNOWN') AS pic_val,
+            COALESCE(c.owner_name, m.owner_name, 'UNKNOWN')                          AS owner_val,
+            COALESCE(m.outlet_name, c.merchant_name, 'UNKNOWN')                     AS outlet_val,
+            m.store_id,
+            m.live_date AS live_dt
+        FROM layer3_dim.dim_merchant_mapping m
+        LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+        WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+          AND (p_pic    IS NULL OR p_pic    = '' OR LOWER(COALESCE(m.pic, m.bd_pic, ''))        = LOWER(p_pic))
+          AND (p_owner  IS NULL OR p_owner  = '' OR LOWER(COALESCE(c.owner_name, m.owner_name, '')) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(COALESCE(m.outlet_name, c.merchant_name, '')) = LOWER(p_outlet))
+    ),
+    perf AS (
+        SELECT
+            t.pic_val,
+            t.owner_val,
+            t.outlet_val,
+            t.live_dt,
+            COALESCE(SUM(CASE WHEN p.transaction_date BETWEEN v_baseline_start AND v_baseline_end THEN p.gmv          ELSE 0 END), 0.00)::NUMERIC(15,2) AS b_gmv,
+            COALESCE(SUM(CASE WHEN p.transaction_date BETWEEN v_baseline_start AND v_baseline_end THEN p.total_orders ELSE 0 END), 0)::BIGINT          AS b_ord,
+            COALESCE(SUM(CASE WHEN p.transaction_date BETWEEN p_start_date      AND p_end_date   THEN p.gmv          ELSE 0 END), 0.00)::NUMERIC(15,2) AS c_gmv,
+            COALESCE(SUM(CASE WHEN p.transaction_date BETWEEN p_start_date      AND p_end_date   THEN p.total_orders ELSE 0 END), 0)::BIGINT          AS c_ord
+        FROM target_outlets t
+        LEFT JOIN layer3_dim.mv_outlet_daily_performance p ON p.store_id = t.store_id
+        GROUP BY t.pic_val, t.owner_val, t.outlet_val, t.live_dt
+    ),
+    calc AS (
+        SELECT
+            p.pic_val,
+            p.owner_val,
+            p.outlet_val,
+            COALESCE(p.live_dt, '-')   AS live_date_str,
+            -- Age: (p_end_date - live_date) in Xmo Yw, live_dt is TEXT
+            CASE
+                WHEN p.live_dt IS NULL OR p.live_dt = '-' THEN '-'
+                ELSE CONCAT(
+                    FLOOR((p_end_date - p.live_dt::DATE)::NUMERIC / 30.4375)::INT, 'mo ',
+                    FLOOR(((p_end_date - p.live_dt::DATE)::NUMERIC % 30.4375) / 7)::INT, 'w'
+                )
+            END AS age_str,
+            v_selected_days                                          AS sel_days,
+            p.b_gmv,
+            p.c_gmv,
+            -- Baseline Daily GMV = Baseline GMV / 30
+            ROUND(p.b_gmv / 30.0, 2)                                AS bdg,
+            -- Current Daily GMV  = Current GMV / Selected Days
+            ROUND(p.c_gmv / v_selected_days, 2)                     AS cdg,
+            -- Daily GMV Growth = (Current Daily / Baseline Daily) - 1
+            CASE WHEN p.b_gmv > 0
+                 THEN ROUND((ROUND(p.c_gmv / v_selected_days, 2) / ROUND(p.b_gmv / 30.0, 2)) - 1.0, 4)
+                 ELSE NULL
+            END AS gmv_growth,
+            p.b_ord,
+            p.c_ord,
+            -- Baseline Daily Order = Baseline Order / 30
+            ROUND(p.b_ord::NUMERIC / 30.0, 2)                       AS bdo,
+            -- Current Daily Order  = Current Order / Selected Days
+            ROUND(p.c_ord::NUMERIC / v_selected_days, 2)            AS cdo,
+            -- Daily Order Growth = (Current Daily / Baseline Daily) - 1
+            CASE WHEN p.b_ord > 0
+                 THEN ROUND((ROUND(p.c_ord::NUMERIC / v_selected_days, 2) / ROUND(p.b_ord::NUMERIC / 30.0, 2)) - 1.0, 4)
+                 ELSE NULL
+            END AS ord_growth
+        FROM perf p
+    ),
+    evaluated AS (
+        SELECT
+            c.*,
+            CASE
+                WHEN (c.gmv_growth IS NOT NULL AND c.gmv_growth >= (p_target_growth_pct / 100.0))
+                 AND (c.ord_growth IS NOT NULL AND c.ord_growth >= (p_target_growth_pct / 100.0))
+                 THEN 'Achieved'
+                WHEN (c.gmv_growth IS NULL OR c.gmv_growth < (p_target_growth_pct / 100.0))
+                 AND (c.ord_growth IS NOT NULL AND c.ord_growth >= (p_target_growth_pct / 100.0))
+                 THEN 'GMV Below Target'
+                WHEN (c.gmv_growth IS NOT NULL AND c.gmv_growth >= (p_target_growth_pct / 100.0))
+                 AND (c.ord_growth IS NULL OR c.ord_growth < (p_target_growth_pct / 100.0))
+                 THEN 'Order Below Target'
+                ELSE 'Not Achieved'
+            END AS res_status
+        FROM calc c
+    )
+    SELECT
+        e.pic_val::TEXT,
+        e.owner_val::TEXT,
+        e.outlet_val::TEXT,
+        e.live_date_str::TEXT,
+        e.age_str::TEXT,
+        e.sel_days::INT,
+        e.b_gmv,
+        e.c_gmv,
+        e.bdg,
+        e.cdg,
+        e.gmv_growth,
+        e.b_ord,
+        e.c_ord,
+        e.bdo,
+        e.cdo,
+        e.ord_growth,
+        e.res_status::TEXT
+    FROM evaluated e
+    ORDER BY e.owner_val ASC, e.outlet_val ASC;
+END;
+$$ LANGUAGE plpgsql;
+
