@@ -612,12 +612,16 @@ def sync_payment_history_from_sheets():
 # LAPORAN APLIKASI OJOL (GOFOOD, GRABFOOD, SHOPEEFOOD) ROUTES
 # ============================================================================
 
-@app.get("/laporan-aplikasi-ojol", response_class=FileResponse, summary="Serve Laporan Aplikasi Ojol Web Dashboard Page")
-def serve_laporan_aplikasi_ojol_ui():
-    file_path = os.path.join(STATIC_DIR, "laporan_aplikasi_ojol.html")
+@app.get("/rangkuman", response_class=FileResponse, summary="Serve Rangkuman Web Dashboard Page")
+def serve_rangkuman_ui():
+    file_path = os.path.join(STATIC_DIR, "rangkuman.html")
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="laporan_aplikasi_ojol.html not found.")
+        raise HTTPException(status_code=404, detail="rangkuman.html not found.")
     return FileResponse(file_path)
+
+@app.get("/laporan-aplikasi-ojol", response_class=FileResponse, summary="Serve Rangkuman Web Dashboard Page (Alias)")
+def serve_laporan_aplikasi_ojol_ui():
+    return serve_rangkuman_ui()
 
 @app.get("/api/laporan-aplikasi-ojol/filters", summary="Get Filter Options for Laporan Aplikasi Ojol")
 def get_laporan_ojol_filter_options():
