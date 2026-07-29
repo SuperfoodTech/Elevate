@@ -69,6 +69,7 @@ SELECT
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
+WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
 GROUP BY 
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
     COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
