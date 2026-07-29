@@ -20,14 +20,14 @@ Dalam arsitektur Data Warehouse berbasis **Kimball Star Schema**, data dipisahka
             │                                     │
             ▼                                     ▼
     [dim_merchant_mapping] ────────────> [fact_transactions] (91,955 baris)
-    (Resto Final & Status)              [fact_daily_merchant_performance] (14,101 baris)
+    (Resto Final & Status)
 ```
 
 ---
 
 ## 2. INVENTARIS LENGKAP SCHEMAS & TABEL DATABASE (`165.232.165.241`)
 
-Database **`db_superfood`** terdiri dari 3 layer utama dan 13 base tables:
+Database **`db_superfood`** terdiri dari 3 layer utama dan 12 base tables:
 
 | Schema | Nama Tabel | Tipe | Jumlah Baris Data | Deskripsi & Peran |
 |---|---|---|---|---|
@@ -43,7 +43,6 @@ Database **`db_superfood`** terdiri dari 3 layer utama dan 13 base tables:
 | **`layer3_dim`** | **`dim_merchant_mapping`** | BASE TABLE | **367 baris** | **Master Pemetaan Resto Baku & Status Live/Never** |
 | **`layer3_dim`** | **`dim_portal_credentials`** | BASE TABLE | **20 baris** | **Referensi Statis Portal, OTP WA/SMS & BD Profile** |
 | **`layer3_dim`** | **`fact_transactions`** | BASE TABLE | **91,955 baris** | **Unified Fact Table** Transaksi Detail 3 Platform |
-| **`layer3_dim`** | **`fact_daily_merchant_performance`** | BASE TABLE | **14,101 baris** | **Agregat Fakta Harian** Performa Toko (BI Ready) |
 
 ---
 
