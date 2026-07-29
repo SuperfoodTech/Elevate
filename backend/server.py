@@ -360,6 +360,15 @@ def serve_rekap_tagihan_ui():
         raise HTTPException(status_code=404, detail="Dashboard UI file not found.")
     return FileResponse(html_file)
 
+@app.get("/baseline-growth", response_class=FileResponse, summary="Serve Baseline Growth Web Dashboard UI")
+def serve_baseline_growth_ui():
+    html_file = os.path.join(STATIC_DIR, "baseline_growth.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="Baseline Growth UI file not found.")
+    return FileResponse(html_file)
+
+
+
 @app.get("/api/rekap-tagihan/owners", summary="Get Active Owners List for Dropdown")
 def get_rekap_owners():
     try:
@@ -440,6 +449,146 @@ def get_rekap_tagihan_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan: {e}")
 
+@app.get("/api/baseline-growth/outlets", summary="Get Active Outlets List for Dropdown Filter")
+def get_baseline_outlets(owner: Optional[str] = Query(None, description="Owner name filter")):
+    try:
+        if hasattr(owner, 'default'): owner = None
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT DISTINCT outlet_name 
+            FROM layer3_dim.mv_outlet_daily_performance 
+            WHERE outlet_name IS NOT NULL 
+              AND outlet_name <> 'UNKNOWN' 
+              AND TRIM(outlet_name) <> ''
+              AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(owner_name) = LOWER(:p_owner))
+            ORDER BY outlet_name ASC;
+        """
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_owner": owner if owner else None}).fetchall()
+
+        outlets = [r[0] for r in rows]
+        return {"total": len(outlets), "outlets": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+
+@app.get("/api/baseline-growth", summary="Query Baseline Growth per Outlet")
+def get_baseline_growth_data(
+    owner: Optional[str] = Query(None, description="Owner name filter"),
+    outlet: Optional[str] = Query(None, description="Outlet name filter"),
+    start_date: Optional[str] = Query("2026-07-01", description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    growth_target_pct: Optional[float] = Query(0.0, description="Growth target percentage e.g. 10 for 10%")
+):
+    try:
+        if hasattr(owner, 'default'): owner = None
+        if hasattr(outlet, 'default'): outlet = None
+        if hasattr(start_date, 'default'): start_date = '2026-07-01'
+        if hasattr(end_date, 'default'): end_date = None
+        if hasattr(growth_target_pct, 'default'): growth_target_pct = 0.0
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        sql_params = {
+            "p_owner": owner if owner else None,
+            "p_outlet": outlet if outlet else None,
+            "p_start_date": start_date,
+            "p_end_date": end_date,
+            "p_growth_target_pct": growth_target_pct if growth_target_pct is not None else 0.0
+        }
+
+        query_sql = """
+            SELECT 
+                outlet_name,
+                owner_name,
+                live_date,
+                selected_days,
+                growth_target_pct,
+                days_to_eom,
+                baseline_gmv,
+                baseline_order,
+                target_gmv,
+                target_order,
+                current_gmv,
+                current_daily_gmv_growth,
+                current_order,
+                current_daily_order_growth,
+                eom_gmv,
+                eom_gmv_growth,
+                eom_order,
+                eom_order_growth,
+                remaining_gmv,
+                required_daily_gmv,
+                remaining_order,
+                required_daily_order
+            FROM layer3_dim.get_baseline_growth(
+                :p_owner,
+                :p_outlet,
+                CAST(:p_start_date AS DATE),
+                CAST(:p_end_date AS DATE),
+                :p_growth_target_pct
+            );
+        """
+
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+
+        data_list = [dict(r) for r in rows]
+
+        # Calculate Overall Summary Across Outlets
+        total_baseline_gmv = sum(float(r['baseline_gmv'] or 0) for r in data_list)
+        total_baseline_order = sum(int(r['baseline_order'] or 0) for r in data_list)
+        total_target_gmv = sum(float(r['target_gmv'] or 0) for r in data_list)
+        total_target_order = sum(float(r['target_order'] or 0) for r in data_list)
+        total_current_gmv = sum(float(r['current_gmv'] or 0) for r in data_list)
+        total_current_order = sum(int(r['current_order'] or 0) for r in data_list)
+        total_eom_gmv = sum(float(r['eom_gmv'] or 0) for r in data_list)
+        total_eom_order = sum(float(r['eom_order'] or 0) for r in data_list)
+        total_remaining_gmv = sum(float(r['remaining_gmv'] or 0) for r in data_list)
+        total_required_daily_gmv = sum(float(r['required_daily_gmv'] or 0) for r in data_list)
+
+        summary = {
+            "total_outlets": len(data_list),
+            "total_baseline_gmv": total_baseline_gmv,
+            "total_baseline_order": total_baseline_order,
+            "total_target_gmv": total_target_gmv,
+            "total_target_order": total_target_order,
+            "total_current_gmv": total_current_gmv,
+            "total_current_order": total_current_order,
+            "total_eom_gmv": total_eom_gmv,
+            "total_eom_order": total_eom_order,
+            "total_remaining_gmv": total_remaining_gmv,
+            "total_required_daily_gmv": total_required_daily_gmv
+        }
+
+        return {
+            "outlet_filter": outlet,
+            "start_date": start_date,
+            "end_date": end_date,
+            "growth_target_pct": growth_target_pct,
+            "summary": summary,
+            "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing get_baseline_growth: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+
