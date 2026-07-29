@@ -89,7 +89,7 @@ CREATE INDEX idx_mv_payment_daily_owner ON layer3_dim.mv_payment_daily (owner_na
 CREATE INDEX idx_mv_payment_daily_date ON layer3_dim.mv_payment_daily (transaction_date);
 
 CREATE UNIQUE INDEX idx_mv_rekap_tagihan_daily ON layer3_dim.mv_rekap_tagihan_daily (owner_name, store_id, transaction_date);
-CREATE INDEX idx_mv_rekap_tagihan_owner ON layer3_dim.mv_rekap_tagihan_daily (owner_name);
+CREATE INDEX idx_mv_rekap_tagihan_daily_owner ON layer3_dim.mv_rekap_tagihan_daily (owner_name);
 CREATE INDEX idx_mv_rekap_tagihan_date ON layer3_dim.mv_rekap_tagihan_daily (transaction_date);
 
 -- ============================================================================
@@ -269,18 +269,17 @@ GROUP BY
     p.link_bukti,
     p.status_pembayaran;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_monthly AS SELECT * FROM layer3_dim.mv_rekap_tagihan;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_owner;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_periode;
 
 CREATE UNIQUE INDEX idx_mv_rekap_tagihan ON layer3_dim.mv_rekap_tagihan (store_id, periode);
 CREATE INDEX idx_mv_rekap_tagihan_owner ON layer3_dim.mv_rekap_tagihan (owner_name);
 CREATE INDEX idx_mv_rekap_tagihan_periode ON layer3_dim.mv_rekap_tagihan (periode);
 
-CREATE UNIQUE INDEX idx_mv_rekap_tagihan_monthly ON layer3_dim.mv_rekap_tagihan_monthly (store_id, periode);
-
 -- ============================================================================
 -- 5B. MATERIALIZED VIEW BILLING HISTORY (PAYMENT HISTORY RECORDS)
 -- ============================================================================
-DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan_billing_history CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_billing_history CASCADE;
 
 CREATE MATERIALIZED VIEW layer3_dim.mv_billing_history AS
@@ -307,15 +306,13 @@ FROM layer3_dim.billing_payments p
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON p.store_id = m.store_id
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON p.store_id = c.store_id;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_billing_history AS SELECT * FROM layer3_dim.mv_billing_history;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_billing_history;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_billing_history_owner;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_billing_history_periode;
 
 CREATE UNIQUE INDEX idx_mv_billing_history ON layer3_dim.mv_billing_history (store_id, periode);
 CREATE INDEX idx_mv_billing_history_owner ON layer3_dim.mv_billing_history (owner_name);
 CREATE INDEX idx_mv_billing_history_periode ON layer3_dim.mv_billing_history (periode);
-
-CREATE UNIQUE INDEX idx_mv_rekap_tagihan_billing_history ON layer3_dim.mv_rekap_tagihan_billing_history (store_id, periode);
-CREATE INDEX idx_mv_rekap_tagihan_billing_history_owner ON layer3_dim.mv_rekap_tagihan_billing_history (owner_name);
-CREATE INDEX idx_mv_rekap_tagihan_billing_history_periode ON layer3_dim.mv_rekap_tagihan_billing_history (periode);
 
 -- ============================================================================
 -- 6. SQL STORED FUNCTION UNIFIED DYNAMIC REKAP TAGIHAN (MONTHLY & WEEKLY)

@@ -571,8 +571,8 @@ def update_billing_payment_record(req: MonthlyPaymentUpdateRequest):
         with db.engine.begin() as conn:
             conn.execute(text(upsert_sql), params)
             # Refresh Materialized Views to reflect payment updates
-            conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_billing_history;"))
-            conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_monthly;"))
+            conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_billing_history;"))
+            conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan;"))
 
         return {
             "status": "success",
