@@ -424,18 +424,19 @@
     <script>
         const API_BASE = window.location.origin;
 
-        // Currency Formatter (IDR)
+        // Cached Intl.NumberFormat instance for O(1) performance
+        const idrFormatter = new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            maximumFractionDigits: 0
+        });
+
         function formatIDR(value) {
-            return new Intl.NumberFormat('id-ID', {
-                style: 'currency',
-                currency: 'IDR',
-                maximumFractionDigits: 0
-            }).format(value || 0);
+            return idrFormatter.format(value || 0);
         }
 
         // Initialize Page Data & Dropdown Options
         async function initPage() {
-            // Set Default Dates (First to Last day of current month or sample range 2026-03-01 to 2026-07-27)
             document.getElementById('startDate').value = '2026-03-01';
             document.getElementById('endDate').value = '2026-07-27';
 
@@ -447,12 +448,14 @@
                 selectEl.innerHTML = '';
 
                 if (result.owners && result.owners.length > 0) {
+                    const fragment = document.createDocumentFragment();
                     result.owners.forEach(owner => {
                         const opt = document.createElement('option');
                         opt.value = owner;
                         opt.textContent = owner;
-                        selectEl.appendChild(opt);
+                        fragment.appendChild(opt);
                     });
+                    selectEl.appendChild(fragment);
 
                     // Auto-fetch first owner data
                     fetchRekapData();
@@ -525,43 +528,36 @@
             }
         }
 
-        // Render Table Data
+        // Single-pass O(N) DOM builder to prevent re-renders (Rules Section 2 & 3)
         function renderTable(data, owner) {
             const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = '';
-
             let grandTotalRow = null;
 
-            data.forEach(row => {
-                const tr = document.createElement('tr');
-
-                if (row.tanggal === 'Grand Total') {
-                    tr.classList.add('row-grand-total');
+            const htmlRows = data.map(row => {
+                const isGrandTotal = (row.tanggal === 'Grand Total');
+                if (isGrandTotal) {
                     grandTotalRow = row;
-
-                    tr.innerHTML = `
-                        <td>${row.tanggal}</td>
-                        <td class="text-right">${formatIDR(row.pendapatan_kotor)}</td>
-                        <td class="text-right">${formatIDR(row.potongan_ojol)}</td>
-                        <td class="text-right">${formatIDR(row.pendapatan_bersih)}</td>
-                        <td class="text-center">${row.total_order_sukses.toLocaleString('id-ID')}</td>
-                        <td class="text-right">${formatIDR(row.total_bagi_hasil)}</td>
-                    `;
-                } else {
-                    tr.innerHTML = `
-                        <td>${row.tanggal}</td>
-                        <td class="text-right">${formatIDR(row.pendapatan_kotor)}</td>
-                        <td class="text-right">${formatIDR(row.potongan_ojol)}</td>
-                        <td class="text-right">${formatIDR(row.pendapatan_bersih)}</td>
-                        <td class="text-center">${row.total_order_sukses.toLocaleString('id-ID')}</td>
-                        <td class="text-right">${formatIDR(row.total_bagi_hasil)}</td>
-                    `;
                 }
 
-                tbody.appendChild(tr);
-            });
+                const trClass = isGrandTotal ? ' class="row-grand-total"' : '';
+                const formattedKotor = formatIDR(row.pendapatan_kotor);
+                const formattedOjol = formatIDR(row.potongan_ojol);
+                const formattedBersih = formatIDR(row.pendapatan_bersih);
+                const formattedSukses = row.total_order_sukses.toLocaleString('id-ID');
+                const formattedBagiHasil = formatIDR(row.total_bagi_hasil);
 
-            // Update Summary KPI Cards from Grand Total row
+                return `<tr${trClass}>
+                    <td>${row.tanggal}</td>
+                    <td class="text-right">${formattedKotor}</td>
+                    <td class="text-right">${formattedOjol}</td>
+                    <td class="text-right">${formattedBersih}</td>
+                    <td class="text-center">${formattedSukses}</td>
+                    <td class="text-right">${formattedBagiHasil}</td>
+                </tr>`;
+            }).join('');
+
+            tbody.innerHTML = htmlRows;
+
             if (grandTotalRow) {
                 updateKPIs(
                     grandTotalRow.pendapatan_kotor,
@@ -572,7 +568,7 @@
                 );
             }
 
-            document.getElementById('tableHeaderTitle').textContent = `Rincian Agregat Harian — ${owner}`;
+            document.getElementById('tableHeaderTitle').textContent = `Rincian Agregat Harian - ${owner}`;
             document.getElementById('recordCountBadge').textContent = `${data.length - 1} Hari Transaksi`;
         }
 
@@ -585,7 +581,6 @@
             document.getElementById('kpiBagiHasil').textContent = formatIDR(bagiHasil);
         }
 
-        // Run Initialization on Load
         window.addEventListener('DOMContentLoaded', initPage);
     </script>
 </body>
