@@ -126,12 +126,12 @@ BEGIN
         stg.month,
         TO_CHAR(stg.transaction_time, 'YY-MM-') || 'W' || TO_CHAR(stg.transaction_time, 'W'),
         EXTRACT(HOUR FROM stg.transaction_time)::INTEGER,
-        stg.store_id,
+        stg.merchant_id,
         COALESCE(m.group_code, 'UNKNOWN'),
-        COALESCE(m.outlet_name, stg.store_name),
+        COALESCE(m.outlet_name, stg.outlet_name),
         COALESCE(m.nama_resto_final, m.nama_tarikan, 'UNKNOWN'),
-        stg.store_name,
-        COALESCE(stg.status, 'Sukses'),
+        stg.outlet_name,
+        COALESCE(stg.order_status, 'Sukses'),
         1, -- GoFood completed orders
         0,
         stg.amount,
@@ -144,7 +144,7 @@ BEGIN
         stg.net_amount, -- Tab Order Lineage: revenue = Net Amount
         stg.id
     FROM layer2_clean.stg_go_orders stg
-    LEFT JOIN layer3_dim.dim_merchant_mapping m ON stg.store_id = m.store_id
+    LEFT JOIN layer3_dim.dim_merchant_mapping m ON stg.merchant_id = m.store_id
     WHERE stg.order_id IS NOT NULL 
       AND stg.order_id <> ''
     ON CONFLICT (platform, external_id) 

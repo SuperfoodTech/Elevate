@@ -160,32 +160,41 @@ def normalize_all():
       AND raw."Created On" IS NOT NULL AND raw."Created On" <> '';
     """
     
-    # 2. GoFood Normalization Query
+    # 2. GoFood Normalization Query (1:1 Aligned with layer1_raw.raw_go)
     gofood_query = """
     TRUNCATE TABLE layer2_clean.stg_go_orders;
 
     WITH go_ranked AS (
         SELECT 
+            TRIM(raw."Order Status") AS order_status,
+            COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Outlet Name")) AS outlet_name,
+            TRIM(raw."Merchant ID") AS merchant_id,
+            TRIM(raw."Feature") AS feature,
             COALESCE(
                 NULLIF(TRIM(raw."Order ID"), ''),
                 NULLIF(TRIM(raw."Transaction ID"), '')
             ) AS order_id,
-            TO_CHAR(
-                TRIM(raw."Transaction Time")::TIMESTAMPTZ, 
-                'YYYY-MM'
-            ) AS month,
-            CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE) AS date,
+            TRIM(raw."Transaction ID") AS transaction_id,
+            CAST(CASE WHEN TRIM(raw."Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Amount") ELSE '0' END AS NUMERIC(15,2)) AS amount,
+            CAST(CASE WHEN TRIM(raw."Net Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Net Amount") ELSE '0' END AS NUMERIC(15,2)) AS net_amount,
             TRIM(raw."Transaction Time")::TIMESTAMPTZ::TIMESTAMP AS transaction_time,
-            TRIM(raw."Merchant ID") AS store_id,
-            COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Outlet Name")) AS store_name,
-            CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS amount,
-            CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2)) AS net_amount,
-            CAST(COALESCE(NULLIF(TRIM(raw."GoFood Discount"), ''), '0') AS NUMERIC(15,2)) AS gofood_discount,
-            CAST(COALESCE(NULLIF(TRIM(raw."Voucher Commission"), ''), '0') AS NUMERIC(15,2)) AS voucher_commission,
-            CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) AS total_fee,
-            (CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) - 
-             CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2))) AS total_platform_deduction,
-            'Sukses' AS status,
+            TRIM(raw."Payment Type") AS payment_type,
+            TRIM(raw."GoPay Promo") AS gopay_promo,
+            TRIM(raw."Promo Type") AS promo_type,
+            TRIM(raw."Promo Name") AS promo_name,
+            CAST(CASE WHEN TRIM(raw."Merchant Promo Contribution") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Merchant Promo Contribution") ELSE '0' END AS NUMERIC(15,2)) AS merchant_promo_contribution,
+            TRIM(raw."Voucher Description") AS voucher_description,
+            CAST(CASE WHEN TRIM(raw."GoFood Discount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."GoFood Discount") ELSE '0' END AS NUMERIC(15,2)) AS gofood_discount,
+            CAST(CASE WHEN TRIM(raw."Voucher Commission") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Voucher Commission") ELSE '0' END AS NUMERIC(15,2)) AS voucher_commission,
+            CAST(CASE WHEN TRIM(raw."Total Fee") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Total Fee") ELSE '0' END AS NUMERIC(15,2)) AS total_fee,
+            CAST(CASE WHEN TRIM(raw."Value Added Tax") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Value Added Tax") ELSE '0' END AS NUMERIC(15,2)) AS value_added_tax,
+            CAST(CASE WHEN TRIM(raw."Restaurant Tax") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Restaurant Tax") ELSE '0' END AS NUMERIC(15,2)) AS restaurant_tax,
+            CAST(CASE WHEN TRIM(raw."Service") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Service") ELSE '0' END AS NUMERIC(15,2)) AS service,
+            CAST(CASE WHEN TRIM(raw."Withholding Tax") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Withholding Tax") ELSE '0' END AS NUMERIC(15,2)) AS withholding_tax,
+            TO_CHAR(TRIM(raw."Transaction Time")::TIMESTAMPTZ, 'YYYY-MM') AS month,
+            CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE) AS date,
+            (CAST(CASE WHEN TRIM(raw."Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Amount") ELSE '0' END AS NUMERIC(15,2)) - 
+             CAST(CASE WHEN TRIM(raw."Net Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Net Amount") ELSE '0' END AS NUMERIC(15,2))) AS total_platform_deduction,
             ROW_NUMBER() OVER(
                 PARTITION BY COALESCE(NULLIF(TRIM(raw."Order ID"), ''), NULLIF(TRIM(raw."Transaction ID"), '')) 
                 ORDER BY raw."Transaction Time" DESC
@@ -197,14 +206,18 @@ def normalize_all():
           AND raw."Transaction Time" IS NOT NULL AND raw."Transaction Time" <> ''
     )
     INSERT INTO layer2_clean.stg_go_orders (
-        order_id, month, date, transaction_time, store_id, store_name,
-        amount, net_amount, gofood_discount, voucher_commission,
-        total_fee, total_platform_deduction, status
+        order_status, outlet_name, merchant_id, feature, order_id, transaction_id,
+        amount, net_amount, transaction_time, payment_type, gopay_promo, promo_type,
+        promo_name, merchant_promo_contribution, voucher_description, gofood_discount,
+        voucher_commission, total_fee, value_added_tax, restaurant_tax, service,
+        withholding_tax, month, date, total_platform_deduction
     )
     SELECT 
-        order_id, month, date, transaction_time, store_id, store_name,
-        amount, net_amount, gofood_discount, voucher_commission,
-        total_fee, total_platform_deduction, status
+        order_status, outlet_name, merchant_id, feature, order_id, transaction_id,
+        amount, net_amount, transaction_time, payment_type, gopay_promo, promo_type,
+        promo_name, merchant_promo_contribution, voucher_description, gofood_discount,
+        voucher_commission, total_fee, value_added_tax, restaurant_tax, service,
+        withholding_tax, month, date, total_platform_deduction
     FROM go_ranked
     WHERE rn = 1;
     """
