@@ -260,91 +260,89 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
-    WITH base_agg AS (
+    WITH live_monthly_outlets AS (
         SELECT 
-            mv.owner_name AS o_name,
-            mv.outlet_name AS ot_name,
-            mv.brand AS b_name,
-            mv.nama_resto_final AS r_name,
-            mv.store_id AS s_id,
-            mv.periode AS p_code,
-            mv.jumlah_order_sukses AS os_cnt,
-            mv.biaya AS fee_val,
-            mv.subtotal_tagihan AS sub_val,
-            mv.penyesuaian AS adj_val,
-            mv.total_tagihan AS tot_val,
-            mv.tanggal_tagihan AS tgl_tagihan,
-            mv.transfer_id AS trf_id,
-            mv.tanggal_pembayaran AS tgl_bayar,
-            mv.link_bukti AS link_bkt,
-            mv.status_pembayaran AS st_bayar,
-            1 AS sort_grp
-        FROM layer3_dim.mv_rekap_tagihan_monthly mv
-        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
-          AND (p_periode IS NULL OR p_periode = '' OR mv.periode = p_periode)
-          AND (p_status_pembayaran IS NULL OR p_status_pembayaran = '' OR LOWER(mv.status_pembayaran) = LOWER(p_status_pembayaran))
+            COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS o_name,
+            COALESCE(m.outlet_name, c.merchant_name, 'UNKNOWN') AS ot_name,
+            COALESCE(m.brand, 'UNKNOWN') AS b_name,
+            COALESCE(m.nama_resto_final, 'UNKNOWN') AS r_name,
+            m.store_id AS s_id,
+            COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS fee_val
+        FROM layer3_dim.dim_merchant_mapping m
+        LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+        WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+          AND UPPER(COALESCE(m.billing_cycle, '')) = 'MONTHLY'
+    ),
+    target_periodes AS (
+        SELECT DISTINCT p.p_code
+        FROM (
+            SELECT TO_CHAR(transaction_date, 'YYYY-MM') AS p_code FROM layer3_dim.fact_transactions WHERE transaction_date IS NOT NULL
+            UNION
+            SELECT COALESCE(NULLIF(p_periode, ''), TO_CHAR(CURRENT_DATE, 'YYYY-MM')) AS p_code
+        ) p
+        WHERE (p_periode IS NULL OR p_periode = '' OR p.p_code = p_periode)
+    ),
+    grid AS (
+        SELECT o.*, p.p_code
+        FROM live_monthly_outlets o
+        CROSS JOIN target_periodes p
+    ),
+    raw_agg AS (
+        SELECT 
+            g.o_name,
+            g.ot_name,
+            g.b_name,
+            g.r_name,
+            g.s_id,
+            g.p_code,
+            COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END)::BIGINT AS os_cnt,
+            g.fee_val,
+            COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * g.fee_val AS sub_val,
+            COALESCE(pm.penyesuaian, 0.00) AS adj_val,
+            (COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * g.fee_val) + COALESCE(pm.penyesuaian, 0.00) AS tot_val,
+            pm.tanggal_tagihan AS tgl_tagihan,
+            pm.transfer_id AS trf_id,
+            pm.tanggal_pembayaran AS tgl_bayar,
+            pm.link_bukti AS link_bkt,
+            COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR') AS st_bayar
+        FROM grid g
+        LEFT JOIN layer3_dim.fact_transactions ft 
+            ON g.s_id = ft.merchant_id 
+           AND TO_CHAR(ft.transaction_date, 'YYYY-MM') = g.p_code
+        LEFT JOIN layer3_dim.monthly_billing_payments pm 
+            ON g.s_id = pm.store_id 
+           AND g.p_code = pm.periode
+        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(g.o_name) = LOWER(p_owner))
+          AND (p_status_pembayaran IS NULL OR p_status_pembayaran = '' OR LOWER(COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR')) = LOWER(p_status_pembayaran))
+        GROUP BY 
+            g.o_name, g.ot_name, g.b_name, g.r_name, g.s_id, g.p_code, g.fee_val,
+            pm.penyesuaian, pm.tanggal_tagihan, pm.transfer_id, pm.tanggal_pembayaran, pm.link_bukti, pm.status_pembayaran
     ),
     combined AS (
         SELECT 
-            b.o_name,
-            b.ot_name,
-            b.b_name,
-            b.r_name,
-            b.s_id,
-            b.p_code,
-            b.os_cnt,
-            b.fee_val,
-            b.sub_val,
-            b.adj_val,
-            b.tot_val,
-            b.tgl_tagihan,
-            b.trf_id,
-            b.tgl_bayar,
-            b.link_bkt,
-            b.st_bayar,
+            r.o_name, r.ot_name, r.b_name, r.r_name, r.s_id, r.p_code,
+            r.os_cnt, r.fee_val, r.sub_val, r.adj_val, r.tot_val,
+            r.tgl_tagihan, r.trf_id, r.tgl_bayar, r.link_bkt, r.st_bayar,
             1 AS s_grp
-        FROM base_agg b
+        FROM raw_agg r
 
         UNION ALL
 
         SELECT 
-            'Grand Total' AS o_name,
-            '-' AS ot_name,
-            '-' AS b_name,
-            '-' AS r_name,
-            '-' AS s_id,
-            '-' AS p_code,
-            COALESCE(SUM(b.os_cnt), 0)::BIGINT AS os_cnt,
-            0.00 AS fee_val,
-            COALESCE(SUM(b.sub_val), 0.00) AS sub_val,
-            COALESCE(SUM(b.adj_val), 0.00) AS adj_val,
-            COALESCE(SUM(b.tot_val), 0.00) AS tot_val,
-            NULL::DATE AS tgl_tagihan,
-            '-' AS trf_id,
-            NULL::DATE AS tgl_bayar,
-            '-' AS link_bkt,
-            '-' AS st_bayar,
+            'Grand Total' AS o_name, '-' AS ot_name, '-' AS b_name, '-' AS r_name, '-' AS s_id, '-' AS p_code,
+            COALESCE(SUM(r.os_cnt), 0)::BIGINT AS os_cnt, 0.00 AS fee_val,
+            COALESCE(SUM(r.sub_val), 0.00) AS sub_val, COALESCE(SUM(r.adj_val), 0.00) AS adj_val, COALESCE(SUM(r.tot_val), 0.00) AS tot_val,
+            NULL::DATE AS tgl_tagihan, '-' AS trf_id, NULL::DATE AS tgl_bayar, '-' AS link_bkt, '-' AS st_bayar,
             2 AS s_grp
-        FROM base_agg b
+        FROM raw_agg r
     )
     SELECT 
-        c.o_name AS owner_name,
-        c.ot_name AS outlet_name,
-        c.b_name AS brand,
-        c.r_name AS nama_resto_final,
-        c.s_id AS store_id,
-        c.p_code AS periode,
-        c.os_cnt AS jumlah_order_sukses,
-        c.fee_val AS biaya,
-        c.sub_val AS subtotal_tagihan,
-        c.adj_val AS penyesuaian,
-        c.tot_val AS total_tagihan,
-        c.tgl_tagihan AS tanggal_tagihan,
-        c.trf_id AS transfer_id,
-        c.tgl_bayar AS tanggal_pembayaran,
-        c.link_bkt AS link_bukti,
-        c.st_bayar AS status_pembayaran
+        c.o_name AS owner_name, c.ot_name AS outlet_name, c.b_name AS brand, c.r_name AS nama_resto_final,
+        c.s_id AS store_id, c.p_code AS periode, c.os_cnt AS jumlah_order_sukses, c.fee_val AS biaya,
+        c.sub_val AS subtotal_tagihan, c.adj_val AS penyesuaian, c.tot_val AS total_tagihan,
+        c.tgl_tagihan AS tanggal_tagihan, c.trf_id AS transfer_id, c.tgl_bayar AS tanggal_pembayaran,
+        c.link_bkt AS link_bukti, c.st_bayar AS status_pembayaran
     FROM combined c
-    ORDER BY c.s_grp ASC, c.o_name ASC, c.ot_name ASC;
+    ORDER BY c.s_grp ASC, c.o_name ASC, c.r_name ASC;
 END;
 $$ LANGUAGE plpgsql;
