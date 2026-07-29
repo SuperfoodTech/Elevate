@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baseline vs Current Performance - SuperFood Elevate</title>
+    <meta name="description" content="Perbandingan performa baseline 30 hari vs periode saat ini untuk setiap outlet.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary:#0f1117;--bg-secondary:#1a1d2e;--bg-card:#1e2235;--bg-card-hover:#252a40;
+            --border:rgba(255,255,255,0.07);--text-primary:#e8eaf6;--text-secondary:#9aa0c0;--text-muted:#5c6380;
+            --accent:#5c6bc0;--accent-glow:rgba(92,107,192,0.18);
+            --green:#43e97b;--green-bg:rgba(67,233,123,0.1);
+            --red:#f44369;--red-bg:rgba(244,67,105,0.1);
+            --yellow:#f5a623;--yellow-bg:rgba(245,166,35,0.1);
+            --blue:#4facfe;--blue-bg:rgba(79,172,254,0.1);
+            --orange:#ff9a44;--radius:14px;--shadow:0 4px 24px rgba(0,0,0,0.35);
+        }
+        html.light {
+            --bg-primary:#f0f2fa;--bg-secondary:#e4e8f6;--bg-card:#fff;--bg-card-hover:#f7f9ff;
+            --border:rgba(0,0,0,0.09);--text-primary:#1a1d2e;--text-secondary:#4a5080;--text-muted:#9aa0c0;
+            --shadow:0 4px 24px rgba(0,0,0,0.10);
+        }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        body{font-family:'Inter',sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;transition:background .3s,color .3s}
+        .header{position:sticky;top:0;z-index:100;background:rgba(15,17,23,.85);backdrop-filter:blur(18px) saturate(1.6);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px}
+        html.light .header{background:rgba(240,242,250,.88)}
+        .header-left{display:flex;align-items:center;gap:18px}
+        .back-btn{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text-secondary);font-size:13px;font-weight:500;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;cursor:pointer;transition:all .2s}
+        .back-btn:hover{color:var(--text-primary);background:var(--bg-card)}
+        .header-title{font-size:15px;font-weight:700}
+        .header-subtitle{font-size:11px;color:var(--text-muted);margin-top:1px}
+        .header-right{display:flex;align-items:center;gap:12px}
+        .live-badge{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green);padding:5px 12px;border-radius:20px;background:var(--green-bg);border:1px solid rgba(67,233,123,.25)}
+        .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        .theme-btn{width:36px;height:36px;border-radius:50%;background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s}
+        .theme-btn:hover{background:var(--bg-card-hover);color:var(--text-primary)}
+        .page{max-width:1600px;margin:0 auto;padding:24px 24px 40px}
+        .filter-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow)}
+        .filter-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+        .filter-title::before{content:'';display:block;width:3px;height:14px;background:var(--accent);border-radius:2px}
+        .filters-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;align-items:end}
+        .filter-group{display:flex;flex-direction:column;gap:6px}
+        .filter-group label{font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+        .filter-group select,.filter-group input{background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:'Inter',sans-serif;font-size:13px;padding:9px 12px;outline:none;transition:border-color .2s,box-shadow .2s;appearance:none;-webkit-appearance:none}
+        .filter-group select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239aa0c0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+        .filter-group select:focus,.filter-group input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+        .date-row{display:flex;gap:6px;align-items:center}
+        .date-row span{color:var(--text-muted);font-size:11px;font-weight:600;white-space:nowrap}
+        .apply-btn{padding:9px 22px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#7986cb);border:none;color:#fff;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(92,107,192,.3);transition:all .2s;white-space:nowrap}
+        .apply-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(92,107,192,.5)}
+        .summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+        @media(max-width:900px){.summary-grid{grid-template-columns:repeat(2,1fr)}}
+        .summary-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s;position:relative;overflow:hidden}
+        .summary-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+        .summary-card.green::after{background:linear-gradient(90deg,var(--green),#00f2fe)}
+        .summary-card.blue::after{background:linear-gradient(90deg,var(--blue),var(--accent))}
+        .summary-card.orange::after{background:linear-gradient(90deg,var(--orange),#f5a623)}
+        .summary-card:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+        .sc-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:600;margin-bottom:10px}
+        .sc-value{font-size:28px;font-weight:800;letter-spacing:-.02em}
+        .sc-value.green{color:var(--green)}.sc-value.blue{color:var(--blue)}.sc-value.orange{color:var(--orange)}.sc-value.red{color:var(--red)}
+        .sc-sub{font-size:11px;color:var(--text-muted);margin-top:4px}
+        .perf-filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px}
+        .perf-filter-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)}
+        .pf-btn{padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);transition:all .2s}
+        .pf-btn:hover{color:var(--text-primary);background:var(--bg-card-hover)}
+        .pf-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+        .pf-btn.achieved.active{background:var(--green);border-color:var(--green);color:#0f1117}
+        .pf-btn.gmv-below.active{background:var(--red);border-color:var(--red);color:#fff}
+        .pf-btn.order-below.active{background:var(--yellow);border-color:var(--yellow);color:#0f1117}
+        .pf-btn.not-achieved.active{background:var(--text-muted);border-color:var(--text-muted);color:#fff}
+        .table-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+        .table-header-bar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+        .table-header-bar h3{font-size:14px;font-weight:700}
+        .search-box{display:flex;align-items:center;gap:8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:220px}
+        .search-box input{background:transparent;border:none;color:var(--text-primary);font-family:'Inter',sans-serif;font-size:13px;outline:none;flex:1}
+        .search-box span{color:var(--text-muted);font-size:14px}
+        .table-scroll{overflow-x:auto}
+        table{width:100%;border-collapse:collapse;font-size:13px}
+        thead th{padding:11px 14px;text-align:left;background:var(--bg-secondary);color:var(--text-muted);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;cursor:pointer;border-bottom:1px solid var(--border);user-select:none;position:sticky;top:0;z-index:2}
+        thead th:hover{color:var(--text-primary)}
+        thead th.sorted-asc::after{content:' ▲';font-size:9px}
+        thead th.sorted-desc::after{content:' ▼';font-size:9px}
+        tbody tr{border-bottom:1px solid var(--border);transition:background .15s}
+        tbody tr:hover{background:var(--bg-card-hover)}
+        tbody td{padding:11px 14px;white-space:nowrap;color:var(--text-primary);vertical-align:middle}
+        .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+        .badge-achieved{background:var(--green-bg);color:var(--green);border:1px solid rgba(67,233,123,.3)}
+        .badge-gmv-below{background:var(--red-bg);color:var(--red);border:1px solid rgba(244,67,105,.3)}
+        .badge-order-below{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,166,35,.3)}
+        .badge-not-achieved{background:rgba(92,99,128,.15);color:var(--text-muted);border:1px solid rgba(92,99,128,.25)}
+        .growth-pos{color:var(--green);font-weight:600}
+        .growth-neg{color:var(--red);font-weight:600}
+        .growth-null{color:var(--text-muted)}
+        .table-footer{padding:12px 20px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border)}
+        .loading-overlay{display:none;position:fixed;inset:0;background:rgba(15,17,23,.7);backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center}
+        .loading-overlay.active{display:flex}
+        .spinner{width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .no-data{text-align:center;padding:60px 20px;color:var(--text-muted)}
+        .no-data-icon{font-size:48px;margin-bottom:12px;opacity:.4}
+    </style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+<header class="header">
+    <div class="header-left">
+        <a href="/" class="back-btn">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 3L5 7l3.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Dashboard
+        </a>
+        <div>
+            <div class="header-title">Baseline vs Current Performance</div>
+            <div class="header-subtitle">Perbandingan performa outlet vs baseline 30 hari</div>
+        </div>
+    </div>
+    <div class="header-right">
+        <div class="live-badge"><span class="live-dot"></span><span id="liveDate">-</span></div>
+        <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle Theme">&#9790;</button>
+    </div>
+</header>
+<main class="page">
+    <div class="filter-card">
+        <div class="filter-title">Filter Data</div>
+        <div class="filters-grid">
+            <div class="filter-group">
+                <label for="filterPIC">PIC</label>
+                <select id="filterPIC" onchange="onPICChange()"><option value="">Semua PIC</option></select>
+            </div>
+            <div class="filter-group">
+                <label for="filterOwner">Owner</label>
+                <select id="filterOwner" onchange="onOwnerChange()"><option value="">Semua Owner</option></select>
+            </div>
+            <div class="filter-group">
+                <label for="filterOutlet">Outlet</label>
+                <select id="filterOutlet"><option value="">Semua Outlet</option></select>
+            </div>
+            <div class="filter-group" style="grid-column:span 2">
+                <label>Date Range (Current Period)</label>
+                <div class="date-row">
+                    <input type="date" id="startDate">
+                    <span>s/d</span>
+                    <input type="date" id="endDate">
+                </div>
+            </div>
+            <div class="filter-group">
+                <label for="targetGrowth">Target Growth (%)</label>
+                <input type="number" id="targetGrowth" value="10" min="0" step="0.5" style="width:100%">
+            </div>
+            <div class="filter-group" style="justify-content:flex-end">
+                <label>&nbsp;</label>
+                <button class="apply-btn" onclick="loadData()">Tampilkan Data</button>
+            </div>
+        </div>
+    </div>
+    <div class="summary-grid">
+        <div class="summary-card green">
+            <div class="sc-label">Avg GMV Growth</div>
+            <div class="sc-value green" id="sc-avg-gmv">-</div>
+            <div class="sc-sub">Daily GMV vs Baseline</div>
+        </div>
+        <div class="summary-card orange">
+            <div class="sc-label">Avg Order Growth</div>
+            <div class="sc-value orange" id="sc-avg-ord">-</div>
+            <div class="sc-sub">Daily Order vs Baseline</div>
+        </div>
+        <div class="summary-card blue">
+            <div class="sc-label">Total Outlet</div>
+            <div class="sc-value blue" id="sc-total">-</div>
+            <div class="sc-sub">Outlet dalam filter</div>
+        </div>
+        <div class="summary-card green">
+            <div class="sc-label">Growing Outlet</div>
+            <div class="sc-value green" id="sc-growing">-</div>
+            <div class="sc-sub">Status Achieved</div>
+        </div>
+    </div>
+    <div class="perf-filter-bar">
+        <span class="perf-filter-label">Performance Filter:</span>
+        <button class="pf-btn active" id="pf-all" onclick="setPerfFilter('all')">All</button>
+        <button class="pf-btn achieved" id="pf-achieved" onclick="setPerfFilter('achieved')">Achieved (<span id="cnt-achieved">0</span>)</button>
+        <button class="pf-btn gmv-below" id="pf-gmv-below" onclick="setPerfFilter('gmv below target')">GMV Below Target (<span id="cnt-gmv-below">0</span>)</button>
+        <button class="pf-btn order-below" id="pf-order-below" onclick="setPerfFilter('order below target')">Order Below Target (<span id="cnt-order-below">0</span>)</button>
+        <button class="pf-btn not-achieved" id="pf-not-achieved" onclick="setPerfFilter('not achieved')">Not Achieved (<span id="cnt-not-achieved">0</span>)</button>
+    </div>
+    <div class="table-card">
+        <div class="table-header-bar">
+            <h3>Detail Outlet</h3>
+            <div class="search-box">
+                <span>&#128269;</span>
+                <input type="text" id="searchBox" placeholder="Cari outlet, owner, PIC..." oninput="filterTable()">
+            </div>
+        </div>
+        <div class="table-scroll">
+            <table id="mainTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable('pic')">PIC</th>
+                        <th onclick="sortTable('owner_name')">Owner</th>
+                        <th onclick="sortTable('outlet_name')">Outlet</th>
+                        <th onclick="sortTable('live_date')">Live Date</th>
+                        <th onclick="sortTable('age')">Age</th>
+                        <th onclick="sortTable('selected_days')" style="text-align:right">Days</th>
+                        <th onclick="sortTable('baseline_gmv')" style="text-align:right">GMV Baseline</th>
+                        <th onclick="sortTable('current_gmv')" style="text-align:right">GMV Current</th>
+                        <th onclick="sortTable('baseline_daily_gmv')" style="text-align:right">Daily GMV Base</th>
+                        <th onclick="sortTable('current_daily_gmv')" style="text-align:right">Daily GMV Curr</th>
+                        <th onclick="sortTable('daily_gmv_growth')" style="text-align:right">GMV Growth</th>
+                        <th onclick="sortTable('baseline_order')" style="text-align:right">Order Base</th>
+                        <th onclick="sortTable('current_order')" style="text-align:right">Order Curr</th>
+                        <th onclick="sortTable('baseline_daily_order')" style="text-align:right">Daily Ord Base</th>
+                        <th onclick="sortTable('current_daily_order')" style="text-align:right">Daily Ord Curr</th>
+                        <th onclick="sortTable('daily_order_growth')" style="text-align:right">Order Growth</th>
+                        <th onclick="sortTable('status')">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="17" class="no-data"><div class="no-data-icon">&#128202;</div><p>Pilih filter dan klik Tampilkan Data</p></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="table-footer" id="tableFooter">-</div>
+    </div>
+</main>
+<script>
+let allData=[],filteredData=[],searchFilteredData=[],activeStatusFilter='all',sortKey=null,sortDir=1,rawSummary={};
+
+document.addEventListener('DOMContentLoaded',()=>{
+    const today=new Date();
+    const fmt=d=>d.toISOString().split('T')[0];
+    const end=new Date(today);end.setDate(today.getDate()-1);
+    const start=new Date(end);start.setDate(end.getDate()-6);
+    document.getElementById('startDate').value=fmt(start);
+    document.getElementById('endDate').value=fmt(end);
+    document.getElementById('liveDate').textContent=new Date().toLocaleDateString('id-ID',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    const saved=localStorage.getItem('theme')||'dark';
+    document.documentElement.className=saved;
+    document.getElementById('themeBtn').textContent=saved==='dark'?'☀':'☾';
+    loadPICs();
+});
+
+function toggleTheme(){
+    const html=document.documentElement;
+    const next=html.classList.contains('dark')?'light':'dark';
+    html.className=next;
+    document.getElementById('themeBtn').textContent=next==='dark'?'☀':'☾';
+    localStorage.setItem('theme',next);
+}
+
+function setLoading(v){document.getElementById('loadingOverlay').classList.toggle('active',v)}
+
+async function loadPICs(){
+    const res=await fetch('/api/baseline-vs-current/pics');
+    const data=await res.json();
+    const sel=document.getElementById('filterPIC');
+    data.pics.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o)});
+}
+
+async function onPICChange(){
+    const pic=document.getElementById('filterPIC').value;
+    const res=await fetch('/api/baseline-vs-current/owners?pic='+encodeURIComponent(pic));
+    const data=await res.json();
+    const sel=document.getElementById('filterOwner');
+    sel.innerHTML='<option value="">Semua Owner</option>';
+    data.owners.forEach(o=>{const opt=document.createElement('option');opt.value=o;opt.textContent=o;sel.appendChild(opt)});
+    await onOwnerChange();
+}
+
+async function onOwnerChange(){
+    const pic=document.getElementById('filterPIC').value;
+    const owner=document.getElementById('filterOwner').value;
+    const res=await fetch('/api/baseline-vs-current/outlets?pic='+encodeURIComponent(pic)+'&owner='+encodeURIComponent(owner));
+    const data=await res.json();
+    const sel=document.getElementById('filterOutlet');
+    sel.innerHTML='<option value="">Semua Outlet</option>';
+    data.outlets.forEach(o=>{const opt=document.createElement('option');opt.value=o;opt.textContent=o;sel.appendChild(opt)});
+}
+
+async function loadData(){
+    setLoading(true);
+    try{
+        const pic=document.getElementById('filterPIC').value;
+        const owner=document.getElementById('filterOwner').value;
+        const outlet=document.getElementById('filterOutlet').value;
+        const start=document.getElementById('startDate').value;
+        const end=document.getElementById('endDate').value;
+        const target=document.getElementById('targetGrowth').value||10;
+        const params=new URLSearchParams();
+        if(pic)params.set('pic',pic);
+        if(owner)params.set('owner',owner);
+        if(outlet)params.set('outlet',outlet);
+        params.set('start_date',start);params.set('end_date',end);params.set('target_growth_pct',target);
+        const res=await fetch('/api/baseline-vs-current?'+params);
+        if(!res.ok){const err=await res.json();alert('Error: '+(err.detail||res.statusText));return}
+        const json=await res.json();
+        allData=json.data||[];rawSummary=json.summary||{};
+        updatePerfFilterCounts();applyStatusFilter();updateSummary();renderTable();
+    }catch(e){alert('Gagal memuat data: '+e.message)}
+    finally{setLoading(false)}
+}
+
+function setPerfFilter(status){
+    activeStatusFilter=status;
+    document.querySelectorAll('.pf-btn').forEach(b=>b.classList.remove('active'));
+    const map={'all':'pf-all','achieved':'pf-achieved','gmv below target':'pf-gmv-below','order below target':'pf-order-below','not achieved':'pf-not-achieved'};
+    const btn=document.getElementById(map[status]);
+    if(btn)btn.classList.add('active');
+    applyStatusFilter();filterTable();
+}
+
+function applyStatusFilter(){
+    filteredData=activeStatusFilter==='all'?[...allData]:allData.filter(r=>r.status&&r.status.toLowerCase()===activeStatusFilter);
+}
+
+function updatePerfFilterCounts(){
+    const c={achieved:0,'gmv below target':0,'order below target':0,'not achieved':0};
+    allData.forEach(r=>{const s=(r.status||'').toLowerCase();if(c[s]!==undefined)c[s]++});
+    document.getElementById('cnt-achieved').textContent=c['achieved'];
+    document.getElementById('cnt-gmv-below').textContent=c['gmv below target'];
+    document.getElementById('cnt-order-below').textContent=c['order below target'];
+    document.getElementById('cnt-not-achieved').textContent=c['not achieved'];
+}
+
+function updateSummary(){
+    const s=rawSummary;
+    const pct=v=>v!==undefined&&v!==null?((v*100).toFixed(2)+'%'):'-';
+    const gmvEl=document.getElementById('sc-avg-gmv');
+    const ordEl=document.getElementById('sc-avg-ord');
+    gmvEl.textContent=pct(s.avg_gmv_growth);
+    gmvEl.className='sc-value '+((s.avg_gmv_growth||0)>=0?'green':'red');
+    ordEl.textContent=pct(s.avg_order_growth);
+    ordEl.className='sc-value '+((s.avg_order_growth||0)>=0?'orange':'red');
+    document.getElementById('sc-total').textContent=s.total_outlet??'-';
+    document.getElementById('sc-growing').textContent=s.growing_outlet??'-';
+}
+
+function filterTable(){
+    const q=document.getElementById('searchBox').value.toLowerCase().trim();
+    searchFilteredData=!q?[...filteredData]:filteredData.filter(r=>
+        (r.outlet_name||'').toLowerCase().includes(q)||(r.owner_name||'').toLowerCase().includes(q)||(r.pic||'').toLowerCase().includes(q)
+    );
+    sortAndRender();
+}
+
+function renderTable(){searchFilteredData=[...filteredData];sortAndRender()}
+
+function sortTable(key){
+    if(sortKey===key)sortDir*=-1;else{sortKey=key;sortDir=1}
+    document.querySelectorAll('thead th').forEach(t=>t.classList.remove('sorted-asc','sorted-desc'));
+    const km=['pic','owner_name','outlet_name','live_date','age','selected_days','baseline_gmv','current_gmv','baseline_daily_gmv','current_daily_gmv','daily_gmv_growth','baseline_order','current_order','baseline_daily_order','current_daily_order','daily_order_growth','status'];
+    const idx=km.indexOf(key);
+    if(idx>=0)document.querySelectorAll('thead th')[idx].classList.add(sortDir===1?'sorted-asc':'sorted-desc');
+    sortAndRender();
+}
+
+function sortAndRender(){
+    let data=[...searchFilteredData];
+    if(sortKey){data.sort((a,b)=>{const av=a[sortKey],bv=b[sortKey];if(av==null)return 1;if(bv==null)return -1;if(typeof av==='number')return(av-bv)*sortDir;return String(av).localeCompare(String(bv))*sortDir})}
+    const tbody=document.getElementById('tableBody');
+    if(!data.length){
+        tbody.innerHTML='<tr><td colspan="17" class="no-data"><div class="no-data-icon">&#128202;</div><p>Tidak ada data untuk filter yang dipilih.</p></td></tr>';
+        document.getElementById('tableFooter').textContent='Tidak ada data.';return;
+    }
+    const fmtRp=v=>v!=null?'Rp'+Math.round(v).toLocaleString('id-ID'):'-';
+    const fmtPct=v=>{if(v==null)return '<span class="growth-null">-</span>';const pv=(v*100).toFixed(2);return '<span class="growth-'+(v>=0?'pos':'neg')+'">'+(v>=0?'+':'')+pv+'%</span>'};
+    const badge=s=>{const m={'Achieved':'<span class="badge badge-achieved">&#10003; Achieved</span>','GMV Below Target':'<span class="badge badge-gmv-below">&#8594; GMV Below</span>','Order Below Target':'<span class="badge badge-order-below">&#8594; Order Below</span>','Not Achieved':'<span class="badge badge-not-achieved">&#8722; Not Achieved</span>'};return m[s]||'<span class="badge">'+s+'</span>'};
+    tbody.innerHTML=data.map(r=>`<tr>
+        <td>${r.pic||'-'}</td><td>${r.owner_name||'-'}</td><td>${r.outlet_name||'-'}</td>
+        <td>${r.live_date||'-'}</td><td>${r.age||'-'}</td>
+        <td style="text-align:right">${r.selected_days??'-'}</td>
+        <td style="text-align:right">${fmtRp(r.baseline_gmv)}</td>
+        <td style="text-align:right">${fmtRp(r.current_gmv)}</td>
+        <td style="text-align:right">${fmtRp(r.baseline_daily_gmv)}</td>
+        <td style="text-align:right">${fmtRp(r.current_daily_gmv)}</td>
+        <td style="text-align:right">${fmtPct(r.daily_gmv_growth)}</td>
+        <td style="text-align:right">${r.baseline_order??'-'}</td>
+        <td style="text-align:right">${r.current_order??'-'}</td>
+        <td style="text-align:right">${r.baseline_daily_order!=null?Number(r.baseline_daily_order).toFixed(2):'-'}</td>
+        <td style="text-align:right">${r.current_daily_order!=null?Number(r.current_daily_order).toFixed(2):'-'}</td>
+        <td style="text-align:right">${fmtPct(r.daily_order_growth)}</td>
+        <td>${badge(r.status)}</td></tr>`).join('');
+    document.getElementById('tableFooter').textContent='Menampilkan '+data.length+' outlet';
+}
+</script>
+</body>
+</html>
