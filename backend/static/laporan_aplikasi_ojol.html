@@ -270,31 +270,21 @@
             color: #ffffff;
         }
 
-        /* Channel Badges */
-        .channel-badge {
-            font-weight: 700;
-            padding: 0.2rem 0.6rem;
-            border-radius: 0.4rem;
-            font-size: 0.8rem;
-            display: inline-block;
+        /* Channel Text Labels without background */
+        .channel-text {
+            font-weight: 600;
         }
 
         .channel-gofood {
-            background: rgba(16, 185, 129, 0.15);
             color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.3);
         }
 
         .channel-grabfood {
-            background: rgba(5, 150, 105, 0.15);
             color: #10b981;
-            border: 1px solid rgba(5, 150, 105, 0.3);
         }
 
         .channel-shopeefood {
-            background: rgba(249, 115, 22, 0.15);
             color: #fb923c;
-            border: 1px solid rgba(249, 115, 22, 0.3);
         }
 
         /* Loading Spinner */
@@ -327,7 +317,6 @@
         <header class="dashboard-header">
             <div class="brand-section">
                 <h1>Laporan Aplikasi Ojol</h1>
-                <p>Analisis Performa Kanal GoFood, GrabFood, dan ShopeeFood (Layer 3 Data Warehouse)</p>
             </div>
 
             <div class="header-nav-links">
@@ -387,7 +376,7 @@
         <!-- Top Table Card: Laporan Aplikasi Ojol (Aggregated Summary) -->
         <div class="table-card">
             <div class="table-header-bar">
-                <h2 class="table-title">📊 Laporan Aplikasi Ojol (Summary Agregat)</h2>
+                <h2 class="table-title">Laporan Aplikasi Ojol (Summary Agregat)</h2>
             </div>
             
             <div class="table-responsive">
@@ -419,7 +408,7 @@
         <!-- Bottom Table Card: Laporan Bulanan per Aplikasi Ojol -->
         <div class="table-card">
             <div class="table-header-bar">
-                <h2 class="table-title">📅 Laporan Bulanan per Aplikasi Ojol</h2>
+                <h2 class="table-title">Laporan Bulanan per Aplikasi Ojol</h2>
             </div>
             
             <div class="table-responsive">
@@ -461,14 +450,14 @@
             return num < 0 ? `-Rp ${formatted}` : `Rp ${formatted}`;
         }
 
-        // Format Channel Badge
+        // Format Channel Label
         function getChannelBadgeHtml(channel) {
             if (!channel) return '-';
             const chUpper = channel.trim().toUpperCase();
-            if (chUpper.includes('GOFOOD')) return `<span class="channel-badge channel-gofood">GoFood</span>`;
-            if (chUpper.includes('GRABFOOD')) return `<span class="channel-badge channel-grabfood">GrabFood</span>`;
-            if (chUpper.includes('SHOPEEFOOD')) return `<span class="channel-badge channel-shopeefood">ShopeeFood</span>`;
-            return `<strong>${channel}</strong>`;
+            if (chUpper.includes('GOFOOD')) return `<span class="channel-text channel-gofood">GoFood</span>`;
+            if (chUpper.includes('GRABFOOD')) return `<span class="channel-text channel-grabfood">GrabFood</span>`;
+            if (chUpper.includes('SHOPEEFOOD')) return `<span class="channel-text channel-shopeefood">ShopeeFood</span>`;
+            return `<span>${channel}</span>`;
         }
 
         // Initialize Filter Options
