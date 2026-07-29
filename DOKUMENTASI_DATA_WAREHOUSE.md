@@ -1,10 +1,10 @@
 # DOKUMENTASI LENGKAP DATA WAREHOUSE & ARSITEKTUR LAYER 3 (`db_superfood`)
 
-Dokumen ini merupakan panduan komprehensif mengenai struktur Data Warehouse, skema 3 layer, relasi antar-tabel, rincian seluruh kolom, rasionasi pembuatan tabel dimensi (`dim_*`), spesifikasi pengisian tabel unified `fact_transactions`, hingga pelaporan transaksi terpadu 3 platform Online Food Delivery (OFD): **ShopeeFood, GrabFood, dan GoFood**.
+Dokumen ini merupakan panduan komprehensif mengenai struktur Data Warehouse, skema 3 layer, relasi antar-tabel, rincian seluruh kolom, spesifikasi pengisian tabel unified `fact_transactions`, hingga pelaporan transaksi terpadu 3 platform Online Food Delivery (OFD): **ShopeeFood, GrabFood, dan GoFood**.
 
 ---
 
-## 1. RASIONASI ARSITEKTUR TABEL DIMENSI (`dim_*`) DI LAYER 3
+## 1. ARSITEKTUR STAR SCHEMA LAYER 3 (`layer3_dim`)
 
 Dalam arsitektur Data Warehouse berbasis **Kimball Star Schema**, data dipisahkan menjadi dua jenis tabel:
 1. **Fact Tables (`fact_*`)**: Menyimpan data kejadian transaksi berukuran besar yang berisi angka-angka numerik (Omzet, Diskon, Komisi, Net Payout) yang bertambah terus-menerus.
@@ -21,17 +21,13 @@ Dalam arsitektur Data Warehouse berbasis **Kimball Star Schema**, data dipisahka
             ▼                                     ▼
     [dim_merchant_mapping] ────────────> [fact_transactions] (91,955 baris)
     (Resto Final & Status)              [fact_daily_merchant_performance] (14,101 baris)
-                                                  ▲
-                                                  │
-                                            [dim_date]
-                                            (Dimensi Kalender 2020-2030)
 ```
 
 ---
 
 ## 2. INVENTARIS LENGKAP SCHEMAS & TABEL DATABASE (`165.232.165.241`)
 
-Database **`db_superfood`** terdiri dari 3 layer utama dan 14 base tables:
+Database **`db_superfood`** terdiri dari 3 layer utama dan 13 base tables:
 
 | Schema | Nama Tabel | Tipe | Jumlah Baris Data | Deskripsi & Peran |
 |---|---|---|---|---|
@@ -43,7 +39,6 @@ Database **`db_superfood`** terdiri dari 3 layer utama dan 14 base tables:
 | **`layer2_clean`** | `stg_shopee_orders` | BASE TABLE | **63,327 baris** | Cleaned staging ShopeeFood |
 | **`layer2_clean`** | `stg_grab_orders` | BASE TABLE | **38,094 baris** | Cleaned staging GrabFood (deduplicated) |
 | **`layer2_clean`** | `stg_go_orders` | BASE TABLE | **5,997 baris** | Cleaned staging GoFood |
-| **`layer3_dim`** | **`dim_date`** | BASE TABLE | **4,018 baris** | **Dimensi Kalender** (2020 - 2030) |
 | **`layer3_dim`** | **`dim_merchant_credentials`** | BASE TABLE | **267 baris** | **Master Credential Login Mitra & SuperFood** |
 | **`layer3_dim`** | **`dim_merchant_mapping`** | BASE TABLE | **367 baris** | **Master Pemetaan Resto Baku & Status Live/Never** |
 | **`layer3_dim`** | **`dim_portal_credentials`** | BASE TABLE | **20 baris** | **Referensi Statis Portal, OTP WA/SMS & BD Profile** |
@@ -52,7 +47,52 @@ Database **`db_superfood`** terdiri dari 3 layer utama dan 14 base tables:
 
 ---
 
-## 3. SPESIFIKASI DOKUMENTASI PENGISIAN TABEL UNIFIED (`layer3_dim.fact_transactions`)
+## 3. DETAIL STRUKTUR TABEL SCHEMA `layer3_dim`
+
+### A. Master Merchant Credentials (`layer3_dim.dim_merchant_credentials`)
+Tabel terisolasi tempat menyimpan credential login dan akses 3 aplikator:
+* `store_id` *(TEXT, Primary Key)*: ID Unik Toko dari Aplikator.
+* `platform` *(TEXT)*: Aplikator (`GoFood`, `GrabFood`, `ShopeeFood`).
+* `merchant_id` *(TEXT)*: Merchant ID.
+* `merchant_name` *(TEXT)*: Identitas switch toko saat 1 akun login memiliki lebih dari 1 merchant.
+* `nama_akses_mitra` *(TEXT)*: Nama identitas akses milik mitra.
+* `email_mitra` *(TEXT)*: Email mitra.
+* `email_login_go_1` & `email_login_go_2`: Email login GoFood.
+* `username_mitra_orig` & `password_mitra_orig`: Credential login awal mitra.
+* `shopee_username_pemilik` & `shopee_password_pemilik`: Credential Shopee Pemilik (Digunakan saat akuisisi pertama kali).
+* `shopee_username_staff` & `shopee_password_staff`: Credential Shopee Staff.
+* `username_superfood` & `password_superfood`: Credential SuperFood (`allvbadmin`).
+
+### B. Master Merchant Mapping & Metadata (`layer3_dim.dim_merchant_mapping`)
+Tabel master pemetaan nama cabang baku, grup resto, dan status pengakuan agency:
+* `store_id` *(TEXT, Primary Key)*: ID Unik Toko dari Aplikator.
+* `platform` *(TEXT)*: Aplikator (`GoFood`, `GrabFood`, `ShopeeFood`).
+* `owner_name` *(TEXT)*: Nama pemilik grup usaha.
+* `outlet_name` *(TEXT)*: Nama outlet induk registrasi.
+* `brand` *(TEXT)*: Nama brand usaha.
+* `nama_tarikan` *(TEXT)*: Nama toko mentah hasil scrape.
+* `nama_resto_final` *(TEXT)*: **Nama Resto Final (Cabang Baku)** hasil grouping.
+* `rekomendasi_nama_resto` *(TEXT)*: Saran nama resto dari sistem.
+* `group_code` *(TEXT)*: Kode grup resto.
+* `bd_pic` *(TEXT)*: **PIC Business Development** (Digunakan untuk routing Chrome Profile per BD di server scraper).
+* `status` *(TEXT)*: Status pengakuan agency (`Live` = diakui agency, `Never` = pribadi/non-agency, `Churn`).
+* `mapping_status` *(TEXT)*: Status peninjauan internal (`MAPPED` atau `PENDING_REVIEW`).
+* `mapped_by` *(TEXT)*: Penanda siapa yang melakukan mapping (`DRAG_DROP_CANVAS`, `GSHEET_SEED`, `AUTO_DETECT`).
+
+### C. Tabel Referensi Statis Portal Scraper (`layer3_dim.dim_portal_credentials`)
+Tabel referensi statis untuk konfigurasi login scraper dan penerimaan kode OTP:
+* `portal_id` *(INT, Primary Key)*: Auto-increment ID.
+* `portal_code` *(TEXT)*: Kode Portal Agency / Virtual Brand (`F`, `W`, `L`, `D`, `All`, `Grab 1-6`).
+* `role` *(TEXT)*: Peran akun (`Owner`, `Staff`).
+* `phone_number` *(TEXT)*: **Nomor HP Rute Penerima Kode OTP (WA / SMS)**.
+* `username` & `password`: Login portal scraper.
+* `otp_method` *(TEXT)*: Metode verifikasi OTP (`WA` atau `SMS`).
+* `notes` *(TEXT)*: Catatan cakupan agency (`VB + Agency All`, `VB + Agency Specific`).
+* `bd_pic` *(TEXT)*: Routing PIC BD.
+
+---
+
+## 4. SPESIFIKASI DOKUMENTASI PENGISIAN TABEL UNIFIED (`layer3_dim.fact_transactions`)
 
 Tabel unified **`fact_transactions`** menyatukan data transaksi dari 3 aplikator:
 
