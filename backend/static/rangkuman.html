@@ -359,6 +359,17 @@
                         </select>
                     </div>
 
+                    <!-- Filter Channel -->
+                    <div class="form-group">
+                        <label for="channelSelect" class="form-label">Filter Channel</label>
+                        <select id="channelSelect" class="form-control">
+                            <option value="">Semua Channel</option>
+                            <option value="GoFood">GoFood</option>
+                            <option value="GrabFood">GrabFood</option>
+                            <option value="ShopeeFood">ShopeeFood</option>
+                        </select>
+                    </div>
+
                     <!-- Filter Date Range: Dari -->
                     <div class="form-group">
                         <label for="startDateInput" class="form-label">Dari</label>
@@ -488,7 +499,10 @@
 
             try {
                 const url = new URL(`${API_BASE}/api/laporan-aplikasi-ojol/monthly`);
-                Object.keys(params).forEach(k => { if (params[k]) url.searchParams.append(k, params[k]); });
+                if (params.outlet) url.searchParams.append('outlet', params.outlet);
+                if (params.brand) url.searchParams.append('brand', params.brand);
+                if (params.start_date) url.searchParams.append('start_date', params.start_date);
+                if (params.end_date) url.searchParams.append('end_date', params.end_date);
 
                 const res = await fetch(url);
                 const json = await res.json();
@@ -498,9 +512,17 @@
                     return;
                 }
 
+                let filteredRows = json.data;
+                const selChannel = params.channel ? params.channel.trim() : '';
+
+                if (selChannel) {
+                    // Filter specifically for selected channel
+                    filteredRows = json.data.filter(r => r.channel && r.channel.toLowerCase() === selChannel.toLowerCase());
+                }
+
                 // Render Table Rows
                 let html = '';
-                json.data.forEach(row => {
+                filteredRows.forEach(row => {
                     const isGrandTotal = row.bulan === 'Grand Total';
                     const isSubtotal = row.channel === 'Total';
                     
@@ -528,31 +550,50 @@
 
                 tbody.innerHTML = html;
 
-                // Prepare Chart Datasets (group by Channel)
+                // Prepare Chart Datasets
                 const channelRows = json.data.filter(r => r.bulan !== 'Grand Total' && r.channel !== 'Total');
                 const bulanList = [...new Set(channelRows.map(r => r.bulan))];
 
-                const gofoodKotor = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel === 'GoFood') || {}).pendapatan_kotor || 0);
-                const grabfoodKotor = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel === 'GrabFood') || {}).pendapatan_kotor || 0);
-                const shopeefoodKotor = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel === 'ShopeeFood') || {}).pendapatan_kotor || 0);
+                let datasetsKotor = [];
+                let datasetsSukses = [];
 
-                const gofoodSukses = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel === 'GoFood') || {}).order_sukses || 0);
-                const grabfoodSukses = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel === 'GrabFood') || {}).order_sukses || 0);
-                const shopeefoodSukses = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel === 'ShopeeFood') || {}).order_sukses || 0);
+                const colors = {
+                    'GoFood': { bg: 'rgba(52, 211, 153, 0.8)', border: '#34d399' },
+                    'GrabFood': { bg: 'rgba(16, 185, 129, 0.8)', border: '#10b981' },
+                    'ShopeeFood': { bg: 'rgba(251, 146, 60, 0.8)', border: '#fb923c' }
+                };
+
+                const channelsToRender = selChannel ? [selChannel] : ['GoFood', 'GrabFood', 'ShopeeFood'];
+
+                channelsToRender.forEach(ch => {
+                    const dataKotor = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel.toLowerCase() === ch.toLowerCase()) || {}).pendapatan_kotor || 0);
+                    const dataSukses = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel.toLowerCase() === ch.toLowerCase()) || {}).order_sukses || 0);
+                    
+                    const col = colors[ch] || { bg: 'rgba(56, 189, 248, 0.8)', border: '#38bdf8' };
+
+                    datasetsKotor.push({
+                        label: ch,
+                        data: dataKotor,
+                        backgroundColor: col.bg,
+                        borderColor: col.border,
+                        borderRadius: 4
+                    });
+
+                    datasetsSukses.push({
+                        label: ch,
+                        data: dataSukses,
+                        backgroundColor: col.bg,
+                        borderColor: col.border,
+                        borderRadius: 4
+                    });
+                });
 
                 // Render Bar Chart 1: Pendapatan Kotor
                 const ctxKotor = document.getElementById('pendapatanKotorChart').getContext('2d');
                 if (chartKotorInstance) chartKotorInstance.destroy();
                 chartKotorInstance = new Chart(ctxKotor, {
                     type: 'bar',
-                    data: {
-                        labels: bulanList,
-                        datasets: [
-                            { label: 'GoFood', data: gofoodKotor, backgroundColor: 'rgba(52, 211, 153, 0.8)', borderRadius: 4 },
-                            { label: 'GrabFood', data: grabfoodKotor, backgroundColor: 'rgba(16, 185, 129, 0.8)', borderRadius: 4 },
-                            { label: 'ShopeeFood', data: shopeefoodKotor, backgroundColor: 'rgba(251, 146, 60, 0.8)', borderRadius: 4 }
-                        ]
-                    },
+                    data: { labels: bulanList, datasets: datasetsKotor },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
@@ -576,14 +617,7 @@
                 if (chartSuksesInstance) chartSuksesInstance.destroy();
                 chartSuksesInstance = new Chart(ctxSukses, {
                     type: 'bar',
-                    data: {
-                        labels: bulanList,
-                        datasets: [
-                            { label: 'GoFood', data: gofoodSukses, backgroundColor: 'rgba(52, 211, 153, 0.8)', borderRadius: 4 },
-                            { label: 'GrabFood', data: grabfoodSukses, backgroundColor: 'rgba(16, 185, 129, 0.8)', borderRadius: 4 },
-                            { label: 'ShopeeFood', data: shopeefoodSukses, backgroundColor: 'rgba(251, 146, 60, 0.8)', borderRadius: 4 }
-                        ]
-                    },
+                    data: { labels: bulanList, datasets: datasetsSukses },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
@@ -614,6 +648,7 @@
             const params = {
                 outlet: document.getElementById('outletSelect').value,
                 brand: document.getElementById('brandSelect').value,
+                channel: document.getElementById('channelSelect').value,
                 start_date: document.getElementById('startDateInput').value,
                 end_date: document.getElementById('endDateInput').value
             };
@@ -628,6 +663,7 @@
             const initialParams = {
                 outlet: '',
                 brand: '',
+                channel: '',
                 start_date: '2026-04-01',
                 end_date: '2026-06-30'
             };

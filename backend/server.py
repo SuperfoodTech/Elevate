@@ -639,6 +639,7 @@ def get_laporan_ojol_filter_options():
                 "owners": owners,
                 "outlets": outlets,
                 "brands": brands,
+                "channels": ["GoFood", "GrabFood", "ShopeeFood"],
                 "min_date": str(date_range[0]) if date_range and date_range[0] else "2026-01-01",
                 "max_date": str(date_range[1]) if date_range and date_range[1] else "2026-06-30"
             }
