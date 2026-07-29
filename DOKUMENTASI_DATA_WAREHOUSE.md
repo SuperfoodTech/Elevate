@@ -27,7 +27,7 @@ Dalam arsitektur Data Warehouse berbasis **Kimball Star Schema**, data dipisahka
 
 ## 2. INVENTARIS LENGKAP SCHEMAS & TABEL DATABASE (`165.232.165.241`)
 
-Database **`db_superfood`** terdiri dari 3 layer utama dan 12 base tables:
+Database **`db_superfood`** terdiri dari 3 layer utama dan 11 base tables:
 
 | Schema | Nama Tabel | Tipe | Jumlah Baris Data | Deskripsi & Peran |
 |---|---|---|---|---|
