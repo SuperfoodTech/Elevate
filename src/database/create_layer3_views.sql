@@ -367,7 +367,16 @@ BEGIN
             COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * g.fee_val AS sub_val,
             COALESCE(pm.penyesuaian, 0.00) AS adj_val,
             (COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * g.fee_val) + COALESCE(pm.penyesuaian, 0.00) AS tot_val,
-            pm.tanggal_tagihan AS tgl_tagihan,
+            COALESCE(pm.tanggal_tagihan, 
+                CASE 
+                    WHEN g.p_code LIKE '%-W1' OR g.p_code LIKE '% W1' THEN (SUBSTRING(g.p_code FROM 1 FOR 7) || '-08')::DATE
+                    WHEN g.p_code LIKE '%-W2' OR g.p_code LIKE '% W2' THEN (SUBSTRING(g.p_code FROM 1 FOR 7) || '-15')::DATE
+                    WHEN g.p_code LIKE '%-W3' OR g.p_code LIKE '% W3' THEN (SUBSTRING(g.p_code FROM 1 FOR 7) || '-22')::DATE
+                    WHEN g.p_code LIKE '%-W4' OR g.p_code LIKE '% W4' THEN (SUBSTRING(g.p_code FROM 1 FOR 7) || '-29')::DATE
+                    WHEN g.p_code LIKE '%-W5' OR g.p_code LIKE '% W5' THEN ((SUBSTRING(g.p_code FROM 1 FOR 7) || '-01')::DATE + INTERVAL '1 month' + INTERVAL '5 days')::DATE
+                    ELSE ((SUBSTRING(g.p_code FROM 1 FOR 7) || '-01')::DATE + INTERVAL '1 month')::DATE
+                END
+            ) AS tgl_tagihan,
             pm.transfer_id AS trf_id,
             pm.tanggal_pembayaran AS tgl_bayar,
             pm.link_bukti AS link_bkt,

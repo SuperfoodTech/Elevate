@@ -562,10 +562,10 @@
                         </select>
                     </div>
 
-                    <!-- Tanggal Tagihan Header -->
+                    <!-- Tanggal Tagihan Header (Calculated Issue Date on Following Monday) -->
                     <div class="form-group">
-                        <label for="headerTanggalTagihan" class="form-label">Tanggal Tagihan</label>
-                        <input type="date" id="headerTanggalTagihan" class="form-control" value="2026-06-08">
+                        <label for="headerTanggalTagihan" class="form-label" style="color: var(--primary);">Tanggal Tagihan Diterbitkan</label>
+                        <input type="date" id="headerTanggalTagihan" class="form-control" value="2026-06-08" readonly style="opacity: 0.85; border-color: var(--primary); font-weight: 700;" title="Tagihan transaksi Senin - Minggu diterbitkan pada hari Senin berikutnya">
                     </div>
 
                     <!-- Status Pembayaran Filter Dropdown -->
@@ -777,19 +777,27 @@
         }
 
         function handleWeekChange() {
-            const y = document.getElementById('tahunSelect').value || '2026';
-            const m = document.getElementById('bulanSelect').value || '06';
+            const y = parseInt(document.getElementById('tahunSelect').value || '2026');
+            const m = parseInt(document.getElementById('bulanSelect').value || '06');
             const w = document.getElementById('mingguSelect').value || 'W1';
             
-            let day = 1;
+            let resYear = y;
+            let resMonth = m;
+            let day = 8;
+
             if (w === 'W1') day = 8;
             else if (w === 'W2') day = 15;
             else if (w === 'W3') day = 22;
             else if (w === 'W4') day = 29;
-            else if (w === 'W5') day = 30;
+            else if (w === 'W5') {
+                resMonth = m === 12 ? 1 : m + 1;
+                resYear = m === 12 ? y + 1 : y;
+                day = 6;
+            }
 
+            const monthStr = resMonth < 10 ? `0${resMonth}` : `${resMonth}`;
             const dayStr = day < 10 ? `0${day}` : `${day}`;
-            document.getElementById('headerTanggalTagihan').value = `${y}-${m}-${dayStr}`;
+            document.getElementById('headerTanggalTagihan').value = `${resYear}-${monthStr}-${dayStr}`;
         }
 
         // Trigger Sync History from Google Sheets
