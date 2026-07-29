@@ -48,11 +48,11 @@ FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id;
 
 -- ============================================================================
--- 2. MATERIALIZED VIEW REKAP TAGIHAN HARIAN PER OWNER & OUTLET
+-- 2. MATERIALIZED VIEW PAYMENT HARIAN PER OWNER & OUTLET
 -- ============================================================================
-DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan_daily CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_payment_daily CASCADE;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_daily AS
+CREATE MATERIALIZED VIEW layer3_dim.mv_payment_daily AS
 SELECT 
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
     COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
@@ -79,13 +79,14 @@ GROUP BY
     COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
     ft.transaction_date;
 
-DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_daily;
-DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_daily_owner;
-DROP INDEX IF EXISTS layer3_dim.idx_mv_rekap_tagihan_daily_date;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily_owner;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily_date;
 
-CREATE UNIQUE INDEX idx_mv_rekap_tagihan_daily ON layer3_dim.mv_rekap_tagihan_daily (owner_name, store_id, transaction_date);
-CREATE INDEX idx_mv_rekap_tagihan_daily_owner ON layer3_dim.mv_rekap_tagihan_daily (owner_name);
-CREATE INDEX idx_mv_rekap_tagihan_daily_date ON layer3_dim.mv_rekap_tagihan_daily (transaction_date);
+-- Indeks Unik Pendukung Refresh Concurrent & Query Cepat
+CREATE UNIQUE INDEX idx_mv_payment_daily ON layer3_dim.mv_payment_daily (owner_name, store_id, transaction_date);
+CREATE INDEX idx_mv_payment_daily_owner ON layer3_dim.mv_payment_daily (owner_name);
+CREATE INDEX idx_mv_payment_daily_date ON layer3_dim.mv_payment_daily (transaction_date);
 
 -- ============================================================================
 -- 3. SQL STORED FUNCTION DYNAMIC REKAP TAGIHAN PER OWNER
@@ -482,278 +483,250 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================================
--- 7. MATERIALIZED VIEW OUTLET DAILY PERFORMANCE (FOR BASELINE GROWTH ANALYSIS)
+-- 7. MATERIALIZED VIEW LAPORAN APLIKASI OJOL (GOFOOD, GRABFOOD, SHOPEEFOOD)
 -- ============================================================================
-DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_outlet_daily_performance CASCADE;
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_laporan_ojol CASCADE;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_outlet_daily_performance AS
+CREATE MATERIALIZED VIEW layer3_dim.mv_laporan_ojol AS
 SELECT 
-    ft.transaction_date,
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
     COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
+    COALESCE(m.brand, 'UNKNOWN') AS brand,
     ft.merchant_id AS store_id,
-    m.live_date,
-    SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS gmv,
-    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) AS total_orders
+    ft.transaction_date,
+    TO_CHAR(ft.transaction_date, 'YYYY-MM') AS bulan,
+    ft.platform AS channel,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS pendapatan_kotor,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.ofd_fees ELSE 0.00 END) AS potongan_ojol,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.revenue ELSE 0.00 END) AS pendapatan_bersih,
+    COUNT(*)::BIGINT AS total_order,
+    COUNT(CASE WHEN ft.is_success = 1 THEN 1 END)::BIGINT AS order_sukses,
+    COUNT(CASE WHEN ft.is_cancelled = 1 OR ft.is_success = 0 THEN 1 END)::BIGINT AS order_batal
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
 WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
 GROUP BY 
-    ft.transaction_date,
     COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
     COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
+    COALESCE(m.brand, 'UNKNOWN'),
     ft.merchant_id,
-    m.live_date;
+    ft.transaction_date,
+    ft.platform;
 
-CREATE UNIQUE INDEX idx_mv_outlet_daily_perf ON layer3_dim.mv_outlet_daily_performance (store_id, transaction_date);
-CREATE INDEX idx_mv_outlet_daily_outlet ON layer3_dim.mv_outlet_daily_performance (outlet_name);
-CREATE INDEX idx_mv_outlet_daily_date ON layer3_dim.mv_outlet_daily_performance (transaction_date);
+DROP INDEX IF EXISTS layer3_dim.idx_mv_laporan_ojol;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_laporan_ojol_owner;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_laporan_ojol_date;
+
+CREATE UNIQUE INDEX idx_mv_laporan_ojol ON layer3_dim.mv_laporan_ojol (store_id, transaction_date, channel);
+CREATE INDEX idx_mv_laporan_ojol_owner ON layer3_dim.mv_laporan_ojol (owner_name);
+CREATE INDEX idx_mv_laporan_ojol_date ON layer3_dim.mv_laporan_ojol (transaction_date);
 
 -- ============================================================================
--- 8. SQL STORED FUNCTION DYNAMIC BASELINE GROWTH PER OUTLET
+-- 8. STORED FUNCTIONS LAPORAN APLIKASI OJOL (AGREGAT CHANNEL & BULANAN)
 -- ============================================================================
-DROP FUNCTION IF EXISTS layer3_dim.get_baseline_growth(text,text,date,date,numeric) CASCADE;
-DROP FUNCTION IF EXISTS layer3_dim.get_baseline_growth(text,date,date,numeric) CASCADE;
+DROP FUNCTION IF EXISTS layer3_dim.get_laporan_aplikasi_ojol(text,text,text,date,date) CASCADE;
+DROP FUNCTION IF EXISTS layer3_dim.get_laporan_bulanan_ojol(text,text,text,date,date) CASCADE;
 
-CREATE OR REPLACE FUNCTION layer3_dim.get_baseline_growth(
+CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_aplikasi_ojol(
     p_owner TEXT DEFAULT NULL,
     p_outlet TEXT DEFAULT NULL,
-    p_start_date DATE DEFAULT '2026-07-01',
-    p_end_date DATE DEFAULT CURRENT_DATE,
-    p_growth_target_pct NUMERIC DEFAULT 0
+    p_brand TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
 )
 RETURNS TABLE (
-    outlet_name TEXT,
-    owner_name TEXT,
-    live_date TEXT,
-    selected_days INT,
-    growth_target_pct NUMERIC,
-    days_to_eom INT,
-    baseline_gmv NUMERIC(15,2),
-    baseline_order BIGINT,
-    target_gmv NUMERIC(15,2),
-    target_order NUMERIC(15,2),
-    current_gmv NUMERIC(15,2),
-    current_daily_gmv_growth NUMERIC(15,4),
-    current_order BIGINT,
-    current_daily_order_growth NUMERIC(15,4),
-    eom_gmv NUMERIC(15,2),
-    eom_gmv_growth NUMERIC(15,4),
-    eom_order NUMERIC(15,2),
-    eom_order_growth NUMERIC(15,4),
-    remaining_gmv NUMERIC(15,2),
-    required_daily_gmv NUMERIC(15,2),
-    remaining_order NUMERIC(15,2),
-    required_daily_order NUMERIC(15,2)
+    channel TEXT,
+    pendapatan_kotor NUMERIC(15,2),
+    potongan_ojol NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2),
+    rata_rata_order_per_customer NUMERIC(15,2),
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT
 ) AS $$
-DECLARE
-    v_selected_days INT;
-    v_days_in_month INT;
-    v_eom_date DATE;
-    v_days_to_eom INT;
-    v_baseline_start DATE;
-    v_baseline_end DATE;
 BEGIN
-    -- 1. Calculations for date intervals
-    v_selected_days := (p_end_date - p_start_date) + 1;
-    v_eom_date := (DATE_TRUNC('month', p_end_date) + INTERVAL '1 month - 1 day')::DATE;
-    v_days_in_month := EXTRACT(DAY FROM v_eom_date);
-    v_days_to_eom := GREATEST(0, (v_eom_date - p_end_date));
-    
-    -- Baseline range: 30 days prior to p_start_date
-    v_baseline_end := p_start_date - INTERVAL '1 day';
-    v_baseline_start := v_baseline_end - INTERVAL '29 days';
-
     RETURN QUERY
-    WITH base_agg AS (
+    WITH filtered AS (
         SELECT 
-            mv.outlet_name,
-            MAX(mv.owner_name) AS owner_name,
-            MAX(mv.live_date) AS live_date,
-            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN v_baseline_start AND v_baseline_end THEN mv.gmv ELSE 0 END), 0.00) AS b_gmv,
-            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN v_baseline_start AND v_baseline_end THEN mv.total_orders ELSE 0 END), 0)::BIGINT AS b_ord,
-            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN p_start_date AND p_end_date THEN mv.gmv ELSE 0 END), 0.00) AS c_gmv,
-            COALESCE(SUM(CASE WHEN mv.transaction_date BETWEEN p_start_date AND p_end_date THEN mv.total_orders ELSE 0 END), 0)::BIGINT AS c_ord
-        FROM layer3_dim.mv_outlet_daily_performance mv
+            mv.channel,
+            SUM(mv.pendapatan_kotor) AS pk,
+            SUM(mv.potongan_ojol) AS po,
+            SUM(mv.pendapatan_bersih) AS pb,
+            SUM(mv.total_order) AS tot_ord,
+            SUM(mv.order_sukses) AS suk_ord,
+            SUM(mv.order_batal) AS bat_ord
+        FROM layer3_dim.mv_laporan_ojol mv
         WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
           AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
-        GROUP BY mv.outlet_name
+          AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+          AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+        GROUP BY mv.channel
     ),
-    calc AS (
-        SELECT
-            b.outlet_name,
-            COALESCE(b.owner_name, 'UNKNOWN') AS owner_name,
-            COALESCE(b.live_date, '-') AS live_date,
-            v_selected_days AS sel_days,
-            p_growth_target_pct AS g_target,
-            v_days_to_eom AS d_eom,
-            b.b_gmv,
-            b.b_ord,
-            ROUND(b.b_gmv * (1.00 + (p_growth_target_pct / 100.00)), 2) AS t_gmv,
-            ROUND(b.b_ord * (1.00 + (p_growth_target_pct / 100.00)), 2) AS t_ord,
-            b.c_gmv,
-            b.c_ord,
-            CASE WHEN (b.b_gmv / 30.00) > 0 THEN ROUND(((b.c_gmv / GREATEST(1, v_selected_days)) / (b.b_gmv / 30.00)), 4) ELSE 0.0000 END AS c_daily_gmv_growth,
-            CASE WHEN (b.b_ord / 30.00) > 0 THEN ROUND(((b.c_ord::NUMERIC / GREATEST(1, v_selected_days)) / (b.b_ord::NUMERIC / 30.00)), 4) ELSE 0.0000 END AS c_daily_ord_growth,
-            ROUND((b.c_gmv / GREATEST(1, v_selected_days)) * v_days_in_month, 2) AS e_gmv,
-            ROUND((b.c_ord::NUMERIC / GREATEST(1, v_selected_days)) * v_days_in_month, 2) AS e_ord
-        FROM base_agg b
+    combined AS (
+        SELECT 
+            f.channel,
+            f.pk,
+            f.po,
+            f.pb,
+            ROUND(CASE WHEN f.suk_ord > 0 THEN f.pk / f.suk_ord ELSE 0.00 END, 2) AS avg_ord,
+            f.tot_ord,
+            f.suk_ord,
+            f.bat_ord,
+            1 AS s_grp
+        FROM filtered f
+
+        UNION ALL
+
+        SELECT 
+            'Grand Total' AS channel,
+            COALESCE(SUM(f.pk), 0.00) AS pk,
+            COALESCE(SUM(f.po), 0.00) AS po,
+            COALESCE(SUM(f.pb), 0.00) AS pb,
+            ROUND(CASE WHEN SUM(f.suk_ord) > 0 THEN SUM(f.pk) / SUM(f.suk_ord) ELSE 0.00 END, 2) AS avg_ord,
+            COALESCE(SUM(f.tot_ord), 0)::BIGINT AS tot_ord,
+            COALESCE(SUM(f.suk_ord), 0)::BIGINT AS suk_ord,
+            COALESCE(SUM(f.bat_ord), 0)::BIGINT AS bat_ord,
+            2 AS s_grp
+        FROM filtered f
     )
     SELECT 
-        c.outlet_name,
-        c.owner_name,
-        c.live_date,
-        c.sel_days,
-        c.g_target,
-        c.d_eom,
-        c.b_gmv AS baseline_gmv,
-        c.b_ord AS baseline_order,
-        c.t_gmv AS target_gmv,
-        c.t_ord AS target_order,
-        c.c_gmv AS current_gmv,
-        c.c_daily_gmv_growth,
-        c.c_ord AS current_order,
-        c.c_daily_ord_growth,
-        c.e_gmv AS eom_gmv,
-        CASE WHEN c.b_gmv > 0 THEN ROUND((c.e_gmv / c.b_gmv) - 1.00, 4) ELSE 0.0000 END AS eom_gmv_growth,
-        c.e_ord AS eom_order,
-        CASE WHEN c.b_ord > 0 THEN ROUND((c.e_ord / c.b_ord) - 1.00, 4) ELSE 0.0000 END AS eom_order_growth,
-        ROUND(c.t_gmv - c.c_gmv, 2) AS remaining_gmv,
-        CASE WHEN c.d_eom > 0 THEN ROUND((c.t_gmv - c.c_gmv) / c.d_eom, 2) ELSE 0.00 END AS required_daily_gmv,
-        ROUND(c.t_ord - c.c_ord, 2) AS remaining_order,
-        CASE WHEN c.d_eom > 0 THEN ROUND((c.t_ord - c.c_ord) / c.d_eom, 2) ELSE 0.00 END AS required_daily_order
-    FROM calc c
-    ORDER BY c.outlet_name ASC;
+        c.channel::TEXT,
+        c.pk AS pendapatan_kotor,
+        c.po AS potongan_ojol,
+        c.pb AS pendapatan_bersih,
+        c.avg_ord AS rata_rata_order_per_customer,
+        c.tot_ord::BIGINT AS total_order,
+        c.suk_ord::BIGINT AS order_sukses,
+        c.bat_ord::BIGINT AS order_batal
+    FROM combined c
+    ORDER BY c.s_grp ASC, c.channel ASC;
 END;
 $$ LANGUAGE plpgsql;
 
--- ============================================================================
--- 9. SQL STORED FUNCTION WEEK TO WEEK COMPARISON
--- ============================================================================
-DROP FUNCTION IF EXISTS layer3_dim.get_week_to_week_comparison(text,text,text,date,date,date,date,numeric) CASCADE;
-
-CREATE OR REPLACE FUNCTION layer3_dim.get_week_to_week_comparison(
-    p_pic TEXT DEFAULT NULL,
+CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_bulanan_ojol(
     p_owner TEXT DEFAULT NULL,
     p_outlet TEXT DEFAULT NULL,
-    p_start_date_a DATE DEFAULT '2026-07-13',
-    p_end_date_a DATE DEFAULT '2026-07-19',
-    p_start_date_b DATE DEFAULT '2026-07-20',
-    p_end_date_b DATE DEFAULT '2026-07-26',
-    p_target_growth_pct NUMERIC DEFAULT 10.0
+    p_brand TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
 )
 RETURNS TABLE (
-    pic TEXT,
-    owner_name TEXT,
-    outlet_name TEXT,
-    live_date TEXT,
-    age TEXT,
-    selected_days INT,
-    gmv_a NUMERIC(15,2),
-    gmv_b NUMERIC(15,2),
-    daily_gmv_a NUMERIC(15,2),
-    daily_gmv_b NUMERIC(15,2),
-    daily_gmv_growth NUMERIC(15,4),
-    order_a BIGINT,
-    order_b BIGINT,
-    daily_order_a NUMERIC(15,2),
-    daily_order_b NUMERIC(15,2),
-    daily_order_growth NUMERIC(15,4),
-    status TEXT
+    bulan TEXT,
+    channel TEXT,
+    pendapatan_kotor NUMERIC(15,2),
+    potongan_ojol NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2),
+    rata_rata_order_per_customer NUMERIC(15,2),
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT
 ) AS $$
-DECLARE
-    v_days_a INT;
-    v_days_b INT;
-    v_target_dec NUMERIC;
 BEGIN
-    v_days_a := GREATEST(1, (p_end_date_a - p_start_date_a) + 1);
-    v_days_b := GREATEST(1, (p_end_date_b - p_start_date_b) + 1);
-    v_target_dec := p_target_growth_pct / 100.00;
-
     RETURN QUERY
-    WITH target_outlets AS (
-        SELECT DISTINCT
-            COALESCE(NULLIF(TRIM(m.pic), ''), NULLIF(TRIM(m.bd_pic), ''), 'UNKNOWN') AS pic_val,
-            COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS o_val,
-            COALESCE(m.outlet_name, c.merchant_name, 'UNKNOWN') AS ot_val,
-            m.store_id AS s_id,
-            m.live_date AS l_date
-        FROM layer3_dim.dim_merchant_mapping m
-        LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
-        WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
-          AND (p_pic IS NULL OR p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(p_pic))
-          AND (p_owner IS NULL OR p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name, '')) = LOWER(p_owner))
-          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(COALESCE(m.outlet_name, c.merchant_name, '')) = LOWER(p_outlet))
-    ),
-    raw_agg AS (
+    WITH filtered AS (
         SELECT 
-            t.pic_val,
-            t.o_val,
-            t.ot_val,
-            t.l_date,
-            COALESCE(SUM(CASE WHEN ft.transaction_date BETWEEN p_start_date_a AND p_end_date_a AND ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END), 0.00) AS gmv_a_raw,
-            COALESCE(SUM(CASE WHEN ft.transaction_date BETWEEN p_start_date_b AND p_end_date_b AND ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END), 0.00) AS gmv_b_raw,
-            COALESCE(COUNT(CASE WHEN ft.transaction_date BETWEEN p_start_date_a AND p_end_date_a AND ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END), 0)::BIGINT AS ord_a_raw,
-            COALESCE(COUNT(CASE WHEN ft.transaction_date BETWEEN p_start_date_b AND p_end_date_b AND ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END), 0)::BIGINT AS ord_b_raw
-        FROM target_outlets t
-        LEFT JOIN layer3_dim.fact_transactions ft ON t.s_id = ft.merchant_id
-        GROUP BY t.pic_val, t.o_val, t.ot_val, t.l_date
+            mv.bulan,
+            mv.channel,
+            SUM(mv.pendapatan_kotor) AS pk,
+            SUM(mv.potongan_ojol) AS po,
+            SUM(mv.pendapatan_bersih) AS pb,
+            SUM(mv.total_order) AS tot_ord,
+            SUM(mv.order_sukses) AS suk_ord,
+            SUM(mv.order_batal) AS bat_ord
+        FROM layer3_dim.mv_laporan_ojol mv
+        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+          AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+          AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+        GROUP BY mv.bulan, mv.channel
     ),
-    calc AS (
-        SELECT
-            r.pic_val,
-            r.o_val,
-            r.ot_val,
-            COALESCE(r.l_date, '-') AS l_date_str,
-            CASE 
-                WHEN r.l_date IS NOT NULL AND r.l_date ~ '^\d{4}-\d{2}-\d{2}$' THEN
-                    (
-                        EXTRACT(YEAR FROM AGE(p_end_date_b, r.l_date::DATE)) * 12 +
-                        EXTRACT(MONTH FROM AGE(p_end_date_b, r.l_date::DATE))
-                    )::TEXT || 'mo ' ||
-                    (
-                        FLOOR(EXTRACT(DAY FROM AGE(p_end_date_b, r.l_date::DATE)) / 7.0)
-                    )::TEXT || 'w'
-                ELSE '-'
-            END AS age_str,
-            v_days_a AS sel_days,
-            r.gmv_a_raw AS g_a,
-            r.gmv_b_raw AS g_b,
-            ROUND(r.gmv_a_raw / v_days_a, 2) AS d_g_a,
-            ROUND(r.gmv_b_raw / v_days_b, 2) AS d_g_b,
-            CASE WHEN (r.gmv_a_raw / v_days_a) > 0 THEN ROUND(((r.gmv_b_raw / v_days_b) / (r.gmv_a_raw / v_days_a)) - 1.00, 4) ELSE NULL END AS d_g_growth,
-            r.ord_a_raw AS o_a,
-            r.ord_b_raw AS o_b,
-            ROUND(r.ord_a_raw::NUMERIC / v_days_a, 2) AS d_o_a,
-            ROUND(r.ord_b_raw::NUMERIC / v_days_b, 2) AS d_o_b,
-            CASE WHEN (r.ord_a_raw::NUMERIC / v_days_a) > 0 THEN ROUND(((r.ord_b_raw::NUMERIC / v_days_b) / (r.ord_a_raw::NUMERIC / v_days_a)) - 1.00, 4) ELSE NULL END AS d_o_growth
-        FROM raw_agg r
+    monthly_totals AS (
+        SELECT 
+            f.bulan,
+            'Total' AS channel,
+            SUM(f.pk) AS pk,
+            SUM(f.po) AS po,
+            SUM(f.pb) AS pb,
+            SUM(f.tot_ord) AS tot_ord,
+            SUM(f.suk_ord) AS suk_ord,
+            SUM(f.bat_ord) AS bat_ord
+        FROM filtered f
+        GROUP BY f.bulan
+    ),
+    grand_total AS (
+        SELECT 
+            'Grand Total' AS bulan,
+            '' AS channel,
+            COALESCE(SUM(f.pk), 0.00) AS pk,
+            COALESCE(SUM(f.po), 0.00) AS po,
+            COALESCE(SUM(f.pb), 0.00) AS pb,
+            COALESCE(SUM(f.tot_ord), 0)::BIGINT AS tot_ord,
+            COALESCE(SUM(f.suk_ord), 0)::BIGINT AS suk_ord,
+            COALESCE(SUM(f.bat_ord), 0)::BIGINT AS bat_ord
+        FROM filtered f
+    ),
+    combined AS (
+        -- Channel rows
+        SELECT 
+            f.bulan,
+            f.channel,
+            f.pk,
+            f.po,
+            f.pb,
+            ROUND(CASE WHEN f.suk_ord > 0 THEN f.pk / f.suk_ord ELSE 0.00 END, 2) AS avg_ord,
+            f.tot_ord,
+            f.suk_ord,
+            f.bat_ord,
+            f.bulan AS sort_bulan,
+            1 AS sort_grp
+        FROM filtered f
+
+        UNION ALL
+
+        -- Monthly total rows
+        SELECT 
+            m.bulan,
+            m.channel,
+            m.pk,
+            m.po,
+            m.pb,
+            ROUND(CASE WHEN m.suk_ord > 0 THEN m.pk / m.suk_ord ELSE 0.00 END, 2) AS avg_ord,
+            m.tot_ord,
+            m.suk_ord,
+            m.bat_ord,
+            m.bulan AS sort_bulan,
+            2 AS sort_grp
+        FROM monthly_totals m
+
+        UNION ALL
+
+        -- Grand total row
+        SELECT 
+            g.bulan,
+            g.channel,
+            g.pk,
+            g.po,
+            g.pb,
+            ROUND(CASE WHEN g.suk_ord > 0 THEN g.pk / g.suk_ord ELSE 0.00 END, 2) AS avg_ord,
+            g.tot_ord,
+            g.suk_ord,
+            g.bat_ord,
+            '9999-99' AS sort_bulan,
+            3 AS sort_grp
+        FROM grand_total g
     )
-    SELECT
-        c.pic_val AS pic,
-        c.o_val AS owner_name,
-        c.ot_val AS outlet_name,
-        c.l_date_str AS live_date,
-        c.age_str AS age,
-        c.sel_days AS selected_days,
-        c.g_a AS gmv_a,
-        c.g_b AS gmv_b,
-        c.d_g_a AS daily_gmv_a,
-        c.d_g_b AS daily_gmv_b,
-        c.d_g_growth AS daily_gmv_growth,
-        c.o_a AS order_a,
-        c.o_b AS order_b,
-        c.d_o_a AS daily_order_a,
-        c.d_o_b AS daily_order_b,
-        c.d_o_growth AS daily_order_growth,
-        CASE
-            WHEN COALESCE(c.d_g_growth, -1.0) >= v_target_dec AND COALESCE(c.d_o_growth, -1.0) >= v_target_dec THEN 'Achieved'
-            WHEN COALESCE(c.d_g_growth, -1.0) < v_target_dec AND COALESCE(c.d_o_growth, -1.0) >= v_target_dec THEN 'GMV Below Target'
-            WHEN COALESCE(c.d_g_growth, -1.0) >= v_target_dec AND COALESCE(c.d_o_growth, -1.0) < v_target_dec THEN 'Order Below Target'
-            ELSE 'Not Achieved'
-        END AS status
-    FROM calc c
-    ORDER BY c.ot_val ASC;
+    SELECT 
+        c.bulan::TEXT,
+        c.channel::TEXT,
+        c.pk AS pendapatan_kotor,
+        c.po AS potongan_ojol,
+        c.pb AS pendapatan_bersih,
+        c.avg_ord AS rata_rata_order_per_customer,
+        c.tot_ord::BIGINT AS total_order,
+        c.suk_ord::BIGINT AS order_sukses,
+        c.bat_ord::BIGINT AS order_batal
+    FROM combined c
+    ORDER BY c.sort_bulan ASC, c.sort_grp ASC, c.channel ASC;
 END;
 $$ LANGUAGE plpgsql;
