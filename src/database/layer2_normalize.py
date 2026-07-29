@@ -170,15 +170,20 @@ def normalize_all():
                 NULLIF(TRIM(raw."Order ID"), ''),
                 NULLIF(TRIM(raw."Transaction ID"), '')
             ) AS period_id,
-            TO_CHAR(CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE), 'YYYY-MM') AS month,
+            TO_CHAR(
+                TRIM(raw."Transaction Time")::TIMESTAMPTZ, 
+                'YYYY-MM'
+            ) AS month,
             CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE) AS date,
+            TRIM(raw."Transaction Time")::TIMESTAMPTZ::TIMESTAMP AS transaction_time,
             COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Outlet Name")) AS store_name,
             TRIM(raw."Merchant ID") AS store_id,
             CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS gross_sales,
             CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) AS commission_fee,
-            CAST(COALESCE(NULLIF(TRIM(raw."Merchant Promo Contribution"), ''), '0') AS NUMERIC(15,2)) AS marketing_fee_and_discount,
-            (CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) + 
-             CAST(COALESCE(NULLIF(TRIM(raw."Merchant Promo Contribution"), ''), '0') AS NUMERIC(15,2))) AS total_platform_deduction,
+            (CAST(COALESCE(NULLIF(TRIM(raw."GoFood Discount"), ''), '0') AS NUMERIC(15,2)) + 
+             CAST(COALESCE(NULLIF(TRIM(raw."Voucher Commission"), ''), '0') AS NUMERIC(15,2))) AS marketing_fee_and_discount,
+            (CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) - 
+             CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2))) AS total_platform_deduction,
             CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2)) AS net_sales,
             CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS average_order_customer,
             1.00 AS completed_order,
@@ -195,13 +200,13 @@ def normalize_all():
           AND raw."Transaction Time" IS NOT NULL AND raw."Transaction Time" <> ''
     )
     INSERT INTO layer2_clean.stg_go_orders (
-        period_id, month, date, store_name, store_id,
+        period_id, month, date, transaction_time, store_name, store_id,
         gross_sales, commission_fee, marketing_fee_and_discount,
         total_platform_deduction, net_sales, average_order_customer,
         completed_order, cancelled_order, total_order
     )
     SELECT 
-        period_id, month, date, store_name, store_id,
+        period_id, month, date, transaction_time, store_name, store_id,
         gross_sales, commission_fee, marketing_fee_and_discount,
         total_platform_deduction, net_sales, average_order_customer,
         completed_order, cancelled_order, total_order

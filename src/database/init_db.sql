@@ -121,11 +121,11 @@ BEGIN
         'GoFood',
         stg.period_id,
         stg.date,
-        stg.date::TIMESTAMP,
-        EXTRACT(YEAR FROM stg.date)::INTEGER,
+        COALESCE(stg.transaction_time, stg.date::TIMESTAMP),
+        EXTRACT(YEAR FROM COALESCE(stg.transaction_time, stg.date::TIMESTAMP))::INTEGER,
         stg.month,
-        TO_CHAR(stg.date, 'YY-MM-"W"W'),
-        0::INTEGER,
+        TO_CHAR(COALESCE(stg.transaction_time, stg.date::TIMESTAMP), 'YY-MM-') || 'W' || TO_CHAR(COALESCE(stg.transaction_time, stg.date::TIMESTAMP), 'W'),
+        EXTRACT(HOUR FROM COALESCE(stg.transaction_time, stg.date::TIMESTAMP))::INTEGER,
         stg.store_id,
         COALESCE(m.group_code, 'UNKNOWN'),
         COALESCE(m.outlet_name, stg.store_name),
@@ -137,11 +137,11 @@ BEGIN
         stg.gross_sales,
         0.00,
         0.00,
-        stg.net_sales,
-        stg.marketing_fee_and_discount,
-        stg.commission_fee,
-        stg.total_platform_deduction,
-        stg.net_sales,
+        stg.gross_sales, -- Tab Order Lineage: net_sales = Amount
+        stg.marketing_fee_and_discount, -- Tab Order Lineage: GoFood Discount + Voucher Commission
+        stg.commission_fee, -- Tab Order Lineage: Total Fee
+        stg.total_platform_deduction, -- Tab Order Lineage: Amount - Net Amount
+        stg.net_sales, -- Tab Order Lineage: revenue = Net Amount
         stg.id
     FROM layer2_clean.stg_go_orders stg
     LEFT JOIN layer3_dim.dim_merchant_mapping m ON stg.store_id = m.store_id
@@ -149,11 +149,14 @@ BEGIN
       AND stg.period_id <> ''
     ON CONFLICT (platform, external_id) 
     DO UPDATE SET
+        created_on = EXCLUDED.created_on,
+        hour = EXCLUDED.hour,
         status = EXCLUDED.status,
         is_success = EXCLUDED.is_success,
         is_cancelled = EXCLUDED.is_cancelled,
         gross_amount = EXCLUDED.gross_amount,
         net_sales = EXCLUDED.net_sales,
+        marketing_fee = EXCLUDED.marketing_fee,
         commission = EXCLUDED.commission,
         ofd_fees = EXCLUDED.ofd_fees,
         revenue = EXCLUDED.revenue,
