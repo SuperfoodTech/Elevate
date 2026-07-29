@@ -22,6 +22,8 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, status
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -343,6 +345,100 @@ def get_transactions(
         }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database query error: {e}")
+
+# ── Rekap Tagihan Web Dashboard & REST API Endpoints ──
+
+# Mount static folder
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/rekap-tagihan", response_class=FileResponse, summary="Serve Rekap Tagihan Web Dashboard UI")
+def serve_rekap_tagihan_ui():
+    html_file = os.path.join(STATIC_DIR, "rekap_tagihan.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="Dashboard UI file not found.")
+    return FileResponse(html_file)
+
+@app.get("/api/rekap-tagihan/owners", summary="Get Active Owners List for Dropdown")
+def get_rekap_owners():
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT DISTINCT owner_name 
+            FROM layer3_dim.mv_rekap_tagihan_daily 
+            WHERE owner_name IS NOT NULL 
+              AND owner_name <> 'UNKNOWN' 
+              AND TRIM(owner_name) <> ''
+            ORDER BY owner_name ASC;
+        """
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql)).fetchall()
+
+        owners = [r[0] for r in rows]
+        return {"total": len(owners), "owners": owners}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching owners: {e}")
+
+@app.get("/api/rekap-tagihan", summary="Query Rekap Tagihan per Owner & Date Range")
+def get_rekap_tagihan_data(
+    owner: Optional[str] = Query(None, description="Owner name filter (e.g. 'Mustika', 'Vindus')"),
+    start_date: Optional[str] = Query("2026-01-01", description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    nominal_bagi_hasil: Optional[float] = Query(None, description="Optional override bagi hasil per order (e.g. 1000, 2000)")
+):
+    try:
+        # Unwrap Query default objects if called directly in Python
+        if hasattr(owner, 'default'): owner = None
+        if hasattr(start_date, 'default'): start_date = '2026-01-01'
+        if hasattr(end_date, 'default'): end_date = None
+        if hasattr(nominal_bagi_hasil, 'default'): nominal_bagi_hasil = None
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        sql_params = {
+            "p_owner": owner if owner else None,
+            "p_start_date": start_date,
+            "p_end_date": end_date,
+            "p_override_nominal_bagi_hasil": nominal_bagi_hasil
+        }
+
+        query_sql = """
+            SELECT tanggal, pendapatan_kotor, potongan_ojol, pendapatan_bersih, total_order_sukses, total_bagi_hasil
+            FROM layer3_dim.get_rekap_tagihan(
+                :p_owner,
+                CAST(:p_start_date AS DATE),
+                CAST(:p_end_date AS DATE),
+                :p_override_nominal_bagi_hasil
+            );
+        """
+
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        return {
+            "owner": owner,
+            "start_date": start_date,
+            "end_date": end_date,
+            "nominal_override": nominal_bagi_hasil,
+            "data": [dict(r) for r in rows]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan: {e}")
 
 if __name__ == "__main__":
     import uvicorn

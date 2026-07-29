@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rekap Tagihan Mitra Owner - SuperFood Elevate</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --bg-card-border: rgba(255, 255, 255, 0.08);
+            --bg-input: #1e293b;
+            --primary: #38bdf8;
+            --primary-hover: #0284c7;
+            --accent-green: #34d399;
+            --accent-amber: #fbbf24;
+            --accent-purple: #c084fc;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --shadow-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(192, 132, 252, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        /* Top Header Navigation */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .brand-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .badge-status {
+            background: rgba(52, 211, 153, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(52, 211, 153, 0.3);
+            padding: 0.35rem 0.85rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        /* Controls Panel (Filter Glassmorphism Card) */
+        .filter-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .form-control {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+        }
+
+        select.form-control option {
+            background-color: #1e293b;
+            color: #f8fafc;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: #0f172a;
+            font-weight: 700;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-family: 'Outfit', sans-serif;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: 0 4px 14px 0 rgba(56, 189, 248, 0.39);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 rgba(56, 189, 248, 0.55);
+        }
+
+        .btn-submit:active {
+            transform: translateY(0);
+        }
+
+        /* KPI Cards Summary */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 0.85rem;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--card-accent, var(--primary));
+        }
+
+        .kpi-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .kpi-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        /* Table Card Container */
+        .table-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-glow);
+            margin-bottom: 2rem;
+        }
+
+        .table-header-bar {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background-color: rgba(15, 23, 42, 0.6);
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-main);
+            white-space: nowrap;
+        }
+
+        tbody tr:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        /* Grand Total Row Highlight */
+        tr.row-grand-total {
+            background-color: rgba(56, 189, 248, 0.1) !important;
+            font-weight: 700;
+            border-top: 2px solid var(--primary);
+            border-bottom: 2px solid var(--primary);
+        }
+
+        tr.row-grand-total td {
+            color: #ffffff;
+            font-size: 0.95rem;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* Loading & State Spinners */
+        .state-container {
+            padding: 3rem;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: var(--primary);
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div>
+                <h1 class="brand-title">Laporan Rekap Tagihan Mitra Owner</h1>
+                <p class="brand-subtitle">SuperFood Elevate Data Warehouse — Materialized View & Stored Procedure Engine</p>
+            </div>
+            <div>
+                <span class="badge-status">LIVE DATA STREAM</span>
+            </div>
+        </header>
+
+        <!-- Filter Controls Form -->
+        <div class="filter-card">
+            <form id="filterForm" onsubmit="handleFilterSubmit(event)">
+                <div class="filter-grid">
+                    <!-- Owner Select Dropdown -->
+                    <div class="form-group">
+                        <label for="ownerSelect" class="form-label">Nama Owner Mitra</label>
+                        <select id="ownerSelect" class="form-control" required>
+                            <option value="">-- Memuat Daftar Owner... --</option>
+                        </select>
+                    </div>
+
+                    <!-- Date Start -->
+                    <div class="form-group">
+                        <label for="startDate" class="form-label">Tanggal Awal (Dari)</label>
+                        <input type="date" id="startDate" class="form-control" required>
+                    </div>
+
+                    <!-- Date End -->
+                    <div class="form-group">
+                        <label for="endDate" class="form-label">Tanggal Akhir (Hingga)</label>
+                        <input type="date" id="endDate" class="form-control" required>
+                    </div>
+
+                    <!-- Custom Nominal Bagi Hasil -->
+                    <div class="form-group">
+                        <label for="nominalInput" class="form-label">Nominal Bagi Hasil (Opsional)</label>
+                        <input type="number" id="nominalInput" class="form-control" placeholder="Dinamis Fee Mapping" min="0" step="500">
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="form-group">
+                        <button type="submit" class="btn-submit">Tampilkan Rekap</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Summary KPI Cards -->
+        <div class="kpi-grid">
+            <div class="kpi-card" style="--card-accent: #38bdf8;">
+                <span class="kpi-title">Pendapatan Kotor</span>
+                <span class="kpi-value" id="kpiKotor">Rp 0</span>
+            </div>
+            <div class="kpi-card" style="--card-accent: #fbbf24;">
+                <span class="kpi-title">Potongan Ojol</span>
+                <span class="kpi-value" id="kpiOjol">Rp 0</span>
+            </div>
+            <div class="kpi-card" style="--card-accent: #34d399;">
+                <span class="kpi-title">Pendapatan Bersih</span>
+                <span class="kpi-value" id="kpiBersih">Rp 0</span>
+            </div>
+            <div class="kpi-card" style="--card-accent: #c084fc;">
+                <span class="kpi-title">Total Order Sukses</span>
+                <span class="kpi-value" id="kpiSukses">0 Order</span>
+            </div>
+            <div class="kpi-card" style="--card-accent: #818cf8;">
+                <span class="kpi-title">Total Bagi Hasil</span>
+                <span class="kpi-value" id="kpiBagiHasil">Rp 0</span>
+            </div>
+        </div>
+
+        <!-- Main Data Table Container -->
+        <div class="table-card">
+            <div class="table-header-bar">
+                <h2 class="table-title" id="tableHeaderTitle">Rincian Agregat Harian</h2>
+                <span id="recordCountBadge" style="font-size: 0.85rem; color: var(--text-muted);">0 Baris</span>
+            </div>
+
+            <div class="table-wrapper">
+                <table id="rekapTable">
+                    <thead>
+                        <tr>
+                            <th>Tanggal</th>
+                            <th class="text-right">Pendapatan Kotor</th>
+                            <th class="text-right">Potongan Ojol</th>
+                            <th class="text-right">Pendapatan Bersih</th>
+                            <th class="text-center">Total Order Sukses</th>
+                            <th class="text-right">Total Bagi Hasil</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="6" class="state-container">
+                                Silakan pilih Owner dan klik tombol <strong>Tampilkan Rekap</strong>.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Frontend Script -->
+    <script>
+        const API_BASE = window.location.origin;
+
+        // Currency Formatter (IDR)
+        function formatIDR(value) {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                maximumFractionDigits: 0
+            }).format(value || 0);
+        }
+
+        // Initialize Page Data & Dropdown Options
+        async function initPage() {
+            // Set Default Dates (First to Last day of current month or sample range 2026-03-01 to 2026-07-27)
+            document.getElementById('startDate').value = '2026-03-01';
+            document.getElementById('endDate').value = '2026-07-27';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/rekap-tagihan/owners`);
+                const result = await response.json();
+                
+                const selectEl = document.getElementById('ownerSelect');
+                selectEl.innerHTML = '';
+
+                if (result.owners && result.owners.length > 0) {
+                    result.owners.forEach(owner => {
+                        const opt = document.createElement('option');
+                        opt.value = owner;
+                        opt.textContent = owner;
+                        selectEl.appendChild(opt);
+                    });
+
+                    // Auto-fetch first owner data
+                    fetchRekapData();
+                } else {
+                    selectEl.innerHTML = '<option value="">Tidak ada Owner ditemukan</option>';
+                }
+            } catch (err) {
+                console.error('Failed to load owner list:', err);
+                document.getElementById('ownerSelect').innerHTML = '<option value="">Gagal memuat Owner</option>';
+            }
+        }
+
+        // Handle Submit Filter Form
+        function handleFilterSubmit(e) {
+            e.preventDefault();
+            fetchRekapData();
+        }
+
+        // Fetch Rekap Data from Backend API
+        async function fetchRekapData() {
+            const owner = document.getElementById('ownerSelect').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const nominal = document.getElementById('nominalInput').value;
+
+            if (!owner || !startDate || !endDate) return;
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="state-container">
+                        <div class="spinner"></div>
+                        Mengambil data Rekap Tagihan dari server database...
+                    </td>
+                </tr>
+            `;
+
+            let url = `${API_BASE}/api/rekap-tagihan?owner=${encodeURIComponent(owner)}&start_date=${startDate}&end_date=${endDate}`;
+            if (nominal) {
+                url += `&nominal_bagi_hasil=${nominal}`;
+            }
+
+            try {
+                const res = await fetch(url);
+                const json = await res.json();
+
+                if (!json.data || json.data.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="state-container">
+                                Tidak ada data transaksi untuk Owner <strong>${owner}</strong> pada rentang tanggal tersebut.
+                            </td>
+                        </tr>
+                    `;
+                    updateKPIs(0, 0, 0, 0, 0);
+                    document.getElementById('recordCountBadge').textContent = '0 Baris';
+                    return;
+                }
+
+                renderTable(json.data, owner);
+            } catch (err) {
+                console.error('Error fetching rekap data:', err);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="state-container" style="color: #ef4444;">
+                            Gagal mengambil data dari server. Silakan coba lagi.
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Render Table Data
+        function renderTable(data, owner) {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            let grandTotalRow = null;
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+
+                if (row.tanggal === 'Grand Total') {
+                    tr.classList.add('row-grand-total');
+                    grandTotalRow = row;
+
+                    tr.innerHTML = `
+                        <td>${row.tanggal}</td>
+                        <td class="text-right">${formatIDR(row.pendapatan_kotor)}</td>
+                        <td class="text-right">${formatIDR(row.potongan_ojol)}</td>
+                        <td class="text-right">${formatIDR(row.pendapatan_bersih)}</td>
+                        <td class="text-center">${row.total_order_sukses.toLocaleString('id-ID')}</td>
+                        <td class="text-right">${formatIDR(row.total_bagi_hasil)}</td>
+                    `;
+                } else {
+                    tr.innerHTML = `
+                        <td>${row.tanggal}</td>
+                        <td class="text-right">${formatIDR(row.pendapatan_kotor)}</td>
+                        <td class="text-right">${formatIDR(row.potongan_ojol)}</td>
+                        <td class="text-right">${formatIDR(row.pendapatan_bersih)}</td>
+                        <td class="text-center">${row.total_order_sukses.toLocaleString('id-ID')}</td>
+                        <td class="text-right">${formatIDR(row.total_bagi_hasil)}</td>
+                    `;
+                }
+
+                tbody.appendChild(tr);
+            });
+
+            // Update Summary KPI Cards from Grand Total row
+            if (grandTotalRow) {
+                updateKPIs(
+                    grandTotalRow.pendapatan_kotor,
+                    grandTotalRow.potongan_ojol,
+                    grandTotalRow.pendapatan_bersih,
+                    grandTotalRow.total_order_sukses,
+                    grandTotalRow.total_bagi_hasil
+                );
+            }
+
+            document.getElementById('tableHeaderTitle').textContent = `Rincian Agregat Harian — ${owner}`;
+            document.getElementById('recordCountBadge').textContent = `${data.length - 1} Hari Transaksi`;
+        }
+
+        // Update Summary KPI Card Elements
+        function updateKPIs(kotor, ojol, bersih, sukses, bagiHasil) {
+            document.getElementById('kpiKotor').textContent = formatIDR(kotor);
+            document.getElementById('kpiOjol').textContent = formatIDR(ojol);
+            document.getElementById('kpiBersih').textContent = formatIDR(bersih);
+            document.getElementById('kpiSukses').textContent = `${sukses.toLocaleString('id-ID')} Order`;
+            document.getElementById('kpiBagiHasil').textContent = formatIDR(bagiHasil);
+        }
+
+        // Run Initialization on Load
+        window.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>
