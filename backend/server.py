@@ -618,6 +618,217 @@ def get_baseline_growth_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error executing get_baseline_growth: {e}")
 
+# ── Week to Week Comparison Endpoints ──
+
+@app.get("/weektoweekcomparison", response_class=FileResponse, summary="Serve Week to Week Comparison Dashboard Page")
+def serve_week_to_week_ui():
+    html_file = os.path.join(STATIC_DIR, "week_to_week_comparison.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="Week to Week Comparison UI file not found.")
+    return FileResponse(html_file)
+
+@app.get("/api/week-to-week/pics", summary="Get Active PICs List for Dropdown Filter")
+def get_week_to_week_pics():
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT DISTINCT COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) AS pic_name 
+            FROM layer3_dim.dim_merchant_mapping 
+            WHERE COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) IS NOT NULL 
+              AND COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) <> 'UNKNOWN' 
+            ORDER BY pic_name ASC;
+        """
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql)).fetchall()
+
+        pics = [r[0] for r in rows if r[0]]
+        return {"total": len(pics), "pics": pics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching PICs: {e}")
+
+@app.get("/api/week-to-week/owners", summary="Get Active Owners List for Dropdown Filter (Filtered by PIC)")
+def get_week_to_week_owners(pic: Optional[str] = Query(None, description="PIC name filter")):
+    try:
+        if hasattr(pic, 'default'): pic = None
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT DISTINCT COALESCE(c.owner_name, m.owner_name) AS owner_name 
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(c.owner_name, m.owner_name) IS NOT NULL 
+              AND COALESCE(c.owner_name, m.owner_name) <> 'UNKNOWN' 
+              AND TRIM(COALESCE(c.owner_name, m.owner_name)) <> ''
+              AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+            ORDER BY owner_name ASC;
+        """
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_pic": pic if pic else None}).fetchall()
+
+        owners = [r[0] for r in rows]
+        return {"total": len(owners), "owners": owners}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching owners: {e}")
+
+@app.get("/api/week-to-week/outlets", summary="Get Active Outlets List for Dropdown Filter (Filtered by PIC & Owner)")
+def get_week_to_week_outlets(
+    pic: Optional[str] = Query(None, description="PIC filter"),
+    owner: Optional[str] = Query(None, description="Owner filter")
+):
+    try:
+        if hasattr(pic, 'default'): pic = None
+        if hasattr(owner, 'default'): owner = None
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT DISTINCT COALESCE(m.outlet_name, c.merchant_name) AS outlet_name 
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(m.outlet_name, c.merchant_name) IS NOT NULL 
+              AND COALESCE(m.outlet_name, c.merchant_name) <> 'UNKNOWN' 
+              AND TRIM(COALESCE(m.outlet_name, c.merchant_name)) <> ''
+              AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+              AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name)) = LOWER(:p_owner))
+            ORDER BY outlet_name ASC;
+        """
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_pic": pic if pic else None, "p_owner": owner if owner else None}).fetchall()
+
+        outlets = [r[0] for r in rows]
+        return {"total": len(outlets), "outlets": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+@app.get("/api/week-to-week", summary="Query Week to Week Comparison Data")
+def get_week_to_week_comparison_data(
+    pic: Optional[str] = Query(None, description="BD PIC filter"),
+    owner: Optional[str] = Query(None, description="Owner filter"),
+    outlet: Optional[str] = Query(None, description="Outlet filter"),
+    start_date_a: str = Query("2026-07-13", description="Start date Period A YYYY-MM-DD"),
+    end_date_a: str = Query("2026-07-19", description="End date Period A YYYY-MM-DD"),
+    start_date_b: str = Query("2026-07-20", description="Start date Period B YYYY-MM-DD"),
+    end_date_b: str = Query("2026-07-26", description="End date Period B YYYY-MM-DD"),
+    target_growth_pct: Optional[float] = Query(10.0, description="Target growth % e.g. 10.0"),
+    status_filter: Optional[str] = Query(None, description="Performance status filter")
+):
+    try:
+        if hasattr(pic, 'default'): pic = None
+        if hasattr(owner, 'default'): owner = None
+        if hasattr(outlet, 'default'): outlet = None
+        if hasattr(target_growth_pct, 'default'): target_growth_pct = 10.0
+        if hasattr(status_filter, 'default'): status_filter = None
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        sql_params = {
+            "p_pic": pic if pic else None,
+            "p_owner": owner if owner else None,
+            "p_outlet": outlet if outlet else None,
+            "p_start_date_a": start_date_a,
+            "p_end_date_a": end_date_a,
+            "p_start_date_b": start_date_b,
+            "p_end_date_b": end_date_b,
+            "p_target_growth_pct": target_growth_pct if target_growth_pct is not None else 10.0
+        }
+
+        query_sql = """
+            SELECT 
+                pic,
+                owner_name,
+                outlet_name,
+                live_date,
+                age,
+                selected_days,
+                gmv_a,
+                gmv_b,
+                daily_gmv_a,
+                daily_gmv_b,
+                daily_gmv_growth,
+                order_a,
+                order_b,
+                daily_order_a,
+                daily_order_b,
+                daily_order_growth,
+                status
+            FROM layer3_dim.get_week_to_week_comparison(
+                :p_pic,
+                :p_owner,
+                :p_outlet,
+                CAST(:p_start_date_a AS DATE),
+                CAST(:p_end_date_a AS DATE),
+                CAST(:p_start_date_b AS DATE),
+                CAST(:p_end_date_b AS DATE),
+                :p_target_growth_pct
+            );
+        """
+
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        data_list = [dict(r) for r in rows]
+
+        if status_filter and status_filter.strip() and status_filter.lower() != 'all':
+            sf = status_filter.strip().lower()
+            data_list = [r for r in data_list if r['status'].lower() == sf]
+
+        valid_gmv_growths = [float(r['daily_gmv_growth']) for r in data_list if r['daily_gmv_growth'] is not None]
+        valid_order_growths = [float(r['daily_order_growth']) for r in data_list if r['daily_order_growth'] is not None]
+
+        avg_gmv_growth = (sum(valid_gmv_growths) / len(valid_gmv_growths)) if valid_gmv_growths else 0.0
+        avg_order_growth = (sum(valid_order_growths) / len(valid_order_growths)) if valid_order_growths else 0.0
+
+        total_outlet = len(data_list)
+        growing_outlet = sum(1 for r in data_list if r['status'] == 'Achieved')
+
+        summary = {
+            "avg_gmv_growth": avg_gmv_growth,
+            "avg_order_growth": avg_order_growth,
+            "total_outlet": total_outlet,
+            "growing_outlet": growing_outlet,
+            "achieved_count": growing_outlet,
+            "gmv_below_count": sum(1 for r in data_list if r['status'] == 'GMV Below Target'),
+            "order_below_count": sum(1 for r in data_list if r['status'] == 'Order Below Target'),
+            "not_achieved_count": sum(1 for r in data_list if r['status'] == 'Not Achieved')
+        }
+
+        return {
+            "pic": pic,
+            "owner": owner,
+            "outlet": outlet,
+            "start_date_a": start_date_a,
+            "end_date_a": end_date_a,
+            "start_date_b": start_date_b,
+            "end_date_b": end_date_b,
+            "target_growth_pct": target_growth_pct,
+            "status_filter": status_filter,
+            "summary": summary,
+            "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing get_week_to_week_comparison: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
