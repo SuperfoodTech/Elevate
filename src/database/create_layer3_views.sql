@@ -161,3 +161,190 @@ BEGIN
     ORDER BY c.sort_grp ASC, c.sort_date ASC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 4. TABEL ADMINISTRATIVE REKONSILIASI PEMBAYARAN TAGIHAN BULANAN
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS layer3_dim.monthly_billing_payments (
+    id SERIAL PRIMARY KEY,
+    store_id TEXT NOT NULL,
+    periode TEXT NOT NULL,
+    penyesuaian NUMERIC(15,2) DEFAULT 0.00,
+    tanggal_tagihan DATE,
+    transfer_id TEXT,
+    tanggal_pembayaran DATE,
+    link_bukti TEXT,
+    status_pembayaran TEXT DEFAULT 'Unpaid',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_monthly_billing_payments UNIQUE (store_id, periode)
+);
+
+-- ============================================================================
+-- 5. MATERIALIZED VIEW TAGIHAN BULANAN (MONTHLY BILLING CYCLE & LIVE OUTLETS)
+-- ============================================================================
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan_monthly CASCADE;
+
+CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_monthly AS
+SELECT 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
+    COALESCE(m.brand, 'UNKNOWN') AS brand,
+    COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN') AS nama_resto_final,
+    ft.merchant_id AS store_id,
+    TO_CHAR(ft.transaction_date, 'YYYY-MM') AS periode,
+    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END)::BIGINT AS jumlah_order_sukses,
+    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS biaya,
+    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS subtotal_tagihan,
+    COALESCE(p.penyesuaian, 0.00) AS penyesuaian,
+    (COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00)) + COALESCE(p.penyesuaian, 0.00) AS total_tagihan,
+    p.tanggal_tagihan,
+    p.transfer_id,
+    p.tanggal_pembayaran,
+    p.link_bukti,
+    COALESCE(p.status_pembayaran, 'Unpaid') AS status_pembayaran
+FROM layer3_dim.fact_transactions ft
+LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
+LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
+LEFT JOIN layer3_dim.monthly_billing_payments p ON ft.merchant_id = p.store_id AND TO_CHAR(ft.transaction_date, 'YYYY-MM') = p.periode
+WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+  AND UPPER(COALESCE(m.billing_cycle, '')) = 'MONTHLY'
+GROUP BY 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
+    COALESCE(m.brand, 'UNKNOWN'),
+    COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN'),
+    ft.merchant_id,
+    TO_CHAR(ft.transaction_date, 'YYYY-MM'),
+    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
+    p.penyesuaian,
+    p.tanggal_tagihan,
+    p.transfer_id,
+    p.tanggal_pembayaran,
+    p.link_bukti,
+    p.status_pembayaran;
+
+-- Indeks Unik Pendukung Refresh Concurrent & Query Cepat
+CREATE UNIQUE INDEX idx_mv_rekap_tagihan_monthly ON layer3_dim.mv_rekap_tagihan_monthly (store_id, periode);
+CREATE INDEX idx_mv_rekap_tagihan_monthly_owner ON layer3_dim.mv_rekap_tagihan_monthly (owner_name);
+CREATE INDEX idx_mv_rekap_tagihan_monthly_periode ON layer3_dim.mv_rekap_tagihan_monthly (periode);
+
+-- ============================================================================
+-- 6. SQL STORED FUNCTION DYNAMIC REKAP TAGIHAN BULANAN
+-- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_rekap_tagihan_monthly(text,text,text) CASCADE;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_rekap_tagihan_monthly(
+    p_owner TEXT DEFAULT NULL,
+    p_periode TEXT DEFAULT NULL,
+    p_status_pembayaran TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+    owner_name TEXT,
+    outlet_name TEXT,
+    brand TEXT,
+    nama_resto_final TEXT,
+    store_id TEXT,
+    periode TEXT,
+    jumlah_order_sukses BIGINT,
+    biaya NUMERIC(15,2),
+    subtotal_tagihan NUMERIC(15,2),
+    penyesuaian NUMERIC(15,2),
+    total_tagihan NUMERIC(15,2),
+    tanggal_tagihan DATE,
+    transfer_id TEXT,
+    tanggal_pembayaran DATE,
+    link_bukti TEXT,
+    status_pembayaran TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH base_agg AS (
+        SELECT 
+            mv.owner_name AS o_name,
+            mv.outlet_name AS ot_name,
+            mv.brand AS b_name,
+            mv.nama_resto_final AS r_name,
+            mv.store_id AS s_id,
+            mv.periode AS p_code,
+            mv.jumlah_order_sukses AS os_cnt,
+            mv.biaya AS fee_val,
+            mv.subtotal_tagihan AS sub_val,
+            mv.penyesuaian AS adj_val,
+            mv.total_tagihan AS tot_val,
+            mv.tanggal_tagihan AS tgl_tagihan,
+            mv.transfer_id AS trf_id,
+            mv.tanggal_pembayaran AS tgl_bayar,
+            mv.link_bukti AS link_bkt,
+            mv.status_pembayaran AS st_bayar,
+            1 AS sort_grp
+        FROM layer3_dim.mv_rekap_tagihan_monthly mv
+        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
+          AND (p_periode IS NULL OR p_periode = '' OR mv.periode = p_periode)
+          AND (p_status_pembayaran IS NULL OR p_status_pembayaran = '' OR LOWER(mv.status_pembayaran) = LOWER(p_status_pembayaran))
+    ),
+    combined AS (
+        SELECT 
+            b.o_name,
+            b.ot_name,
+            b.b_name,
+            b.r_name,
+            b.s_id,
+            b.p_code,
+            b.os_cnt,
+            b.fee_val,
+            b.sub_val,
+            b.adj_val,
+            b.tot_val,
+            b.tgl_tagihan,
+            b.trf_id,
+            b.tgl_bayar,
+            b.link_bkt,
+            b.st_bayar,
+            1 AS s_grp
+        FROM base_agg b
+
+        UNION ALL
+
+        SELECT 
+            'Grand Total' AS o_name,
+            '-' AS ot_name,
+            '-' AS b_name,
+            '-' AS r_name,
+            '-' AS s_id,
+            '-' AS p_code,
+            COALESCE(SUM(b.os_cnt), 0)::BIGINT AS os_cnt,
+            0.00 AS fee_val,
+            COALESCE(SUM(b.sub_val), 0.00) AS sub_val,
+            COALESCE(SUM(b.adj_val), 0.00) AS adj_val,
+            COALESCE(SUM(b.tot_val), 0.00) AS tot_val,
+            NULL::DATE AS tgl_tagihan,
+            '-' AS trf_id,
+            NULL::DATE AS tgl_bayar,
+            '-' AS link_bkt,
+            '-' AS st_bayar,
+            2 AS s_grp
+        FROM base_agg b
+    )
+    SELECT 
+        c.o_name AS owner_name,
+        c.ot_name AS outlet_name,
+        c.b_name AS brand,
+        c.r_name AS nama_resto_final,
+        c.s_id AS store_id,
+        c.p_code AS periode,
+        c.os_cnt AS jumlah_order_sukses,
+        c.fee_val AS biaya,
+        c.sub_val AS subtotal_tagihan,
+        c.adj_val AS penyesuaian,
+        c.tot_val AS total_tagihan,
+        c.tgl_tagihan AS tanggal_tagihan,
+        c.trf_id AS transfer_id,
+        c.tgl_bayar AS tanggal_pembayaran,
+        c.link_bkt AS link_bukti,
+        c.st_bayar AS status_pembayaran
+    FROM combined c
+    ORDER BY c.s_grp ASC, c.o_name ASC, c.ot_name ASC;
+END;
+$$ LANGUAGE plpgsql;

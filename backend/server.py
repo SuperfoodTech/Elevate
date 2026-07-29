@@ -440,6 +440,157 @@ def get_rekap_tagihan_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan: {e}")
 
+# ── Tagihan Bulanan (Monthly Billing) Endpoints ──
+
+class MonthlyPaymentUpdateRequest(BaseModel):
+    store_id: str = Field(..., description="Store/Merchant ID")
+    periode: str = Field(..., description="Periode YYYY-MM")
+    penyesuaian: Optional[float] = Field(0.00, description="Manual fee adjustment amount")
+    tanggal_tagihan: Optional[str] = Field(None, description="Billing date YYYY-MM-DD")
+    transfer_id: Optional[str] = Field(None, description="Transfer transaction ID")
+    tanggal_pembayaran: Optional[str] = Field(None, description="Payment date YYYY-MM-DD")
+    link_bukti: Optional[str] = Field(None, description="Proof URL link")
+    status_pembayaran: Optional[str] = Field("Unpaid", description="Payment status: Unpaid, Paid, Pending")
+    notes: Optional[str] = Field(None, description="Internal notes")
+
+@app.get("/rekap-tagihan-monthly", response_class=FileResponse, summary="Serve Monthly Billing Web Dashboard UI")
+def serve_monthly_billing_ui():
+    html_file = os.path.join(STATIC_DIR, "rekap_tagihan_monthly.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="Monthly Billing Dashboard UI file not found.")
+    return FileResponse(html_file)
+
+@app.get("/api/rekap-tagihan-monthly/periodes", summary="Get Distinct Monthly Periodes")
+def get_monthly_periodes():
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT DISTINCT periode 
+            FROM layer3_dim.mv_rekap_tagihan_monthly 
+            WHERE periode IS NOT NULL AND periode <> '-'
+            ORDER BY periode DESC;
+        """
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql)).fetchall()
+
+        periodes = [r[0] for r in rows]
+        return {"total": len(periodes), "periodes": periodes}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching periodes: {e}")
+
+@app.get("/api/rekap-tagihan-monthly", summary="Query Monthly Billing Records")
+def get_monthly_billing_data(
+    owner: Optional[str] = Query(None, description="Filter owner name"),
+    periode: Optional[str] = Query(None, description="Filter periode YYYY-MM"),
+    status_pembayaran: Optional[str] = Query(None, description="Filter payment status: Unpaid, Paid, Pending")
+):
+    try:
+        if hasattr(owner, 'default'): owner = None
+        if hasattr(periode, 'default'): periode = None
+        if hasattr(status_pembayaran, 'default'): status_pembayaran = None
+
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        sql_params = {
+            "p_owner": owner if owner else None,
+            "p_periode": periode if periode else None,
+            "p_status_pembayaran": status_pembayaran if status_pembayaran else None
+        }
+
+        query_sql = """
+            SELECT owner_name, outlet_name, brand, nama_resto_final, store_id, periode,
+                   jumlah_order_sukses, biaya, subtotal_tagihan, penyesuaian, total_tagihan,
+                   TO_CHAR(tanggal_tagihan, 'YYYY-MM-DD') AS tanggal_tagihan,
+                   transfer_id,
+                   TO_CHAR(tanggal_pembayaran, 'YYYY-MM-DD') AS tanggal_pembayaran,
+                   link_bukti, status_pembayaran
+            FROM layer3_dim.get_rekap_tagihan_monthly(
+                :p_owner,
+                :p_periode,
+                :p_status_pembayaran
+            );
+        """
+
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        return {
+            "owner": owner,
+            "periode": periode,
+            "status_pembayaran": status_pembayaran,
+            "data": [dict(r) for r in rows]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan_monthly: {e}")
+
+@app.post("/api/rekap-tagihan-monthly/update-payment", summary="Update or Save Administrative Payment Details")
+def update_monthly_payment_record(req: MonthlyPaymentUpdateRequest):
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        tgl_tagihan = req.tanggal_tagihan if req.tanggal_tagihan and req.tanggal_tagihan.strip() else None
+        tgl_bayar = req.tanggal_pembayaran if req.tanggal_pembayaran and req.tanggal_pembayaran.strip() else None
+
+        upsert_sql = """
+            INSERT INTO layer3_dim.monthly_billing_payments (
+                store_id, periode, penyesuaian, tanggal_tagihan, transfer_id,
+                tanggal_pembayaran, link_bukti, status_pembayaran, notes, updated_at
+            ) VALUES (
+                :store_id, :periode, :penyesuaian, CAST(:tanggal_tagihan AS DATE), :transfer_id,
+                CAST(:tanggal_pembayaran AS DATE), :link_bukti, :status_pembayaran, :notes, CURRENT_TIMESTAMP
+            )
+            ON CONFLICT (store_id, periode) DO UPDATE SET
+                penyesuaian = EXCLUDED.penyesuaian,
+                tanggal_tagihan = EXCLUDED.tanggal_tagihan,
+                transfer_id = EXCLUDED.transfer_id,
+                tanggal_pembayaran = EXCLUDED.tanggal_pembayaran,
+                link_bukti = EXCLUDED.link_bukti,
+                status_pembayaran = EXCLUDED.status_pembayaran,
+                notes = EXCLUDED.notes,
+                updated_at = CURRENT_TIMESTAMP;
+        """
+
+        params = {
+            "store_id": req.store_id,
+            "periode": req.periode,
+            "penyesuaian": req.penyesuaian or 0.00,
+            "tanggal_tagihan": tgl_tagihan,
+            "transfer_id": req.transfer_id,
+            "tanggal_pembayaran": tgl_bayar,
+            "link_bukti": req.link_bukti,
+            "status_pembayaran": req.status_pembayaran or 'Unpaid',
+            "notes": req.notes
+        }
+
+        with db.engine.begin() as conn:
+            conn.execute(text(upsert_sql), params)
+            # Refresh Materialized View to reflect payment updates
+            conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_monthly;"))
+
+        return {
+            "status": "success",
+            "message": f"Payment record for store_id '{req.store_id}' ({req.periode}) successfully updated.",
+            "data": params
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update payment record: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
