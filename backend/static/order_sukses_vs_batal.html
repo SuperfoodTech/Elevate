@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Sukses vs Order Batal - SuperFood Elevate</title>
+    <title>4 Chart: All OFD + GoFood, GrabFood, ShopeeFood - SuperFood Elevate</title>
     <!-- Google Fonts: Outfit & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +21,7 @@
             --primary-hover: #0284c7;
             --accent-green: #34d399;
             --accent-rose: #fb7185;
+            --accent-amber: #fbbf24;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
             --border-color: #334155;
@@ -46,7 +47,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             display: flex;
             flex-direction: column;
@@ -172,15 +173,15 @@
             box-shadow: 0 6px 16px rgba(56, 189, 248, 0.4);
         }
 
-        /* Chart & Summary Layout */
-        .dashboard-grid {
+        /* 4 Charts Grid */
+        .charts-grid-4 {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(2, 1fr);
             gap: 1.5rem;
         }
 
-        @media (max-width: 900px) {
-            .dashboard-grid {
+        @media (max-width: 960px) {
+            .charts-grid-4 {
                 grid-template-columns: 1fr;
             }
         }
@@ -190,75 +191,108 @@
             backdrop-filter: blur(12px);
             border: 1px solid var(--bg-card-border);
             border-radius: 1rem;
-            padding: 1.5rem;
+            padding: 1.25rem 1.5rem;
             box-shadow: var(--shadow-glow);
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-        }
-
-        .chart-title {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #ffffff;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.9rem;
-        }
-
-        .chart-container {
-            position: relative;
-            width: 100%;
-            height: 380px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .summary-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            border: 1px solid var(--bg-card-border);
-            border-radius: 1rem;
-            padding: 1.5rem;
-            box-shadow: var(--shadow-glow);
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-        }
-
-        .summary-list {
             display: flex;
             flex-direction: column;
             gap: 1rem;
         }
 
-        .summary-item {
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid var(--border-color);
-            border-radius: 0.75rem;
-            padding: 1rem 1.25rem;
+        .chart-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 280px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Table Card */
+        .table-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .table-header-bar {
+            padding: 1.1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.4);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .summary-item-title {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-        }
-
-        .summary-item-val {
+        .table-title {
             font-family: 'Outfit', sans-serif;
-            font-size: 1.3rem;
+            font-size: 1.15rem;
             font-weight: 700;
+            color: var(--accent-amber);
         }
 
-        .val-sukses { color: var(--accent-green); }
-        .val-batal { color: var(--accent-rose); }
-        .val-total { color: var(--primary); }
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.88rem;
+        }
+
+        table.data-table th {
+            background-color: rgba(30, 41, 59, 0.9);
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            padding: 0.9rem 1.25rem;
+            border-bottom: 2px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        table.data-table th.num-col, table.data-table td.num-col {
+            text-align: right;
+        }
+
+        table.data-table td {
+            padding: 0.8rem 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            white-space: nowrap;
+        }
+
+        table.data-table tr:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        tr.row-all-ofd {
+            background-color: rgba(56, 189, 248, 0.12) !important;
+            font-weight: 800;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        tr.row-all-ofd td {
+            color: #ffffff;
+        }
+
+        .val-sukses { color: var(--accent-green); font-weight: 700; }
+        .val-batal { color: var(--accent-rose); font-weight: 700; }
     </style>
 </head>
 <body>
@@ -317,49 +351,72 @@
             </form>
         </div>
 
-        <!-- Dashboard Grid: Chart + Summary -->
-        <div class="dashboard-grid">
-            <!-- Pie Chart Card -->
+        <!-- 4 Pie Charts Grid -->
+        <div class="charts-grid-4">
+            <!-- Chart 1: All OFD -->
             <div class="chart-card">
-                <h2 class="chart-title">Pie Chart: Order Sukses vs Order Batal</h2>
+                <h2 class="chart-title">Pie Chart: All OFD (Gabungan Channel)</h2>
                 <div class="chart-container">
-                    <canvas id="orderStatusPieChart"></canvas>
+                    <canvas id="chartAllOFD"></canvas>
                 </div>
             </div>
 
-            <!-- Summary Breakdown Card -->
-            <div class="summary-card">
-                <h2 class="chart-title">Rincian Perbandingan Status</h2>
-                
-                <div class="summary-list">
-                    <div class="summary-item">
-                        <span class="summary-item-title">Total Transaksi</span>
-                        <span class="summary-item-val val-total" id="sumTotalOrder">-</span>
-                    </div>
-
-                    <div class="summary-item">
-                        <div>
-                            <span class="summary-item-title">Order Sukses</span>
-                            <div style="font-size: 0.8rem; color: var(--accent-green);" id="sumPctSukses">-</div>
-                        </div>
-                        <span class="summary-item-val val-sukses" id="sumOrderSukses">-</span>
-                    </div>
-
-                    <div class="summary-item">
-                        <div>
-                            <span class="summary-item-title">Order Batal</span>
-                            <div style="font-size: 0.8rem; color: var(--accent-rose);" id="sumPctBatal">-</div>
-                        </div>
-                        <span class="summary-item-val val-batal" id="sumOrderBatal">-</span>
-                    </div>
+            <!-- Chart 2: GoFood -->
+            <div class="chart-card">
+                <h2 class="chart-title">Pie Chart: GoFood</h2>
+                <div class="chart-container">
+                    <canvas id="chartGoFood"></canvas>
                 </div>
+            </div>
+
+            <!-- Chart 3: GrabFood -->
+            <div class="chart-card">
+                <h2 class="chart-title">Pie Chart: GrabFood</h2>
+                <div class="chart-container">
+                    <canvas id="chartGrabFood"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 4: ShopeeFood -->
+            <div class="chart-card">
+                <h2 class="chart-title">Pie Chart: ShopeeFood</h2>
+                <div class="chart-container">
+                    <canvas id="chartShopeeFood"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rincian Status Table Card -->
+        <div class="table-card">
+            <div class="table-header-bar">
+                <h2 class="table-title">Rincian Perbandingan Status Per Channel</h2>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Channel</th>
+                            <th class="num-col">Total Transaksi</th>
+                            <th class="num-col">Order Sukses</th>
+                            <th class="num-col">% Sukses</th>
+                            <th class="num-col">Order Batal</th>
+                            <th class="num-col">% Batal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="statusTableBody">
+                        <tr>
+                            <td colspan="6" class="loading-state">Memuat data status...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
     <script>
         const API_BASE = window.location.origin;
-        let pieChartInstance = null;
+        const chartInstances = {};
 
         // Initialize Filter Options
         async function initFilters() {
@@ -387,7 +444,59 @@
             }
         }
 
-        // Render Pie Chart & Load Summary Data
+        // Helper to render a Pie Chart
+        function drawPieChart(canvasId, titleChannel, suk, bat, pctSuk, pctBat) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            if (chartInstances[canvasId]) {
+                chartInstances[canvasId].destroy();
+            }
+
+            const tot = suk + bat;
+
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: [`Sukses (${pctSuk}%)`, `Batal (${pctBat}%)`],
+                    datasets: [{
+                        data: [suk, bat],
+                        backgroundColor: [
+                            'rgba(52, 211, 153, 0.85)',
+                            'rgba(251, 113, 133, 0.85)'
+                        ],
+                        borderColor: [
+                            '#34d399',
+                            '#fb7185'
+                        ],
+                        borderWidth: 1.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#f8fafc',
+                                font: { family: 'Inter', size: 11, weight: 600 },
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const val = ctx.raw || 0;
+                                    const pct = tot > 0 ? ((val / tot) * 100).toFixed(2) : 0;
+                                    return ` ${ctx.label.split(' ')[0]}: ${val.toLocaleString('id-ID')} (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Fetch & Render 4 Pie Charts + Table
         async function renderOrderStatus(params) {
             try {
                 const url = new URL(`${API_BASE}/api/order-status/summary`);
@@ -396,67 +505,45 @@
                 const res = await fetch(url);
                 const json = await res.json();
 
-                if (json.status !== 'success' || !json.data) return;
+                if (json.status !== 'success' || !json.data || json.data.length === 0) return;
 
-                const d = json.data;
-                const tot = Number(d.total_order || 0);
-                const suk = Number(d.order_sukses || 0);
-                const bat = Number(d.order_batal || 0);
-                const pctSuk = Number(d.pct_sukses || 0).toFixed(2);
-                const pctBat = Number(d.pct_batal || 0).toFixed(2);
+                const tbody = document.getElementById('statusTableBody');
+                let html = '';
 
-                // Update Summary Cards
-                document.getElementById('sumTotalOrder').textContent = tot.toLocaleString('id-ID');
-                document.getElementById('sumOrderSukses').textContent = suk.toLocaleString('id-ID');
-                document.getElementById('sumPctSukses').textContent = `${pctSuk}% dari total transaksi`;
-                document.getElementById('sumOrderBatal').textContent = bat.toLocaleString('id-ID');
-                document.getElementById('sumPctBatal').textContent = `${pctBat}% dari total transaksi`;
+                // Map channels to canvas IDs
+                const canvasMap = {
+                    'All OFD': 'chartAllOFD',
+                    'GoFood': 'chartGoFood',
+                    'GrabFood': 'chartGrabFood',
+                    'ShopeeFood': 'chartShopeeFood'
+                };
 
-                // Render Pie Chart
-                const ctx = document.getElementById('orderStatusPieChart').getContext('2d');
-                if (pieChartInstance) pieChartInstance.destroy();
+                json.data.forEach(row => {
+                    const isAll = row.channel === 'All OFD';
+                    const rowClass = isAll ? 'row-all-ofd' : '';
+                    const suk = Number(row.order_sukses || 0);
+                    const bat = Number(row.order_batal || 0);
+                    const pctSuk = Number(row.pct_sukses || 0).toFixed(2);
+                    const pctBat = Number(row.pct_batal || 0).toFixed(2);
 
-                pieChartInstance = new Chart(ctx, {
-                    type: 'pie',
-                    data: {
-                        labels: [`Order Sukses (${pctSuk}%)`, `Order Batal (${pctBat}%)`],
-                        datasets: [{
-                            data: [suk, bat],
-                            backgroundColor: [
-                                'rgba(52, 211, 153, 0.85)',
-                                'rgba(251, 113, 133, 0.85)'
-                            ],
-                            borderColor: [
-                                '#34d399',
-                                '#fb7185'
-                            ],
-                            borderWidth: 1.5
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'bottom',
-                                labels: {
-                                    color: '#f8fafc',
-                                    font: { family: 'Inter', size: 12, weight: 600 },
-                                    padding: 20
-                                }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        const val = ctx.raw || 0;
-                                        const pct = tot > 0 ? ((val / tot) * 100).toFixed(2) : 0;
-                                        return ` ${ctx.label.split(' ')[0]}: ${val.toLocaleString('id-ID')} (${pct}%)`;
-                                    }
-                                }
-                            }
-                        }
+                    html += `
+                        <tr class="${rowClass}">
+                            <td><strong>${row.channel}</strong></td>
+                            <td class="num-col">${Number(row.total_order).toLocaleString('id-ID')}</td>
+                            <td class="num-col val-sukses">${suk.toLocaleString('id-ID')}</td>
+                            <td class="num-col val-sukses">${pctSuk}%</td>
+                            <td class="num-col val-batal">${bat.toLocaleString('id-ID')}</td>
+                            <td class="num-col val-batal">${pctBat}%</td>
+                        </tr>
+                    `;
+
+                    // Render chart if in map
+                    if (canvasMap[row.channel]) {
+                        drawPieChart(canvasMap[row.channel], row.channel, suk, bat, pctSuk, pctBat);
                     }
                 });
+
+                tbody.innerHTML = html;
             } catch (err) {
                 console.error('Error rendering order status:', err);
             }

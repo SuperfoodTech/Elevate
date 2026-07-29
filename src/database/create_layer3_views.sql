@@ -1072,6 +1072,7 @@ CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_order_status(
     p_end_date DATE DEFAULT CURRENT_DATE
 )
 RETURNS TABLE (
+    channel TEXT,
     total_order BIGINT,
     order_sukses BIGINT,
     order_batal BIGINT,
@@ -1084,6 +1085,7 @@ BEGIN
     RETURN QUERY
     WITH filtered AS (
         SELECT 
+            mv.channel::TEXT AS ch,
             COALESCE(SUM(mv.total_order), 0) AS tot_ord,
             COALESCE(SUM(mv.order_sukses), 0) AS suk_ord,
             COALESCE(SUM(mv.order_batal), 0) AS bat_ord,
@@ -1093,15 +1095,41 @@ BEGIN
         WHERE (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
           AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
           AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+        GROUP BY mv.channel
+    ),
+    all_ofd AS (
+        SELECT 
+            'All OFD'::TEXT AS ch,
+            COALESCE(SUM(f.tot_ord), 0) AS tot_ord,
+            COALESCE(SUM(f.suk_ord), 0) AS suk_ord,
+            COALESCE(SUM(f.bat_ord), 0) AS bat_ord,
+            COALESCE(SUM(f.pk), 0.00) AS pk,
+            COALESCE(SUM(f.pb), 0.00) AS pb,
+            0 AS s_grp
+        FROM filtered f
+        
+        UNION ALL
+        
+        SELECT 
+            f.ch,
+            f.tot_ord,
+            f.suk_ord,
+            f.bat_ord,
+            f.pk,
+            f.pb,
+            1 AS s_grp
+        FROM filtered f
     )
     SELECT 
-        f.tot_ord::BIGINT AS total_order,
-        f.suk_ord::BIGINT AS order_sukses,
-        f.bat_ord::BIGINT AS order_batal,
-        ROUND(CASE WHEN f.tot_ord > 0 THEN (f.suk_ord::NUMERIC / f.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_sukses,
-        ROUND(CASE WHEN f.tot_ord > 0 THEN (f.bat_ord::NUMERIC / f.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_batal,
-        f.pk AS pendapatan_kotor,
-        f.pb AS pendapatan_bersih
-    FROM filtered f;
+        a.ch AS channel,
+        a.tot_ord::BIGINT AS total_order,
+        a.suk_ord::BIGINT AS order_sukses,
+        a.bat_ord::BIGINT AS order_batal,
+        ROUND(CASE WHEN a.tot_ord > 0 THEN (a.suk_ord::NUMERIC / a.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_sukses,
+        ROUND(CASE WHEN a.tot_ord > 0 THEN (a.bat_ord::NUMERIC / a.tot_ord::NUMERIC) * 100.0 ELSE 0.00 END, 2) AS pct_batal,
+        a.pk AS pendapatan_kotor,
+        a.pb AS pendapatan_bersih
+    FROM all_ofd a
+    ORDER BY a.s_grp ASC, a.ch ASC;
 END;
 $$ LANGUAGE plpgsql;

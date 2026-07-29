@@ -901,7 +901,7 @@ def get_order_status_summary(
 ):
     try:
         sql = text("""
-            SELECT total_order, order_sukses, order_batal, pct_sukses, pct_batal,
+            SELECT channel, total_order, order_sukses, order_batal, pct_sukses, pct_batal,
                    pendapatan_kotor, pendapatan_bersih
             FROM layer3_dim.get_laporan_order_status(:outlet, :brand, CAST(:start_date AS DATE), CAST(:end_date AS DATE));
         """)
@@ -912,16 +912,17 @@ def get_order_status_summary(
             "end_date": end_date or "2026-12-31"
         }
         with db_manager.engine.connect() as conn:
-            row = conn.execute(sql, params).mappings().fetchone()
-            if not row:
-                return {"status": "success", "data": {}}
-            row_dict = dict(row)
-            for k, v in row_dict.items():
-                if isinstance(v, Decimal):
-                    row_dict[k] = float(v)
+            rows = conn.execute(sql, params).mappings().fetchall()
+            clean_data = []
+            for r in rows:
+                row_dict = dict(r)
+                for k, v in row_dict.items():
+                    if isinstance(v, Decimal):
+                        row_dict[k] = float(v)
+                clean_data.append(row_dict)
             return {
                 "status": "success",
-                "data": row_dict
+                "data": clean_data
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching order status summary: {e}")
