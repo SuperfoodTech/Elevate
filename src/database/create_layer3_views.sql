@@ -231,13 +231,15 @@ CREATE INDEX idx_mv_rekap_tagihan_monthly_owner ON layer3_dim.mv_rekap_tagihan_m
 CREATE INDEX idx_mv_rekap_tagihan_monthly_periode ON layer3_dim.mv_rekap_tagihan_monthly (periode);
 
 -- ============================================================================
--- 6. SQL STORED FUNCTION DYNAMIC REKAP TAGIHAN BULANAN
+-- 6. SQL STORED FUNCTION UNIFIED DYNAMIC REKAP TAGIHAN (MONTHLY & WEEKLY)
 -- ============================================================================
 DROP FUNCTION IF EXISTS layer3_dim.get_rekap_tagihan_monthly(text,text,text) CASCADE;
+DROP FUNCTION IF EXISTS layer3_dim.get_rekap_tagihan_billing(text,text,text,text) CASCADE;
 
-CREATE OR REPLACE FUNCTION layer3_dim.get_rekap_tagihan_monthly(
+CREATE OR REPLACE FUNCTION layer3_dim.get_rekap_tagihan_billing(
+    p_billing_cycle TEXT DEFAULT 'Monthly', -- 'Monthly' or 'Weekly'
     p_owner TEXT DEFAULT NULL,
-    p_periode TEXT DEFAULT NULL,
+    p_periode TEXT DEFAULT NULL,           -- 'YYYY-MM' for Monthly, or 'YYYY-MM W1'..'W5' for Weekly
     p_status_pembayaran TEXT DEFAULT NULL
 )
 RETURNS TABLE (
@@ -260,7 +262,13 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
-    WITH live_monthly_outlets AS (
+    WITH target_cycle AS (
+        SELECT CASE 
+            WHEN LOWER(COALESCE(p_billing_cycle, 'monthly')) LIKE 'week%' THEN 'WEEKLY'
+            ELSE 'MONTHLY'
+        END AS cycle_code
+    ),
+    live_outlets AS (
         SELECT 
             COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS o_name,
             COALESCE(m.outlet_name, c.merchant_name, 'UNKNOWN') AS ot_name,
@@ -270,21 +278,37 @@ BEGIN
             COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS fee_val
         FROM layer3_dim.dim_merchant_mapping m
         LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+        CROSS JOIN target_cycle tc
         WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
-          AND UPPER(COALESCE(m.billing_cycle, '')) = 'MONTHLY'
+          AND UPPER(COALESCE(m.billing_cycle, '')) = tc.cycle_code
     ),
     target_periodes AS (
         SELECT DISTINCT p.p_code
         FROM (
-            SELECT TO_CHAR(transaction_date, 'YYYY-MM') AS p_code FROM layer3_dim.fact_transactions WHERE transaction_date IS NOT NULL
+            SELECT 
+                CASE 
+                    WHEN (SELECT cycle_code FROM target_cycle) = 'WEEKLY' 
+                        THEN TO_CHAR(transaction_date, 'YYYY-MM') || ' W' || TO_CHAR(transaction_date, 'W')
+                    ELSE TO_CHAR(transaction_date, 'YYYY-MM')
+                END AS p_code 
+            FROM layer3_dim.fact_transactions 
+            WHERE transaction_date IS NOT NULL
+            
             UNION
-            SELECT COALESCE(NULLIF(p_periode, ''), TO_CHAR(CURRENT_DATE, 'YYYY-MM')) AS p_code
+            
+            SELECT COALESCE(NULLIF(p_periode, ''), 
+                CASE 
+                    WHEN (SELECT cycle_code FROM target_cycle) = 'WEEKLY' 
+                        THEN TO_CHAR(CURRENT_DATE, 'YYYY-MM') || ' W1'
+                    ELSE TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+                END
+            ) AS p_code
         ) p
         WHERE (p_periode IS NULL OR p_periode = '' OR p.p_code = p_periode)
     ),
     grid AS (
         SELECT o.*, p.p_code
-        FROM live_monthly_outlets o
+        FROM live_outlets o
         CROSS JOIN target_periodes p
     ),
     raw_agg AS (
@@ -306,9 +330,16 @@ BEGIN
             pm.link_bukti AS link_bkt,
             COALESCE(pm.status_pembayaran, 'BELUM DIBAYAR') AS st_bayar
         FROM grid g
+        CROSS JOIN target_cycle tc
         LEFT JOIN layer3_dim.fact_transactions ft 
             ON g.s_id = ft.merchant_id 
-           AND TO_CHAR(ft.transaction_date, 'YYYY-MM') = g.p_code
+           AND (
+               CASE 
+                   WHEN tc.cycle_code = 'WEEKLY' 
+                       THEN (TO_CHAR(ft.transaction_date, 'YYYY-MM') || ' W' || TO_CHAR(ft.transaction_date, 'W'))
+                   ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
+               END
+           ) = g.p_code
         LEFT JOIN layer3_dim.monthly_billing_payments pm 
             ON g.s_id = pm.store_id 
            AND g.p_code = pm.periode

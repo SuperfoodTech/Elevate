@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laporan Tagihan Bulanan - SuperFood Elevate</title>
+    <title>Laporan Tagihan Rekonsiliasi - SuperFood Elevate</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -81,7 +81,7 @@
 
         .filter-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 1.25rem;
             align-items: end;
         }
@@ -208,12 +208,19 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
         }
 
         .table-title {
             font-family: 'Outfit', sans-serif;
             font-size: 1.2rem;
             font-weight: 600;
+        }
+
+        .table-search-box {
+            width: 320px;
+            max-width: 100%;
         }
 
         .table-wrapper {
@@ -422,7 +429,7 @@
         <!-- Header -->
         <header>
             <div>
-                <h1 class="brand-title">Laporan Tagihan Bulanan (Monthly Billing)</h1>
+                <h1 class="brand-title">Laporan Rekap Tagihan (Billing Reconciliation)</h1>
             </div>
         </header>
 
@@ -430,6 +437,15 @@
         <div class="filter-card">
             <form id="filterForm" onsubmit="handleFilterSubmit(event)">
                 <div class="filter-grid">
+                    <!-- Tipe Tagihan (Billing Cycle Dropdown) -->
+                    <div class="form-group">
+                        <label for="cycleSelect" class="form-label" style="color: var(--primary);">Tipe Tagihan</label>
+                        <select id="cycleSelect" class="form-control" onchange="handleCycleChange()" style="border-color: var(--primary); font-weight: 700;">
+                            <option value="Monthly">Monthly (Bulanan)</option>
+                            <option value="Weekly" selected>Weekly (Mingguan)</option>
+                        </select>
+                    </div>
+
                     <!-- Tahun Dropdown -->
                     <div class="form-group">
                         <label for="tahunSelect" class="form-label">Tahun</label>
@@ -460,10 +476,23 @@
                         </select>
                     </div>
 
+                    <!-- Minggu Dropdown (Weekly Mode Only) -->
+                    <div class="form-group" id="mingguGroup">
+                        <label for="mingguSelect" class="form-label" style="color: var(--accent-amber);">Minggu</label>
+                        <select id="mingguSelect" class="form-control" onchange="handleWeekChange()" style="border-color: var(--accent-amber);">
+                            <option value="">Semua Minggu</option>
+                            <option value="W1" selected>Week 1</option>
+                            <option value="W2">Week 2</option>
+                            <option value="W3">Week 3</option>
+                            <option value="W4">Week 4</option>
+                            <option value="W5">Week 5</option>
+                        </select>
+                    </div>
+
                     <!-- Tanggal Tagihan Header -->
                     <div class="form-group">
                         <label for="headerTanggalTagihan" class="form-label">Tanggal Tagihan</label>
-                        <input type="date" id="headerTanggalTagihan" class="form-control" value="2026-08-01">
+                        <input type="date" id="headerTanggalTagihan" class="form-control" value="2026-06-08">
                     </div>
 
                     <!-- Status Pembayaran Filter Dropdown -->
@@ -512,7 +541,14 @@
         <!-- Main Clean Data Table Container matching Google Sheet Layout 1:1 -->
         <div class="table-card">
             <div class="table-header-bar">
-                <h2 class="table-title" id="tableHeaderTitle">Daftar Tagihan Bulanan Outlet Live (Monthly Cycle)</h2>
+                <h2 class="table-title" id="tableHeaderTitle">Daftar Tagihan Outlet Live (Weekly Cycle)</h2>
+                
+                <!-- Quick Search Input for High Efficiency -->
+                <div class="table-search-box">
+                    <input type="text" id="tableSearchInput" class="form-control" 
+                           placeholder="Cari outlet, cabang, brand..." oninput="handleTableSearch()">
+                </div>
+                
                 <span id="recordCountBadge" style="font-size: 0.85rem; color: var(--text-muted);">0 Outlet</span>
             </div>
 
@@ -630,19 +666,57 @@
 
         let rawMonthlyData = [];
 
+        function handleCycleChange() {
+            const cycle = document.getElementById('cycleSelect').value;
+            const mingguGroup = document.getElementById('mingguGroup');
+            const titleEl = document.getElementById('tableHeaderTitle');
+
+            if (cycle === 'Weekly') {
+                mingguGroup.style.display = 'flex';
+                titleEl.textContent = 'Daftar Tagihan Outlet Live (Weekly Cycle)';
+            } else {
+                mingguGroup.style.display = 'none';
+                titleEl.textContent = 'Daftar Tagihan Outlet Live (Monthly Cycle)';
+            }
+            handleYearMonthChange();
+        }
+
         function handleYearMonthChange() {
+            const cycle = document.getElementById('cycleSelect').value;
             const y = document.getElementById('tahunSelect').value;
             const m = document.getElementById('bulanSelect').value;
-            if (y && m) {
-                const nextMonth = parseInt(m) === 12 ? 1 : parseInt(m) + 1;
-                const nextYear = parseInt(m) === 12 ? parseInt(y) + 1 : parseInt(y);
-                const monthStr = nextMonth < 10 ? `0${nextMonth}` : `${nextMonth}`;
-                document.getElementById('headerTanggalTagihan').value = `${nextYear}-${monthStr}-01`;
+
+            if (cycle === 'Monthly') {
+                if (y && m) {
+                    const nextMonth = parseInt(m) === 12 ? 1 : parseInt(m) + 1;
+                    const nextYear = parseInt(m) === 12 ? parseInt(y) + 1 : parseInt(y);
+                    const monthStr = nextMonth < 10 ? `0${nextMonth}` : `${nextMonth}`;
+                    document.getElementById('headerTanggalTagihan').value = `${nextYear}-${monthStr}-01`;
+                }
+            } else {
+                handleWeekChange();
             }
+        }
+
+        function handleWeekChange() {
+            const y = document.getElementById('tahunSelect').value || '2026';
+            const m = document.getElementById('bulanSelect').value || '06';
+            const w = document.getElementById('mingguSelect').value || 'W1';
+            
+            let day = 1;
+            if (w === 'W1') day = 8;
+            else if (w === 'W2') day = 15;
+            else if (w === 'W3') day = 22;
+            else if (w === 'W4') day = 29;
+            else if (w === 'W5') day = 30;
+
+            const dayStr = day < 10 ? `0${day}` : `${day}`;
+            document.getElementById('headerTanggalTagihan').value = `${y}-${m}-${dayStr}`;
         }
 
         // Initialize Page Data
         async function initPage() {
+            handleCycleChange();
             fetchMonthlyData();
         }
 
@@ -652,15 +726,20 @@
             fetchMonthlyData();
         }
 
-        // Fetch Monthly Billing Data from Backend API
+        // Fetch Monthly/Weekly Billing Data from Backend API
         async function fetchMonthlyData() {
+            const cycle = document.getElementById('cycleSelect').value;
             const tahun = document.getElementById('tahunSelect').value;
             const bulan = document.getElementById('bulanSelect').value;
+            const minggu = document.getElementById('mingguSelect').value;
             const status = document.getElementById('statusSelect').value;
 
             let periode = '';
             if (tahun && bulan) {
                 periode = `${tahun}-${bulan}`;
+                if (cycle === 'Weekly' && minggu) {
+                    periode += ` ${minggu}`;
+                }
             } else if (tahun) {
                 periode = `${tahun}`;
             }
@@ -670,12 +749,12 @@
                 <tr>
                     <td colspan="14" class="state-container">
                         <div class="spinner"></div>
-                        Mengambil data Tagihan Bulanan dari server database...
+                        Mengambil data Tagihan (${cycle}) dari server database...
                     </td>
                 </tr>
             `;
 
-            let url = `${API_BASE}/api/rekap-tagihan-monthly?`;
+            let url = `${API_BASE}/api/rekap-tagihan-monthly?billing_cycle=${encodeURIComponent(cycle)}&`;
             const params = [];
             if (periode) params.push(`periode=${encodeURIComponent(periode)}`);
             if (status) params.push(`status_pembayaran=${encodeURIComponent(status)}`);
@@ -689,7 +768,7 @@
                     tbody.innerHTML = `
                         <tr>
                             <td colspan="14" class="state-container">
-                                Tidak ada data tagihan bulanan yang sesuai dengan filter.
+                                Tidak ada data tagihan yang sesuai dengan filter.
                             </td>
                         </tr>
                     `;
@@ -701,7 +780,7 @@
                 rawMonthlyData = json.data;
                 renderTable(json.data);
             } catch (err) {
-                console.error('Error fetching monthly data:', err);
+                console.error('Error fetching billing data:', err);
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="14" class="state-container" style="color: #ef4444;">
@@ -710,6 +789,25 @@
                     </tr>
                 `;
             }
+        }
+
+        // Realtime Client-Side Search Filter for High Performance
+        function handleTableSearch() {
+            const query = document.getElementById('tableSearchInput').value.toLowerCase().trim();
+            if (!query) {
+                renderTable(rawMonthlyData);
+                return;
+            }
+
+            const filtered = rawMonthlyData.filter(r => {
+                if (r.owner_name === 'Grand Total') return true;
+                return (r.outlet_name && r.outlet_name.toLowerCase().includes(query)) ||
+                       (r.nama_resto_final && r.nama_resto_final.toLowerCase().includes(query)) ||
+                       (r.brand && r.brand.toLowerCase().includes(query)) ||
+                       (r.store_id && r.store_id.toLowerCase().includes(query));
+            });
+
+            renderTable(filtered);
         }
 
         // Clean O(N) Table Renderer (Rules Section 2 & 3)

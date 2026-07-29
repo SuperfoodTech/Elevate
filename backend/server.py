@@ -484,13 +484,15 @@ def get_monthly_periodes():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching periodes: {e}")
 
-@app.get("/api/rekap-tagihan-monthly", summary="Query Monthly Billing Records")
+@app.get("/api/rekap-tagihan-monthly", summary="Query Monthly or Weekly Billing Records")
 def get_monthly_billing_data(
+    billing_cycle: Optional[str] = Query("Monthly", description="Billing cycle: Monthly or Weekly"),
     owner: Optional[str] = Query(None, description="Filter owner name"),
-    periode: Optional[str] = Query(None, description="Filter periode YYYY-MM"),
-    status_pembayaran: Optional[str] = Query(None, description="Filter payment status: Unpaid, Paid, Pending")
+    periode: Optional[str] = Query(None, description="Filter periode YYYY-MM or YYYY-MM W1..W5"),
+    status_pembayaran: Optional[str] = Query(None, description="Filter payment status")
 ):
     try:
+        if hasattr(billing_cycle, 'default'): billing_cycle = "Monthly"
         if hasattr(owner, 'default'): owner = None
         if hasattr(periode, 'default'): periode = None
         if hasattr(status_pembayaran, 'default'): status_pembayaran = None
@@ -503,6 +505,7 @@ def get_monthly_billing_data(
         db = DatabaseManager()
 
         sql_params = {
+            "p_billing_cycle": billing_cycle,
             "p_owner": owner if owner else None,
             "p_periode": periode if periode else None,
             "p_status_pembayaran": status_pembayaran if status_pembayaran else None
@@ -515,7 +518,8 @@ def get_monthly_billing_data(
                    transfer_id,
                    TO_CHAR(tanggal_pembayaran, 'YYYY-MM-DD') AS tanggal_pembayaran,
                    link_bukti, status_pembayaran
-            FROM layer3_dim.get_rekap_tagihan_monthly(
+            FROM layer3_dim.get_rekap_tagihan_billing(
+                :p_billing_cycle,
                 :p_owner,
                 :p_periode,
                 :p_status_pembayaran
@@ -526,13 +530,14 @@ def get_monthly_billing_data(
             rows = conn.execute(text(query_sql), sql_params).mappings().all()
 
         return {
+            "billing_cycle": billing_cycle,
             "owner": owner,
             "periode": periode,
             "status_pembayaran": status_pembayaran,
             "data": [dict(r) for r in rows]
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan_monthly: {e}")
+        raise HTTPException(status_code=500, detail=f"Error executing get_rekap_tagihan_billing: {e}")
 
 @app.post("/api/rekap-tagihan-monthly/update-payment", summary="Update or Save Administrative Payment Details")
 def update_monthly_payment_record(req: MonthlyPaymentUpdateRequest):
