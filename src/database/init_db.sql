@@ -119,34 +119,34 @@ BEGIN
     )
     SELECT 
         'GoFood',
-        stg.period_id,
+        stg.order_id,
         stg.date,
-        COALESCE(stg.transaction_time, stg.date::TIMESTAMP),
-        EXTRACT(YEAR FROM COALESCE(stg.transaction_time, stg.date::TIMESTAMP))::INTEGER,
+        stg.transaction_time,
+        EXTRACT(YEAR FROM stg.transaction_time)::INTEGER,
         stg.month,
-        TO_CHAR(COALESCE(stg.transaction_time, stg.date::TIMESTAMP), 'YY-MM-') || 'W' || TO_CHAR(COALESCE(stg.transaction_time, stg.date::TIMESTAMP), 'W'),
-        EXTRACT(HOUR FROM COALESCE(stg.transaction_time, stg.date::TIMESTAMP))::INTEGER,
+        TO_CHAR(stg.transaction_time, 'YY-MM-') || 'W' || TO_CHAR(stg.transaction_time, 'W'),
+        EXTRACT(HOUR FROM stg.transaction_time)::INTEGER,
         stg.store_id,
         COALESCE(m.group_code, 'UNKNOWN'),
         COALESCE(m.outlet_name, stg.store_name),
         COALESCE(m.nama_resto_final, m.nama_tarikan, 'UNKNOWN'),
         stg.store_name,
-        'Sukses',
-        1, -- GoFood period aggregated orders are completed
+        COALESCE(stg.status, 'Sukses'),
+        1, -- GoFood completed orders
         0,
-        stg.gross_sales,
+        stg.amount,
         0.00,
         0.00,
-        stg.gross_sales, -- Tab Order Lineage: net_sales = Amount
-        stg.marketing_fee_and_discount, -- Tab Order Lineage: GoFood Discount + Voucher Commission
-        stg.commission_fee, -- Tab Order Lineage: Total Fee
+        stg.amount, -- Tab Order Lineage: net_sales = Amount
+        (COALESCE(stg.gofood_discount, 0) + COALESCE(stg.voucher_commission, 0)), -- Tab Order Lineage: GoFood Discount + Voucher Commission
+        stg.total_fee, -- Tab Order Lineage: Total Fee
         stg.total_platform_deduction, -- Tab Order Lineage: Amount - Net Amount
-        stg.net_sales, -- Tab Order Lineage: revenue = Net Amount
+        stg.net_amount, -- Tab Order Lineage: revenue = Net Amount
         stg.id
     FROM layer2_clean.stg_go_orders stg
     LEFT JOIN layer3_dim.dim_merchant_mapping m ON stg.store_id = m.store_id
-    WHERE stg.period_id IS NOT NULL 
-      AND stg.period_id <> ''
+    WHERE stg.order_id IS NOT NULL 
+      AND stg.order_id <> ''
     ON CONFLICT (platform, external_id) 
     DO UPDATE SET
         created_on = EXCLUDED.created_on,

@@ -169,26 +169,23 @@ def normalize_all():
             COALESCE(
                 NULLIF(TRIM(raw."Order ID"), ''),
                 NULLIF(TRIM(raw."Transaction ID"), '')
-            ) AS period_id,
+            ) AS order_id,
             TO_CHAR(
                 TRIM(raw."Transaction Time")::TIMESTAMPTZ, 
                 'YYYY-MM'
             ) AS month,
             CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE) AS date,
             TRIM(raw."Transaction Time")::TIMESTAMPTZ::TIMESTAMP AS transaction_time,
-            COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Outlet Name")) AS store_name,
             TRIM(raw."Merchant ID") AS store_id,
-            CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS gross_sales,
-            CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) AS commission_fee,
-            (CAST(COALESCE(NULLIF(TRIM(raw."GoFood Discount"), ''), '0') AS NUMERIC(15,2)) + 
-             CAST(COALESCE(NULLIF(TRIM(raw."Voucher Commission"), ''), '0') AS NUMERIC(15,2))) AS marketing_fee_and_discount,
+            COALESCE(m.nama_resto_final, m.nama_tarikan, TRIM(raw."Outlet Name")) AS store_name,
+            CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS amount,
+            CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2)) AS net_amount,
+            CAST(COALESCE(NULLIF(TRIM(raw."GoFood Discount"), ''), '0') AS NUMERIC(15,2)) AS gofood_discount,
+            CAST(COALESCE(NULLIF(TRIM(raw."Voucher Commission"), ''), '0') AS NUMERIC(15,2)) AS voucher_commission,
+            CAST(COALESCE(NULLIF(TRIM(raw."Total Fee"), ''), '0') AS NUMERIC(15,2)) AS total_fee,
             (CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) - 
              CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2))) AS total_platform_deduction,
-            CAST(COALESCE(NULLIF(TRIM(raw."Net Amount"), ''), '0') AS NUMERIC(15,2)) AS net_sales,
-            CAST(COALESCE(NULLIF(TRIM(raw."Amount"), ''), '0') AS NUMERIC(15,2)) AS average_order_customer,
-            1.00 AS completed_order,
-            0.00 AS cancelled_order,
-            1.00 AS total_order,
+            'Sukses' AS status,
             ROW_NUMBER() OVER(
                 PARTITION BY COALESCE(NULLIF(TRIM(raw."Order ID"), ''), NULLIF(TRIM(raw."Transaction ID"), '')) 
                 ORDER BY raw."Transaction Time" DESC
@@ -200,16 +197,14 @@ def normalize_all():
           AND raw."Transaction Time" IS NOT NULL AND raw."Transaction Time" <> ''
     )
     INSERT INTO layer2_clean.stg_go_orders (
-        period_id, month, date, transaction_time, store_name, store_id,
-        gross_sales, commission_fee, marketing_fee_and_discount,
-        total_platform_deduction, net_sales, average_order_customer,
-        completed_order, cancelled_order, total_order
+        order_id, month, date, transaction_time, store_id, store_name,
+        amount, net_amount, gofood_discount, voucher_commission,
+        total_fee, total_platform_deduction, status
     )
     SELECT 
-        period_id, month, date, transaction_time, store_name, store_id,
-        gross_sales, commission_fee, marketing_fee_and_discount,
-        total_platform_deduction, net_sales, average_order_customer,
-        completed_order, cancelled_order, total_order
+        order_id, month, date, transaction_time, store_id, store_name,
+        amount, net_amount, gofood_discount, voucher_commission,
+        total_fee, total_platform_deduction, status
     FROM go_ranked
     WHERE rn = 1;
     """
