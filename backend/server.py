@@ -539,7 +539,7 @@ def update_billing_payment_record(req: MonthlyPaymentUpdateRequest):
         tgl_bayar = req.tanggal_pembayaran if req.tanggal_pembayaran and req.tanggal_pembayaran.strip() else None
 
         upsert_sql = """
-            INSERT INTO layer3_dim.monthly_billing_payments (
+            INSERT INTO layer3_dim.billing_payments (
                 store_id, periode, penyesuaian, tanggal_tagihan, transfer_id,
                 tanggal_pembayaran, link_bukti, status_pembayaran, notes, updated_at
             ) VALUES (

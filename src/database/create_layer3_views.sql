@@ -165,7 +165,7 @@ $$ LANGUAGE plpgsql;
 -- ============================================================================
 -- 4. TABEL ADMINISTRATIVE REKONSILIASI PEMBAYARAN TAGIHAN BULANAN
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS layer3_dim.monthly_billing_payments (
+CREATE TABLE IF NOT EXISTS layer3_dim.billing_payments (
     id SERIAL PRIMARY KEY,
     store_id TEXT NOT NULL,
     periode TEXT NOT NULL,
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS layer3_dim.monthly_billing_payments (
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_monthly_billing_payments UNIQUE (store_id, periode)
+    CONSTRAINT uq_billing_payments UNIQUE (store_id, periode)
 );
 
 -- ============================================================================
@@ -207,7 +207,7 @@ SELECT
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
-LEFT JOIN layer3_dim.monthly_billing_payments p ON ft.merchant_id = p.store_id AND TO_CHAR(ft.transaction_date, 'YYYY-MM') = p.periode
+LEFT JOIN layer3_dim.billing_payments p ON ft.merchant_id = p.store_id AND TO_CHAR(ft.transaction_date, 'YYYY-MM') = p.periode
 WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
   AND UPPER(COALESCE(m.billing_cycle, '')) = 'MONTHLY'
 GROUP BY 
@@ -350,7 +350,7 @@ BEGIN
                    ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
                END
            ) = g.p_code
-        LEFT JOIN layer3_dim.monthly_billing_payments pm 
+        LEFT JOIN layer3_dim.billing_payments pm 
             ON g.s_id = pm.store_id 
            AND (pm.periode = g.p_code OR REPLACE(pm.periode, ' ', '-') = g.p_code)
         WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(g.o_name) = LOWER(p_owner))

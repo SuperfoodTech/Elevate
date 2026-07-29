@@ -125,7 +125,7 @@ def run_seed_payment_history():
     skipped_count = 0
 
     upsert_sql = text("""
-        INSERT INTO layer3_dim.monthly_billing_payments (
+        INSERT INTO layer3_dim.billing_payments (
             store_id, periode, penyesuaian, tanggal_tagihan, transfer_id,
             tanggal_pembayaran, link_bukti, status_pembayaran, notes, updated_at
         ) VALUES (
@@ -134,10 +134,10 @@ def run_seed_payment_history():
         )
         ON CONFLICT (store_id, periode) DO UPDATE SET
             penyesuaian = EXCLUDED.penyesuaian,
-            tanggal_tagihan = COALESCE(EXCLUDED.tanggal_tagihan, layer3_dim.monthly_billing_payments.tanggal_tagihan),
-            transfer_id = COALESCE(EXCLUDED.transfer_id, layer3_dim.monthly_billing_payments.transfer_id),
-            tanggal_pembayaran = COALESCE(EXCLUDED.tanggal_pembayaran, layer3_dim.monthly_billing_payments.tanggal_pembayaran),
-            link_bukti = COALESCE(EXCLUDED.link_bukti, layer3_dim.monthly_billing_payments.link_bukti),
+            tanggal_tagihan = COALESCE(EXCLUDED.tanggal_tagihan, layer3_dim.billing_payments.tanggal_tagihan),
+            transfer_id = COALESCE(EXCLUDED.transfer_id, layer3_dim.billing_payments.transfer_id),
+            tanggal_pembayaran = COALESCE(EXCLUDED.tanggal_pembayaran, layer3_dim.billing_payments.tanggal_pembayaran),
+            link_bukti = COALESCE(EXCLUDED.link_bukti, layer3_dim.billing_payments.link_bukti),
             status_pembayaran = EXCLUDED.status_pembayaran,
             updated_at = CURRENT_TIMESTAMP;
     """)
