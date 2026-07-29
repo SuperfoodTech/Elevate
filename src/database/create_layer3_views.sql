@@ -48,9 +48,8 @@ FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id;
 
 -- ============================================================================
--- 2. MATERIALIZED VIEW REKAP TAGIHAN HARIAN PER OWNER & OUTLET
+-- 2. MATERIALIZED VIEW PAYMENT HARIAN PER OWNER & OUTLET
 -- ============================================================================
-DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_rekap_tagihan_daily CASCADE;
 DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_payment_daily CASCADE;
 
 CREATE MATERIALIZED VIEW layer3_dim.mv_payment_daily AS
@@ -80,17 +79,14 @@ GROUP BY
     COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
     ft.transaction_date;
 
-CREATE MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan_daily AS
-SELECT * FROM layer3_dim.mv_payment_daily;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily_owner;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily_date;
 
 -- Indeks Unik Pendukung Refresh Concurrent & Query Cepat
 CREATE UNIQUE INDEX idx_mv_payment_daily ON layer3_dim.mv_payment_daily (owner_name, store_id, transaction_date);
 CREATE INDEX idx_mv_payment_daily_owner ON layer3_dim.mv_payment_daily (owner_name);
 CREATE INDEX idx_mv_payment_daily_date ON layer3_dim.mv_payment_daily (transaction_date);
-
-CREATE UNIQUE INDEX idx_mv_rekap_tagihan_daily ON layer3_dim.mv_rekap_tagihan_daily (owner_name, store_id, transaction_date);
-CREATE INDEX idx_mv_rekap_tagihan_daily_owner ON layer3_dim.mv_rekap_tagihan_daily (owner_name);
-CREATE INDEX idx_mv_rekap_tagihan_date ON layer3_dim.mv_rekap_tagihan_daily (transaction_date);
 
 -- ============================================================================
 -- 3. SQL STORED FUNCTION DYNAMIC REKAP TAGIHAN PER OWNER
