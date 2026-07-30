@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>4 Chart: All OFD + GoFood, GrabFood, ShopeeFood - SuperFood Elevate</title>
+    <title>3 Chart: All OFD + GrabFood & ShopeeFood - SuperFood Elevate</title>
     <!-- Google Fonts: Outfit & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -173,15 +173,15 @@
             box-shadow: 0 6px 16px rgba(56, 189, 248, 0.4);
         }
 
-        /* 4 Charts Grid */
-        .charts-grid-4 {
+        /* 3 Charts Grid */
+        .charts-grid-3 {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
         }
 
-        @media (max-width: 960px) {
-            .charts-grid-4 {
+        @media (max-width: 1024px) {
+            .charts-grid-3 {
                 grid-template-columns: 1fr;
             }
         }
@@ -351,8 +351,8 @@
             </form>
         </div>
 
-        <!-- 4 Pie Charts Grid -->
-        <div class="charts-grid-4">
+        <!-- 3 Pie Charts Grid -->
+        <div class="charts-grid-3">
             <!-- Chart 1: All OFD -->
             <div class="chart-card">
                 <h2 class="chart-title">Pie Chart: All OFD (Gabungan Channel)</h2>
@@ -361,15 +361,7 @@
                 </div>
             </div>
 
-            <!-- Chart 2: GoFood -->
-            <div class="chart-card">
-                <h2 class="chart-title">Pie Chart: GoFood</h2>
-                <div class="chart-container">
-                    <canvas id="chartGoFood"></canvas>
-                </div>
-            </div>
-
-            <!-- Chart 3: GrabFood -->
+            <!-- Chart 2: GrabFood -->
             <div class="chart-card">
                 <h2 class="chart-title">Pie Chart: GrabFood</h2>
                 <div class="chart-container">
@@ -377,7 +369,7 @@
                 </div>
             </div>
 
-            <!-- Chart 4: ShopeeFood -->
+            <!-- Chart 3: ShopeeFood -->
             <div class="chart-card">
                 <h2 class="chart-title">Pie Chart: ShopeeFood</h2>
                 <div class="chart-container">
@@ -496,7 +488,7 @@
             });
         }
 
-        // Fetch & Render 4 Pie Charts + Table
+        // Fetch & Render 3 Pie Charts + Table
         async function renderOrderStatus(params) {
             try {
                 const url = new URL(`${API_BASE}/api/order-status/summary`);
@@ -510,10 +502,9 @@
                 const tbody = document.getElementById('statusTableBody');
                 let html = '';
 
-                // Map channels to canvas IDs
+                // Map channels to canvas IDs (Excluding GoFood)
                 const canvasMap = {
                     'All OFD': 'chartAllOFD',
-                    'GoFood': 'chartGoFood',
                     'GrabFood': 'chartGrabFood',
                     'ShopeeFood': 'chartShopeeFood'
                 };

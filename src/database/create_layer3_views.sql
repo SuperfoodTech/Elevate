@@ -1268,6 +1268,7 @@ BEGIN
             f.pb,
             1 AS s_grp
         FROM filtered f
+        WHERE LOWER(f.ch) <> 'gofood'
     )
     SELECT 
         a.ch AS channel,
