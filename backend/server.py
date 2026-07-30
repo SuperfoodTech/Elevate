@@ -1489,6 +1489,45 @@ def get_performa_comparison_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching performa comparison data: {e}")
 
+@app.get("/api/performa-comparison/charts", summary="Get Performa Comparison Financial & Order Charts Data")
+def get_performa_comparison_charts_data(
+    outlet: Optional[str] = Query(default=None),
+    brand: Optional[str] = Query(default=None),
+    channel: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default="2026-04-01"),
+    end_date: Optional[str] = Query(default="2026-06-30")
+):
+    try:
+        sql = text("""
+            SELECT periode_label, pendapatan_kotor, potongan_ojol, pendapatan_bersih,
+                   total_order, order_sukses, order_batal
+            FROM layer3_dim.get_performa_comparison_charts(
+                :outlet, :brand, :channel, CAST(:start_date AS DATE), CAST(:end_date AS DATE)
+            );
+        """)
+        params = {
+            "outlet": outlet,
+            "brand": brand,
+            "channel": channel,
+            "start_date": start_date or "2026-01-01",
+            "end_date": end_date or "2026-12-31"
+        }
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(sql, params).mappings().fetchall()
+            clean_data = []
+            for r in rows:
+                row_dict = dict(r)
+                for k, v in row_dict.items():
+                    if isinstance(v, Decimal):
+                        row_dict[k] = float(v)
+                clean_data.append(row_dict)
+            return {
+                "status": "success",
+                "data": clean_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching comparison charts data: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

@@ -1428,3 +1428,56 @@ BEGIN
     ORDER BY c.s_grp ASC, c.p_key ASC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 15. STORED FUNCTION GET PERFORMA COMPARISON CHARTS
+-- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_performa_comparison_charts(text,text,text,date,date) CASCADE;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_performa_comparison_charts(
+    p_outlet TEXT DEFAULT NULL,
+    p_brand TEXT DEFAULT NULL,
+    p_channel TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+    periode_label TEXT,
+    pendapatan_kotor NUMERIC(15,2),
+    potongan_ojol NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2),
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH filtered AS (
+        SELECT 
+            TO_CHAR(mv.transaction_date, 'YYYY-MM') AS p_key,
+            TO_CHAR(mv.transaction_date, 'TMMonth YYYY') AS p_label,
+            SUM(mv.pendapatan_kotor) AS pk,
+            SUM(mv.potongan_ojol) AS po,
+            SUM(mv.pendapatan_bersih) AS pb,
+            SUM(mv.total_order) AS tot_ord,
+            SUM(mv.order_sukses) AS suk_ord,
+            SUM(mv.order_batal) AS bat_ord
+        FROM layer3_dim.mv_laporan_ojol mv
+        WHERE (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+          AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+          AND (p_channel IS NULL OR p_channel = '' OR LOWER(mv.channel) = LOWER(p_channel))
+          AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+        GROUP BY TO_CHAR(mv.transaction_date, 'YYYY-MM'), TO_CHAR(mv.transaction_date, 'TMMonth YYYY')
+    )
+    SELECT 
+        f.p_label::TEXT AS periode_label,
+        f.pk AS pendapatan_kotor,
+        f.po AS potongan_ojol,
+        f.pb AS pendapatan_bersih,
+        f.tot_ord::BIGINT AS total_order,
+        f.suk_ord::BIGINT AS order_sukses,
+        f.bat_ord::BIGINT AS order_batal
+    FROM filtered f
+    ORDER BY f.p_key ASC;
+END;
+$$ LANGUAGE plpgsql;

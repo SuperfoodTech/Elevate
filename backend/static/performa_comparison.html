@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performa Comparison - SuperFood Elevate</title>
+    <!-- Google Fonts: Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg-base: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.7);
+            --bg-card-border: rgba(255, 255, 255, 0.1);
+            --bg-input: rgba(15, 23, 42, 0.6);
+            --primary: #38bdf8;
+            --primary-hover: #0284c7;
+            --accent-green: #34d399;
+            --accent-amber: #fbbf24;
+            --accent-purple: #c084fc;
+            --accent-rose: #fb7185;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --shadow-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(192, 132, 252, 0.12) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* Header Navigation */
+        header.dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 1rem;
+            padding: 1.25rem 1.75rem;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .brand-section h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #38bdf8 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        .header-nav-links {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-link-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 0.55rem 1.1rem;
+            border-radius: 0.6rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link-btn:hover, .nav-link-btn.active {
+            background: var(--primary);
+            color: #0f172a;
+            border-color: var(--primary);
+        }
+
+        /* Filter Controls Card */
+        .filter-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 1rem;
+            padding: 1.25rem 1.5rem;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.25rem;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .form-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .form-control {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.65rem 0.9rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+        }
+
+        select.form-control option {
+            background-color: #1e293b;
+            color: #f8fafc;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+            color: #0f172a;
+            border: none;
+            padding: 0.65rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(56, 189, 248, 0.4);
+        }
+
+        /* 2 Comparison Charts Stack */
+        .charts-container-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 1rem;
+            padding: 1.25rem 1.5rem;
+            box-shadow: var(--shadow-glow);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .chart-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        .chart-canvas-box {
+            position: relative;
+            width: 100%;
+            height: 360px;
+        }
+
+        /* Loading Spinner */
+        .loading-state {
+            padding: 3rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 0.75rem auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Navigation -->
+        <header class="dashboard-header">
+            <div class="brand-section">
+                <h1>Performa Comparison</h1>
+            </div>
+
+            <div class="header-nav-links">
+                <a href="/rekap-tagihan-billing" class="nav-link-btn">Rekap Tagihan Billing</a>
+                <a href="/rangkuman" class="nav-link-btn">Rangkuman</a>
+                <a href="/laporan-jam-ramai" class="nav-link-btn">Laporan Jam Ramai</a>
+                <a href="/order-sukses-vs-batal" class="nav-link-btn">Order Sukses vs Batal</a>
+                <a href="/laporan-performa" class="nav-link-btn">Laporan Performa</a>
+                <a href="/performa-comparison" class="nav-link-btn active">Performa Comparison</a>
+            </div>
+        </header>
+
+        <!-- Filter Controls Form -->
+        <div class="filter-card">
+            <form id="filterForm" onsubmit="handleFilterSubmit(event)">
+                <div class="filter-grid">
+                    <!-- Filter Outlet -->
+                    <div class="form-group">
+                        <label for="outletSelect" class="form-label">Filter Outlet</label>
+                        <select id="outletSelect" class="form-control">
+                            <option value="">Semua Outlet</option>
+                        </select>
+                    </div>
+
+                    <!-- Filter Brand -->
+                    <div class="form-group">
+                        <label for="brandSelect" class="form-label">Filter Brand</label>
+                        <select id="brandSelect" class="form-control">
+                            <option value="">Semua Brand</option>
+                        </select>
+                    </div>
+
+                    <!-- Filter OFD (Channel) -->
+                    <div class="form-group">
+                        <label for="channelSelect" class="form-label">Filter OFD</label>
+                        <select id="channelSelect" class="form-control">
+                            <option value="">Semua Channel</option>
+                            <option value="GoFood">GoFood</option>
+                            <option value="GrabFood">GrabFood</option>
+                            <option value="ShopeeFood">ShopeeFood</option>
+                        </select>
+                    </div>
+
+                    <!-- Filter Date Range: Dari -->
+                    <div class="form-group">
+                        <label for="startDateInput" class="form-label">Dari</label>
+                        <input type="date" id="startDateInput" class="form-control" value="2026-04-01">
+                    </div>
+
+                    <!-- Filter Date Range: Hingga -->
+                    <div class="form-group">
+                        <label for="endDateInput" class="form-label">Hingga</label>
+                        <input type="date" id="endDateInput" class="form-control" value="2026-06-30">
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="form-group">
+                        <button type="submit" class="btn-submit">Tampilkan Comparison</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- 2 Visualizations: Grouped Bar Charts -->
+        <div class="charts-container-stack">
+            <!-- 1. Financial Comparison Chart -->
+            <div class="chart-card">
+                <h2 class="chart-title">Financial Comparison Chart</h2>
+                <div class="chart-canvas-box">
+                    <canvas id="chartFinancialComparison"></canvas>
+                </div>
+            </div>
+
+            <!-- 2. Order Comparison Chart -->
+            <div class="chart-card">
+                <h2 class="chart-title">Order Comparison Chart</h2>
+                <div class="chart-canvas-box">
+                    <canvas id="chartOrderComparison"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let chartFinancialInstance = null;
+        let chartOrderInstance = null;
+        let filterMapping = [];
+
+        // Format Y-Axis Currency Ticks (Rp X Jt / Rp X M)
+        function formatYAxisCurrency(val) {
+            if (val === 0) return 'Rp 0';
+            if (Math.abs(val) >= 1e9) {
+                return 'Rp ' + (val / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' M';
+            }
+            if (Math.abs(val) >= 1e6) {
+                return 'Rp ' + (val / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' Jt';
+            }
+            if (Math.abs(val) >= 1e3) {
+                return 'Rp ' + (val / 1e3).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' Rb';
+            }
+            return 'Rp ' + val.toLocaleString('id-ID');
+        }
+
+        // Format IDR Currency
+        function formatIDR(val) {
+            if (val === null || val === undefined || isNaN(val)) return 'Rp 0';
+            const num = Math.round(Number(val));
+            const formatted = Math.abs(num).toLocaleString('id-ID');
+            return num < 0 ? `-Rp ${formatted}` : `Rp ${formatted}`;
+        }
+
+        // Initialize Filter Options & Cascading Handlers
+        async function initFilters() {
+            try {
+                const res = await fetch(`${API_BASE}/api/performa-comparison/filters`);
+                const json = await res.json();
+
+                if (json.status === 'success') {
+                    filterMapping = json.mapping || [];
+
+                    const outletSel = document.getElementById('outletSelect');
+                    const brandSel = document.getElementById('brandSelect');
+
+                    json.outlets.forEach(ot => {
+                        const opt = document.createElement('option');
+                        opt.value = ot; opt.textContent = ot;
+                        outletSel.appendChild(opt);
+                    });
+
+                    populateBrandOptions(outletSel.value);
+
+                    // Outlet Change Handler -> Filter Brand
+                    outletSel.addEventListener('change', () => {
+                        populateBrandOptions(outletSel.value);
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading filters:', err);
+            }
+        }
+
+        // Populate Brands based on selected Outlet
+        function populateBrandOptions(selectedOutlet) {
+            const brandSel = document.getElementById('brandSelect');
+            const currentVal = brandSel.value;
+            brandSel.innerHTML = '<option value="">Semua Brand</option>';
+
+            let filteredBrands = filterMapping;
+            if (selectedOutlet) {
+                filteredBrands = filteredBrands.filter(m => m.outlet.toLowerCase() === selectedOutlet.toLowerCase());
+            }
+
+            const uniqueBrands = [...new Set(filteredBrands.map(m => m.brand))].sort();
+
+            uniqueBrands.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b; opt.textContent = b;
+                if (b === currentVal) opt.selected = true;
+                brandSel.appendChild(opt);
+            });
+        }
+
+        // Load & Render Comparison Grouped Bar Charts
+        async function loadComparisonCharts(params) {
+            try {
+                const url = new URL(`${API_BASE}/api/performa-comparison/charts`);
+                Object.keys(params).forEach(k => { if (params[k]) url.searchParams.append(k, params[k]); });
+
+                const res = await fetch(url);
+                const json = await res.json();
+
+                if (json.status !== 'success' || !json.data || json.data.length === 0) return;
+
+                const labels = json.data.map(r => r.periode_label);
+
+                // Financial Datasets
+                const kotorData = json.data.map(r => r.pendapatan_kotor);
+                const potonganData = json.data.map(r => r.potongan_ojol);
+                const bersihData = json.data.map(r => r.pendapatan_bersih);
+
+                // Order Datasets
+                const totalOrdData = json.data.map(r => r.total_order);
+                const suksesOrdData = json.data.map(r => r.order_sukses);
+                const batalOrdData = json.data.map(r => r.order_batal);
+
+                // Render 1. Financial Comparison Chart
+                const ctxFin = document.getElementById('chartFinancialComparison').getContext('2d');
+                if (chartFinancialInstance) chartFinancialInstance.destroy();
+                chartFinancialInstance = new Chart(ctxFin, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Pendapatan Kotor',
+                                data: kotorData,
+                                backgroundColor: 'rgba(56, 189, 248, 0.85)',
+                                borderColor: '#38bdf8',
+                                borderWidth: 1.5,
+                                borderRadius: 4
+                            },
+                            {
+                                label: 'Potongan Ojol',
+                                data: potonganData,
+                                backgroundColor: 'rgba(251, 113, 133, 0.85)',
+                                borderColor: '#fb7185',
+                                borderWidth: 1.5,
+                                borderRadius: 4
+                            },
+                            {
+                                label: 'Pendapatan Bersih',
+                                data: bersihData,
+                                backgroundColor: 'rgba(52, 211, 153, 0.85)',
+                                borderColor: '#34d399',
+                                borderWidth: 1.5,
+                                borderRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 12, weight: 600 } } },
+                            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${formatIDR(ctx.raw)}` } }
+                        },
+                        scales: {
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } },
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', callback: val => formatYAxisCurrency(val) } }
+                        }
+                    }
+                });
+
+                // Render 2. Order Comparison Chart
+                const ctxOrd = document.getElementById('chartOrderComparison').getContext('2d');
+                if (chartOrderInstance) chartOrderInstance.destroy();
+                chartOrderInstance = new Chart(ctxOrd, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Total Order',
+                                data: totalOrdData,
+                                backgroundColor: 'rgba(192, 132, 252, 0.85)',
+                                borderColor: '#c084fc',
+                                borderWidth: 1.5,
+                                borderRadius: 4
+                            },
+                            {
+                                label: 'Order Sukses',
+                                data: suksesOrdData,
+                                backgroundColor: 'rgba(52, 211, 153, 0.85)',
+                                borderColor: '#34d399',
+                                borderWidth: 1.5,
+                                borderRadius: 4
+                            },
+                            {
+                                label: 'Order Batal',
+                                data: batalOrdData,
+                                backgroundColor: 'rgba(251, 113, 133, 0.85)',
+                                borderColor: '#fb7185',
+                                borderWidth: 1.5,
+                                borderRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 12, weight: 600 } } },
+                            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${Number(ctx.raw).toLocaleString('id-ID')} Order` } }
+                        },
+                        scales: {
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } },
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', callback: val => val.toLocaleString('id-ID') } }
+                        }
+                    }
+                });
+
+            } catch (err) {
+                console.error('Error loading comparison charts:', err);
+            }
+        }
+
+        // Handle Filter Submit
+        function handleFilterSubmit(e) {
+            e.preventDefault();
+            const params = {
+                outlet: document.getElementById('outletSelect').value,
+                brand: document.getElementById('brandSelect').value,
+                channel: document.getElementById('channelSelect').value,
+                start_date: document.getElementById('startDateInput').value,
+                end_date: document.getElementById('endDateInput').value
+            };
+
+            loadComparisonCharts(params);
+        }
+
+        // Initial Load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await initFilters();
+            
+            const initialParams = {
+                outlet: '',
+                brand: '',
+                channel: '',
+                start_date: '2026-04-01',
+                end_date: '2026-06-30'
+            };
+
+            loadComparisonCharts(initialParams);
+        });
+    </script>
+</body>
+</html>
