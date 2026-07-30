@@ -17,13 +17,15 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any, Literal
 from dotenv import load_dotenv
 
-# Ensure agency directory is in sys.path
+# Ensure project directory and agency directory are in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, ".."))
 DB_DIR = os.path.join(PROJECT_ROOT, "src", "database")
-if BASE_DIR in sys.path:
-    sys.path.remove(BASE_DIR)
-sys.path.insert(0, BASE_DIR)
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 if DB_DIR not in sys.path:
     sys.path.append(DB_DIR)
 
@@ -37,16 +39,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-# Import pipeline helpers from backend/cli.py and core modules
-from backend.cli import (
-    normalize_date_string,
-    run_grab,
-    run_shopee,
-    run_gofood,
-    ingest_to_db,
-    run_normalization,
-    _resolve_shopee_merchant
-)
+# Import pipeline helpers from cli.py
+try:
+    from backend.cli import (
+        normalize_date_string,
+        run_grab,
+        run_shopee,
+        run_gofood,
+        ingest_to_db,
+        run_normalization,
+        _resolve_shopee_merchant
+    )
+except ImportError:
+    from cli import (
+        normalize_date_string,
+        run_grab,
+        run_shopee,
+        run_gofood,
+        ingest_to_db,
+        run_normalization,
+        _resolve_shopee_merchant
+    )
 
 load_dotenv()
 
@@ -720,6 +733,447 @@ def get_laporan_ojol_monthly(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching Ojol monthly breakdown: {e}")
 
+# ── Baseline Growth Endpoints ──
+
+@app.get("/baseline-growth", response_class=FileResponse, summary="Serve Baseline Growth Web Dashboard UI")
+def serve_baseline_growth_ui():
+    html_file = os.path.join(STATIC_DIR, "baseline_growth.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="Baseline Growth UI file not found.")
+    return FileResponse(html_file)
+
+@app.get("/api/baseline-growth/outlets", summary="Get Active Outlets List for Dropdown Filter")
+def get_baseline_outlets(owner: Optional[str] = Query(None, description="Owner name filter")):
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(m.outlet_name, c.merchant_name) AS outlet_name
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(m.outlet_name, c.merchant_name) IS NOT NULL
+              AND COALESCE(m.outlet_name, c.merchant_name) <> 'UNKNOWN'
+              AND TRIM(COALESCE(m.outlet_name, c.merchant_name)) <> ''
+              AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name)) = LOWER(:p_owner))
+            ORDER BY outlet_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_owner": owner if owner else None}).fetchall()
+
+        outlets = [r[0] for r in rows]
+        return {"total": len(outlets), "outlets": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+@app.get("/api/baseline-growth", summary="Query Baseline Growth per Outlet")
+def get_baseline_growth_data(
+    owner: Optional[str] = Query(None, description="Owner name filter"),
+    outlet: Optional[str] = Query(None, description="Outlet name filter"),
+    start_date: Optional[str] = Query("2026-07-01", description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    growth_target_pct: Optional[float] = Query(0.0, description="Growth target percentage e.g. 10 for 10%")
+):
+    try:
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        sql_params = {
+            "p_owner": owner if owner else None,
+            "p_outlet": outlet if outlet else None,
+            "p_start_date": start_date,
+            "p_end_date": end_date,
+            "p_growth_target_pct": growth_target_pct if growth_target_pct is not None else 0.0
+        }
+
+        query_sql = """
+            SELECT
+                outlet_name,
+                owner_name,
+                live_date,
+                selected_days,
+                growth_target_pct,
+                days_to_eom,
+                baseline_gmv,
+                baseline_order,
+                target_gmv,
+                target_order,
+                current_gmv,
+                current_daily_gmv_growth,
+                current_order,
+                current_daily_order_growth,
+                eom_gmv,
+                eom_gmv_growth,
+                eom_order,
+                eom_order_growth,
+                remaining_gmv,
+                required_daily_gmv,
+                remaining_order,
+                required_daily_order
+            FROM layer3_dim.get_baseline_growth(
+                :p_owner,
+                :p_outlet,
+                CAST(:p_start_date AS DATE),
+                CAST(:p_end_date AS DATE),
+                :p_growth_target_pct
+            );
+        """
+
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        data_list = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, '__class__') and v.__class__.__name__ == 'Decimal':
+                    row[k] = float(v)
+            data_list.append(row)
+
+        total_baseline_gmv = sum(float(r.get('baseline_gmv') or 0) for r in data_list)
+        total_baseline_order = sum(int(r.get('baseline_order') or 0) for r in data_list)
+        total_target_gmv = sum(float(r.get('target_gmv') or 0) for r in data_list)
+        total_target_order = sum(float(r.get('target_order') or 0) for r in data_list)
+        total_current_gmv = sum(float(r.get('current_gmv') or 0) for r in data_list)
+        total_current_order = sum(int(r.get('current_order') or 0) for r in data_list)
+        total_eom_gmv = sum(float(r.get('eom_gmv') or 0) for r in data_list)
+        total_eom_order = sum(float(r.get('eom_order') or 0) for r in data_list)
+        total_remaining_gmv = sum(float(r.get('remaining_gmv') or 0) for r in data_list)
+        total_remaining_order = sum(float(r.get('remaining_order') or 0) for r in data_list)
+
+        summary = {
+            "total_baseline_gmv": total_baseline_gmv,
+            "total_baseline_order": total_baseline_order,
+            "total_target_gmv": total_target_gmv,
+            "total_target_order": total_target_order,
+            "total_current_gmv": total_current_gmv,
+            "total_current_order": total_current_order,
+            "total_eom_gmv": total_eom_gmv,
+            "total_eom_order": total_eom_order,
+            "total_remaining_gmv": total_remaining_gmv,
+            "total_remaining_order": total_remaining_order
+        }
+
+        return {
+            "owner": owner,
+            "outlet": outlet,
+            "start_date": start_date,
+            "end_date": end_date,
+            "growth_target_pct": growth_target_pct,
+            "summary": summary,
+            "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error querying baseline growth: {e}")
+
+# ── Week to Week Comparison Endpoints ──
+
+@app.get("/weektoweekcomparison", response_class=FileResponse, summary="Serve Week to Week Comparison Web Dashboard UI")
+def serve_week_to_week_comparison_ui():
+    html_file = os.path.join(STATIC_DIR, "week_to_week_comparison.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="week_to_week_comparison.html not found.")
+    return FileResponse(html_file)
+
+@app.get("/api/week-to-week/pics", summary="Get Active PICs List for Dropdown Filter")
+def get_week_to_week_pics():
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) AS pic_name 
+            FROM layer3_dim.dim_merchant_mapping 
+            WHERE COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) IS NOT NULL 
+              AND COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) <> 'UNKNOWN'
+            ORDER BY pic_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql)).fetchall()
+
+        pics = [r[0] for r in rows if r[0]]
+        return {"total": len(pics), "pics": pics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching PICs: {e}")
+
+@app.get("/api/week-to-week/owners", summary="Get Active Owners List for Dropdown Filter (Filtered by PIC)")
+def get_week_to_week_owners(pic: Optional[str] = Query(None, description="PIC filter")):
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(c.owner_name, m.owner_name) AS owner_name 
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(c.owner_name, m.owner_name) IS NOT NULL 
+              AND COALESCE(c.owner_name, m.owner_name) <> 'UNKNOWN'
+              AND TRIM(COALESCE(c.owner_name, m.owner_name)) <> ''
+              AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+            ORDER BY owner_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_pic": pic if pic else None}).fetchall()
+
+        owners = [r[0] for r in rows]
+        return {"total": len(owners), "owners": owners}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching owners: {e}")
+
+@app.get("/api/week-to-week/outlets", summary="Get Active Outlets List for Dropdown Filter (Filtered by PIC & Owner)")
+def get_week_to_week_outlets(
+    pic: Optional[str] = Query(None, description="PIC filter"),
+    owner: Optional[str] = Query(None, description="Owner filter")
+):
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(m.outlet_name, c.merchant_name) AS outlet_name 
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(m.outlet_name, c.merchant_name) IS NOT NULL
+              AND COALESCE(m.outlet_name, c.merchant_name) <> 'UNKNOWN'
+              AND TRIM(COALESCE(m.outlet_name, c.merchant_name)) <> ''
+              AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+              AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name)) = LOWER(:p_owner))
+            ORDER BY outlet_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_pic": pic if pic else None, "p_owner": owner if owner else None}).fetchall()
+
+        outlets = [r[0] for r in rows]
+        return {"total": len(outlets), "outlets": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+@app.get("/api/week-to-week", summary="Query Week to Week Comparison Data")
+def get_week_to_week_comparison_data(
+    pic: Optional[str] = Query(None, description="BD PIC filter"),
+    owner: Optional[str] = Query(None, description="Owner filter"),
+    outlet: Optional[str] = Query(None, description="Outlet filter"),
+    start_date_a: str = Query("2026-07-13", description="Start date Period A YYYY-MM-DD"),
+    end_date_a: str = Query("2026-07-19", description="End date Period A YYYY-MM-DD"),
+    start_date_b: str = Query("2026-07-20", description="Start date Period B YYYY-MM-DD"),
+    end_date_b: str = Query("2026-07-26", description="End date Period B YYYY-MM-DD"),
+    target_growth_pct: Optional[float] = Query(10.0, description="Target growth % e.g. 10.0"),
+    status_filter: Optional[str] = Query(None, description="Performance status filter")
+):
+    try:
+        sql_params = {
+            "p_pic": pic if pic else None,
+            "p_owner": owner if owner else None,
+            "p_outlet": outlet if outlet else None,
+            "p_start_date_a": start_date_a,
+            "p_end_date_a": end_date_a,
+            "p_start_date_b": start_date_b,
+            "p_end_date_b": end_date_b,
+            "p_target_growth_pct": target_growth_pct if target_growth_pct is not None else 10.0
+        }
+
+        query_sql = """
+            SELECT 
+                pic,
+                owner_name,
+                outlet_name,
+                live_date,
+                age,
+                selected_days,
+                gmv_a,
+                gmv_b,
+                daily_gmv_a,
+                daily_gmv_b,
+                daily_gmv_growth,
+                order_a,
+                order_b,
+                daily_order_a,
+                daily_order_b,
+                daily_order_growth,
+                status
+            FROM layer3_dim.get_week_to_week_comparison(
+                :p_pic,
+                :p_owner,
+                :p_outlet,
+                CAST(:p_start_date_a AS DATE),
+                CAST(:p_end_date_a AS DATE),
+                CAST(:p_start_date_b AS DATE),
+                CAST(:p_end_date_b AS DATE),
+                :p_target_growth_pct
+            );
+        """
+
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        data_list = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, '__class__') and v.__class__.__name__ == 'Decimal':
+                    row[k] = float(v)
+            data_list.append(row)
+
+        if status_filter and status_filter.strip() and status_filter.lower() != 'all':
+            sf = status_filter.strip().lower()
+            data_list = [r for r in data_list if r.get('status', '').lower() == sf]
+
+        valid_gmv_growths = [float(r['daily_gmv_growth']) for r in data_list if r.get('daily_gmv_growth') is not None]
+        valid_order_growths = [float(r['daily_order_growth']) for r in data_list if r.get('daily_order_growth') is not None]
+
+        avg_gmv_growth = (sum(valid_gmv_growths) / len(valid_gmv_growths)) if valid_gmv_growths else 0.0
+        avg_order_growth = (sum(valid_order_growths) / len(valid_order_growths)) if valid_order_growths else 0.0
+
+        total_outlet = len(data_list)
+        growing_outlet = sum(1 for r in data_list if r.get('status') == 'Achieved')
+
+        summary = {
+            "avg_gmv_growth": avg_gmv_growth,
+            "avg_order_growth": avg_order_growth,
+            "total_outlet": total_outlet,
+            "growing_outlet": growing_outlet,
+            "achieved_count": growing_outlet,
+            "gmv_below_count": sum(1 for r in data_list if r.get('status') == 'GMV Below Target'),
+            "order_below_count": sum(1 for r in data_list if r.get('status') == 'Order Below Target'),
+            "not_achieved_count": sum(1 for r in data_list if r.get('status') == 'Not Achieved')
+        }
+
+        return {
+            "pic": pic,
+            "owner": owner,
+            "outlet": outlet,
+            "start_date_a": start_date_a,
+            "end_date_a": end_date_a,
+            "start_date_b": start_date_b,
+            "end_date_b": end_date_b,
+            "target_growth_pct": target_growth_pct,
+            "status_filter": status_filter,
+            "summary": summary,
+            "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing get_week_to_week_comparison: {e}")
+
+# ── Baseline vs Current Performance Endpoints ──
+
+@app.get("/baseline-vs-current-performance", response_class=FileResponse, summary="Serve Baseline vs Current Performance Dashboard")
+def serve_baseline_vs_current_ui():
+    html_file = os.path.join(STATIC_DIR, "baseline_vs_current_performance.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="baseline_vs_current_performance.html not found.")
+    return FileResponse(html_file)
+
+@app.get("/api/baseline-vs-current/pics", summary="Get PIC list for Baseline vs Current dropdown")
+def get_bvc_pics():
+    try:
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT DISTINCT COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) AS pic_name 
+                FROM layer3_dim.dim_merchant_mapping 
+                WHERE COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) IS NOT NULL 
+                  AND COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) <> 'UNKNOWN'
+                ORDER BY pic_name ASC;
+            """)).fetchall()
+        return {"pics": [r[0] for r in rows if r[0]]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching PICs: {e}")
+
+@app.get("/api/baseline-vs-current/owners", summary="Get Owner list filtered by PIC for Baseline vs Current dropdown")
+def get_bvc_owners(pic: Optional[str] = Query(None)):
+    try:
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT DISTINCT COALESCE(c.owner_name, m.owner_name) AS owner_name 
+                FROM layer3_dim.dim_merchant_mapping m
+                LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+                WHERE COALESCE(c.owner_name, m.owner_name) IS NOT NULL 
+                  AND COALESCE(c.owner_name, m.owner_name) <> 'UNKNOWN'
+                  AND TRIM(COALESCE(c.owner_name, m.owner_name)) <> ''
+                  AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+                ORDER BY owner_name ASC;
+            """), {"p_pic": pic or None}).fetchall()
+        return {"owners": [r[0] for r in rows]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching owners: {e}")
+
+@app.get("/api/baseline-vs-current/outlets", summary="Get Outlet list filtered by PIC & Owner for Baseline vs Current dropdown")
+def get_bvc_outlets(pic: Optional[str] = Query(None), owner: Optional[str] = Query(None)):
+    try:
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT DISTINCT COALESCE(m.outlet_name, c.merchant_name) AS outlet_name 
+                FROM layer3_dim.dim_merchant_mapping m
+                LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+                WHERE COALESCE(m.outlet_name, c.merchant_name) IS NOT NULL
+                  AND COALESCE(m.outlet_name, c.merchant_name) <> 'UNKNOWN'
+                  AND TRIM(COALESCE(m.outlet_name, c.merchant_name)) <> ''
+                  AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+                  AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name)) = LOWER(:p_owner))
+                ORDER BY outlet_name ASC;
+            """), {"p_pic": pic or None, "p_owner": owner or None}).fetchall()
+        return {"outlets": [r[0] for r in rows]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+@app.get("/api/baseline-vs-current", summary="Query Baseline vs Current Performance Data")
+def get_baseline_vs_current_data(
+    pic: Optional[str] = Query(None),
+    owner: Optional[str] = Query(None),
+    outlet: Optional[str] = Query(None),
+    start_date: str = Query("2026-07-20"),
+    end_date: str = Query("2026-07-26"),
+    target_growth_pct: Optional[float] = Query(10.0),
+    status_filter: Optional[str] = Query(None)
+):
+    try:
+        params = {
+            "p_pic": pic or None,
+            "p_owner": owner or None,
+            "p_outlet": outlet or None,
+            "p_start_date": start_date,
+            "p_end_date": end_date,
+            "p_target": target_growth_pct if target_growth_pct is not None else 10.0
+        }
+        query_sql = """
+            SELECT pic, owner_name, outlet_name, live_date, age, selected_days,
+                   baseline_gmv, current_gmv, baseline_daily_gmv, current_daily_gmv, daily_gmv_growth,
+                   baseline_order, current_order, baseline_daily_order, current_daily_order, daily_order_growth,
+                   status
+            FROM layer3_dim.get_baseline_vs_current(
+                :p_pic, :p_owner, :p_outlet,
+                CAST(:p_start_date AS DATE), CAST(:p_end_date AS DATE),
+                :p_target
+            );
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), params).mappings().all()
+
+        data_list = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, '__class__') and v.__class__.__name__ == 'Decimal':
+                    row[k] = float(v)
+            data_list.append(row)
+
+        # Apply status filter
+        if status_filter and status_filter.strip() and status_filter.lower() != 'all':
+            sf = status_filter.strip().lower()
+            data_list = [r for r in data_list if r.get('status', '').lower() == sf]
+
+        # Summary metrics
+        valid_gmv = [r['daily_gmv_growth'] for r in data_list if r.get('daily_gmv_growth') is not None]
+        valid_ord = [r['daily_order_growth'] for r in data_list if r.get('daily_order_growth') is not None]
+        avg_gmv_growth = sum(valid_gmv) / len(valid_gmv) if valid_gmv else 0.0
+        avg_ord_growth = sum(valid_ord) / len(valid_ord) if valid_ord else 0.0
+
+        summary = {
+            "avg_gmv_growth": avg_gmv_growth,
+            "avg_order_growth": avg_ord_growth,
+            "total_outlet": len(data_list),
+            "growing_outlet": sum(1 for r in data_list if r.get('status') == 'Achieved'),
+            "achieved_count": sum(1 for r in data_list if r.get('status') == 'Achieved'),
+            "gmv_below_count": sum(1 for r in data_list if r.get('status') == 'GMV Below Target'),
+            "order_below_count": sum(1 for r in data_list if r.get('status') == 'Order Below Target'),
+            "not_achieved_count": sum(1 for r in data_list if r.get('status') == 'Not Achieved')
+        }
+        return {
+            "pic": pic, "owner": owner, "outlet": outlet,
+            "start_date": start_date, "end_date": end_date,
+            "target_growth_pct": target_growth_pct,
+            "summary": summary, "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error querying baseline_vs_current: {e}")
+
 # ============================================================================
 # LAPORAN JAM RAMAI (PEAK HOURS & OPERATIONAL ANALYSIS) ROUTES
 # ============================================================================
@@ -930,3 +1384,4 @@ def get_order_status_summary(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+

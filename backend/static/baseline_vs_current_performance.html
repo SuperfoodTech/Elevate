@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baseline vs Current Performance - SuperFood Elevate</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js for Visual Comparison Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* CSS Design System matching FoodMaster Web Theme */
+        :root {
+            --bg-main: #fff9f8;
+            --bg-radial: radial-gradient(circle at 50% -10%, rgba(254, 226, 226, 0.75), transparent 32rem);
+            --color-text-main: #172033;
+            --color-text-muted: #64748b;
+            
+            --card-bg: #ffffff;
+            --card-border: #fee2e2;
+            --card-shadow: 0 16px 45px -30px rgba(127, 29, 29, 0.45);
+            
+            --subcard-bg: #fef2f2;
+            --subcard-border: #fecaca;
+
+            --input-bg: #ffffff;
+            --input-border: #e2e8f0;
+            --input-text: #1e293b;
+            --input-focus-border: #f87171;
+            --input-focus-ring: rgba(254, 202, 202, 0.5);
+
+            --btn-primary-bg: #b91c1c;
+            --btn-primary-hover: #991b1b;
+            --btn-primary-text: #ffffff;
+
+            --btn-secondary-bg: #ffffff;
+            --btn-secondary-border: #e2e8f0;
+            --btn-secondary-text: #334155;
+            --btn-secondary-hover-bg: #fef2f2;
+            --btn-secondary-hover-border: #fecaca;
+            --btn-secondary-hover-text: #b91c1c;
+
+            --header-bg: rgba(255, 255, 255, 0.92);
+            --header-border: #fee2e2;
+
+            --color-status-achieved: #16a34a;
+            --color-status-gmv-below: #d97706;
+            --color-status-order-below: #2563eb;
+            --color-status-not-achieved: #dc2626;
+
+            --table-header-bg: #fff1f2;
+            --table-row-hover: #fff5f5;
+            --table-border: #fecaca;
+
+            --space-4: 4px;
+            --space-8: 8px;
+            --space-12: 12px;
+            --space-16: 16px;
+            --space-24: 24px;
+            --space-32: 32px;
+
+            --font-main: 'Plus Jakarta Sans', system-ui, sans-serif;
+            --font-display: 'Outfit', system-ui, sans-serif;
+        }
+
+        html.dark {
+            color-scheme: dark;
+            --bg-main: #000000;
+            --bg-radial: none;
+            --color-text-main: #ffffff;
+            --color-text-muted: #a1a1aa;
+            
+            --card-bg: rgba(24, 24, 27, 0.8);
+            --card-border: rgba(39, 39, 42, 0.8);
+            --card-shadow: none;
+
+            --subcard-bg: rgba(39, 39, 42, 0.4);
+            --subcard-border: rgba(63, 63, 70, 0.6);
+
+            --input-bg: rgba(39, 39, 42, 0.5);
+            --input-border: rgba(63, 63, 70, 0.5);
+            --input-text: #ffffff;
+            --input-focus-border: rgba(255, 255, 255, 0.6);
+            --input-focus-ring: rgba(39, 39, 42, 0.4);
+
+            --btn-primary-bg: #ffffff;
+            --btn-primary-hover: #e4e4e7;
+            --btn-primary-text: #000000;
+
+            --btn-secondary-bg: #18181b;
+            --btn-secondary-border: #27272a;
+            --btn-secondary-text: #ffffff;
+            --btn-secondary-hover-bg: #27272a;
+            --btn-secondary-hover-border: #3f3f46;
+            --btn-secondary-hover-text: #ffffff;
+
+            --header-bg: rgba(0, 0, 0, 0.8);
+            --header-border: rgba(255, 255, 255, 0.1);
+
+            --color-status-achieved: #4ade80;
+            --color-status-gmv-below: #fbbf24;
+            --color-status-order-below: #60a5fa;
+            --color-status-not-achieved: #f87171;
+
+            --table-header-bg: #18181b;
+            --table-row-hover: #27272a;
+            --table-border: #27272a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background: var(--bg-radial), var(--bg-main);
+            color: var(--color-text-main);
+            min-height: 100vh;
+            line-height: 1.5;
+            letter-spacing: -0.012em;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: var(--space-24) var(--space-16);
+        }
+
+        /* Sticky Header */
+        header.sticky-header {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: var(--header-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--header-border);
+            padding: var(--space-12) 0;
+            margin-bottom: var(--space-24);
+        }
+
+        .header-content {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 0 var(--space-16);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: var(--space-12);
+        }
+
+        .brand-logo-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--space-12);
+            background: linear-gradient(135deg, #dc2626, #991b1b);
+            box-shadow: 0 4px 12px rgba(153, 27, 27, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            flex-shrink: 0;
+        }
+
+        html.dark .brand-logo-icon {
+            background: linear-gradient(135deg, #27272a, #09090b);
+            border: 1px solid #3f3f46;
+            box-shadow: none;
+        }
+
+        .brand-title {
+            font-family: var(--font-display);
+            font-size: 1.125rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .brand-subtitle {
+            font-size: 0.8125rem;
+            color: var(--color-text-muted);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: var(--space-12);
+        }
+
+        .btn-theme-toggle {
+            background: var(--btn-secondary-bg);
+            border: 1px solid var(--btn-secondary-border);
+            color: var(--btn-secondary-text);
+            padding: var(--space-8) var(--space-12);
+            border-radius: var(--space-12);
+            font-size: 0.8125rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-8);
+            transition: all 0.2s ease;
+        }
+
+        .btn-theme-toggle:hover {
+            background: var(--btn-secondary-hover-bg);
+            border-color: var(--btn-secondary-hover-border);
+            color: var(--btn-secondary-hover-text);
+        }
+
+        .btn-secondary {
+            background: var(--btn-secondary-bg);
+            border: 1px solid var(--btn-secondary-border);
+            color: var(--btn-secondary-text);
+            padding: var(--space-8) var(--space-16);
+            border-radius: var(--space-12);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-8);
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: var(--btn-secondary-hover-bg);
+            border-color: var(--btn-secondary-hover-border);
+            color: var(--btn-secondary-hover-text);
+        }
+
+        /* Surface Card */
+        .surface-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            padding: var(--space-24);
+            margin-bottom: var(--space-24);
+        }
+
+        /* Filter Panel Wrapper */
+        .filter-panel-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-16);
+        }
+
+        .filter-row-top {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: var(--space-16);
+        }
+
+        .filter-row-bottom {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: var(--space-16);
+            align-items: center;
+            padding-top: var(--space-12);
+            border-top: 1px solid var(--card-border);
+        }
+
+        @media (max-width: 900px) {
+            .filter-row-bottom {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .period-subcard {
+            background-color: var(--subcard-bg);
+            border: 1px solid var(--subcard-border);
+            border-radius: 12px;
+            padding: var(--space-12) var(--space-16);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-8);
+        }
+
+        .period-header-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .period-dates-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-12);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-8);
+        }
+
+        .form-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .field-control {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid var(--input-border);
+            background-color: var(--input-bg);
+            padding: var(--space-8) var(--space-12);
+            font-size: 0.8125rem;
+            color: var(--input-text);
+            font-family: inherit;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+
+        .field-control:focus {
+            border-color: var(--input-focus-border);
+            box-shadow: 0 0 0 4px var(--input-focus-ring);
+        }
+
+        select.field-control option {
+            background-color: var(--card-bg);
+            color: var(--color-text-main);
+        }
+
+        .info-subtext {
+            font-size: 0.75rem;
+            color: var(--color-text-muted);
+            margin-top: auto;
+        }
+
+        .action-button-container {
+            display: flex;
+            align-items: flex-end;
+            min-width: 220px;
+        }
+
+        .primary-action {
+            width: 100%;
+            height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            background-color: var(--btn-primary-bg);
+            padding: var(--space-12) var(--space-20);
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: var(--btn-primary-text);
+            border: none;
+            cursor: pointer;
+            font-family: var(--font-display);
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .primary-action:hover {
+            background-color: var(--btn-primary-hover);
+        }
+
+        .primary-action:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Section Header */
+        .section-header {
+            font-family: var(--font-display);
+            font-size: 0.9375rem;
+            font-weight: 700;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: var(--space-16);
+            display: flex;
+            align-items: center;
+            gap: var(--space-8);
+        }
+
+        .section-header::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 16px;
+            background-color: var(--btn-primary-bg);
+            border-radius: 2px;
+        }
+
+        /* Executive Cards Grid */
+        .executive-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: var(--space-16);
+            margin-bottom: var(--space-24);
+        }
+
+        .summary-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            padding: var(--space-16);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-8);
+        }
+
+        .summary-card-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .summary-card-value {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--color-text-main);
+        }
+
+        .summary-card-subtext {
+            font-size: 0.75rem;
+            color: var(--color-text-muted);
+        }
+
+        /* Status Badges */
+        .status-badge {
+            display: inline-block;
+            padding: var(--space-4) var(--space-12);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .status-achieved {
+            background-color: rgba(22, 163, 74, 0.15);
+            color: var(--color-status-achieved);
+            border: 1px solid rgba(22, 163, 74, 0.3);
+        }
+
+        .status-gmv-below {
+            background-color: rgba(217, 119, 6, 0.15);
+            color: var(--color-status-gmv-below);
+            border: 1px solid rgba(217, 119, 6, 0.3);
+        }
+
+        .status-order-below {
+            background-color: rgba(37, 99, 235, 0.15);
+            color: var(--color-status-order-below);
+            border: 1px solid rgba(37, 99, 235, 0.3);
+        }
+
+        .status-not-achieved {
+            background-color: rgba(220, 38, 38, 0.15);
+            color: var(--color-status-not-achieved);
+            border: 1px solid rgba(220, 38, 38, 0.3);
+        }
+
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: var(--space-16);
+            margin-bottom: var(--space-24);
+        }
+
+        .chart-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            padding: var(--space-16);
+            height: 280px;
+        }
+
+        .chart-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: var(--space-12);
+        }
+
+        /* Data Table */
+        .table-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            overflow: hidden;
+        }
+
+        .table-header-bar {
+            padding: var(--space-16) var(--space-24);
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--space-16);
+            flex-wrap: wrap;
+        }
+
+        .table-title {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .table-controls {
+            display: flex;
+            align-items: center;
+            gap: var(--space-12);
+        }
+
+        .search-input {
+            width: 220px;
+        }
+
+        .badge-count {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--btn-primary-bg);
+            background-color: rgba(239, 68, 68, 0.1);
+            padding: var(--space-4) var(--space-12);
+            border-radius: 12px;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            white-space: nowrap;
+        }
+
+        html.dark .badge-count {
+            color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.8125rem;
+        }
+
+        th {
+            background-color: var(--table-header-bg);
+            color: var(--color-text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+            padding: var(--space-12) var(--space-16);
+            border-bottom: 1px solid var(--table-border);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th:hover {
+            color: var(--color-text-main);
+        }
+
+        td {
+            padding: var(--space-12) var(--space-16);
+            border-bottom: 1px solid var(--table-border);
+            white-space: nowrap;
+        }
+
+        tbody tr:hover {
+            background-color: var(--table-row-hover);
+        }
+
+        tr.row-summary {
+            background-color: rgba(239, 68, 68, 0.08) !important;
+            font-weight: 700;
+            border-top: 2px solid var(--btn-primary-bg);
+        }
+
+        html.dark tr.row-summary {
+            background-color: rgba(255, 255, 255, 0.08) !important;
+            border-top: 2px solid #ffffff;
+        }
+
+        tr.row-summary td {
+            color: var(--color-text-main);
+            font-family: var(--font-display);
+        }
+
+        /* States */
+        .state-wrapper {
+            padding: var(--space-32) var(--space-24);
+            text-align: center;
+            color: var(--color-text-muted);
+        }
+
+        .spinner {
+            border: 2px solid var(--card-border);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: var(--btn-primary-bg);
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto var(--space-12) auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .text-success { color: var(--color-status-achieved); }
+        .text-danger { color: var(--color-status-not-achieved); }
+        .text-muted { color: var(--color-text-muted); font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+
+    <!-- Sticky Header -->
+    <header class="sticky-header">
+        <div class="header-content">
+            <div class="brand-section">
+                <div class="brand-logo-icon">
+                    <svg style="width: 20px; height: 20px;" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M8.1 13.34l2.83-2.83L3.91 3.5a4.008 4.008 0 000 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41L12 14.41l6.88 6.88 1.41-1.41L13.41 13l1.47-1.47z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="brand-title">FoodMaster</h1>
+                    <p class="brand-subtitle">Baseline vs Current Performance Analysis</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button type="button" class="btn-theme-toggle" onclick="toggleThemeMode()" title="Toggle Dark/Light Mode">
+                    <span id="themeToggleIcon">
+                        <svg style="width: 16px; height: 16px; color: #f59e0b;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </span>
+                    <span id="themeToggleLabel">Light Mode</span>
+                </button>
+                <a href="/weektoweekcomparison" class="btn-secondary">Week to Week</a>
+                <a href="/rekap-tagihan" class="btn-secondary">Rekap Tagihan</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Structured Filter Panel -->
+        <div class="surface-card">
+            <form id="baselineForm" onsubmit="handleFormSubmit(event)">
+                <div class="filter-panel-wrapper">
+                    <!-- Baris 1: Filter Entitas, Target & Performance -->
+                    <div class="filter-row-top">
+                        <div class="form-group">
+                            <label for="picSelect" class="form-label">Filter PIC</label>
+                            <select id="picSelect" class="field-control" onchange="handlePicChange()">
+                                <option value="">Semua PIC</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ownerSelect" class="form-label">Filter Owner</label>
+                            <select id="ownerSelect" class="field-control" onchange="handleOwnerChange()">
+                                <option value="">Semua Owner</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="outletSelect" class="form-label">Filter Outlet</label>
+                            <select id="outletSelect" class="field-control">
+                                <option value="">Semua Outlet</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="targetGrowthInput" class="form-label">Target Growth (%)</label>
+                            <input type="number" id="targetGrowthInput" class="field-control" step="0.1" value="10.0" placeholder="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="performanceFilterSelect" class="form-label">Performance Filter</label>
+                            <select id="performanceFilterSelect" class="field-control">
+                                <option value="All">All Status</option>
+                                <option value="Achieved">Achieved</option>
+                                <option value="GMV Below Target">GMV Below Target</option>
+                                <option value="Order Below Target">Order Below Target</option>
+                                <option value="Not Achieved">Not Achieved</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Baris 2: Current Period & Action Button -->
+                    <div class="filter-row-bottom">
+                        <!-- Subcard Current Date Range -->
+                        <div class="period-subcard">
+                            <div class="period-header-title">
+                                <span>Filter Date Range (Current Period)</span>
+                            </div>
+                            <div class="period-dates-grid">
+                                <div class="form-group">
+                                    <label for="startDate" class="form-label">Start Date</label>
+                                    <input type="date" id="startDate" class="field-control" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="endDate" class="form-label">End Date</label>
+                                    <input type="date" id="endDate" class="field-control" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subcard Baseline Info -->
+                        <div class="period-subcard">
+                            <div class="period-header-title">
+                                <span>Baseline Window Info</span>
+                            </div>
+                            <p class="info-subtext" id="baselineInfoText">Baseline: 30 Hari sebelum Start Date</p>
+                        </div>
+
+                        <!-- Action Button Container -->
+                        <div class="action-button-container">
+                            <button type="submit" id="btnSubmit" class="primary-action">Analisis Baseline vs Current</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Executive Summary Section -->
+        <h2 class="section-header">Executive Summary Performa Baseline vs Current</h2>
+        <div class="executive-cards-grid">
+            <div class="summary-card">
+                <span class="summary-card-title">Avg GMV Growth</span>
+                <span class="summary-card-value" id="valAvgGMVGrowth" style="color: var(--color-status-achieved);">0.00%</span>
+                <span class="summary-card-subtext">Rata-rata pertumbuhan GMV Harian vs Baseline</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-title">Avg Order Growth</span>
+                <span class="summary-card-value" id="valAvgOrderGrowth" style="color: var(--color-status-order-below);">0.00%</span>
+                <span class="summary-card-subtext">Rata-rata pertumbuhan Order Harian vs Baseline</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-title">Total Outlet</span>
+                <span class="summary-card-value" id="valTotalOutlet">0</span>
+                <span class="summary-card-subtext">Total outlet dievaluasi</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-title">Growing Outlet</span>
+                <span class="summary-card-value" id="valGrowingOutlet" style="color: var(--color-status-achieved);">0</span>
+                <span class="summary-card-subtext">Outlet capai status Achieved</span>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <h2 class="section-header">Visual Comparison Charts (Baseline vs Current)</h2>
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-title">Daily GMV Comparison (Baseline vs Current)</div>
+                <canvas id="chartGMVComp"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Daily Order Comparison (Baseline vs Current)</div>
+                <canvas id="chartOrderComp"></canvas>
+            </div>
+        </div>
+
+        <!-- Master Data Table Section -->
+        <h2 class="section-header">Breakdown Performa Detail Outlet</h2>
+        <div class="table-card">
+            <div class="table-header-bar">
+                <h2 class="table-title">Baseline vs Current Outlet Performance Table</h2>
+                <div class="table-controls">
+                    <input type="text" id="tableSearchInput" class="field-control search-input" placeholder="Cari outlet/owner/PIC..." oninput="handleSearchInput()">
+                    <span class="badge-count" id="recordBadge">0 Outlet</span>
+                </div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('pic')">PIC <span id="sort_pic"></span></th>
+                            <th onclick="sortTable('owner_name')">Owner <span id="sort_owner_name"></span></th>
+                            <th onclick="sortTable('outlet_name')">Outlet <span id="sort_outlet_name"></span></th>
+                            <th onclick="sortTable('live_date')">Live Date <span id="sort_live_date"></span></th>
+                            <th onclick="sortTable('age')">Age <span id="sort_age"></span></th>
+                            <th class="text-center" onclick="sortTable('selected_days')">Hari <span id="sort_selected_days"></span></th>
+                            <th class="text-right" onclick="sortTable('baseline_gmv')">GMV Baseline <span id="sort_baseline_gmv"></span></th>
+                            <th class="text-right" onclick="sortTable('current_gmv')">GMV Current <span id="sort_current_gmv"></span></th>
+                            <th class="text-right" onclick="sortTable('baseline_daily_gmv')">Daily GMV Base <span id="sort_baseline_daily_gmv"></span></th>
+                            <th class="text-right" onclick="sortTable('current_daily_gmv')">Daily GMV Curr <span id="sort_current_daily_gmv"></span></th>
+                            <th class="text-right" onclick="sortTable('daily_gmv_growth')">Daily GMV Growth % <span id="sort_daily_gmv_growth"></span></th>
+                            <th class="text-right" onclick="sortTable('baseline_order')">Order Base <span id="sort_baseline_order"></span></th>
+                            <th class="text-right" onclick="sortTable('current_order')">Order Curr <span id="sort_current_order"></span></th>
+                            <th class="text-right" onclick="sortTable('baseline_daily_order')">Daily Order Base <span id="sort_baseline_daily_order"></span></th>
+                            <th class="text-right" onclick="sortTable('current_daily_order')">Daily Order Curr <span id="sort_current_daily_order"></span></th>
+                            <th class="text-right" onclick="sortTable('daily_order_growth')">Daily Order Growth % <span id="sort_daily_order_growth"></span></th>
+                            <th class="text-center" onclick="sortTable('status')">Status <span id="sort_status"></span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="17" class="state-wrapper">
+                                Silakan pilih kriteria filter dan klik button <strong>Analisis Baseline vs Current</strong>.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        const API_BASE = window.location.origin;
+
+        // Global State
+        let rawDataList = [];
+        let filteredDataList = [];
+        let currentSortColumn = '';
+        let isSortAsc = true;
+        let chartGMVInstance = null;
+        let chartOrderInstance = null;
+
+        // Theme Toggle Logic
+        function initThemeMode() {
+            const savedTheme = localStorage.getItem('foodmaster_theme') || 'dark';
+            applyTheme(savedTheme);
+        }
+
+        function applyTheme(theme) {
+            const htmlEl = document.documentElement;
+            const labelEl = document.getElementById('themeToggleLabel');
+            const iconEl = document.getElementById('themeToggleIcon');
+
+            if (theme === 'dark') {
+                htmlEl.classList.add('dark');
+                htmlEl.classList.remove('light');
+                labelEl.textContent = 'Dark Mode';
+                iconEl.innerHTML = `<svg style="width: 16px; height: 16px; color: #f59e0b;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>`;
+            } else {
+                htmlEl.classList.add('light');
+                htmlEl.classList.remove('dark');
+                labelEl.textContent = 'Light Mode';
+                iconEl.innerHTML = `<svg style="width: 16px; height: 16px; color: #3b82f6;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>`;
+            }
+            localStorage.setItem('foodmaster_theme', theme);
+            if (chartGMVInstance) renderCharts(filteredDataList);
+        }
+
+        function toggleThemeMode() {
+            const isDark = document.documentElement.classList.contains('dark');
+            applyTheme(isDark ? 'light' : 'dark');
+        }
+
+        // Initialize Page
+        document.addEventListener('DOMContentLoaded', () => {
+            initThemeMode();
+            setDefaultDates();
+            loadPicDropdown();
+            loadOwnerDropdown();
+            loadOutletDropdown();
+            fetchBaselineData();
+        });
+
+        function setDefaultDates() {
+            const today = new Date();
+            const end = new Date(today);
+            end.setDate(today.getDate() - 1);
+            const start = new Date(end);
+            start.setDate(end.getDate() - 6);
+
+            const formatDate = d => d.toISOString().split('T')[0];
+            const startStr = formatDate(start);
+            const endStr = formatDate(end);
+
+            document.getElementById('startDate').value = startStr;
+            document.getElementById('endDate').value = endStr;
+            updateBaselineInfo(startStr);
+        }
+
+        document.getElementById('startDate').addEventListener('change', (e) => {
+            updateBaselineInfo(e.target.value);
+        });
+
+        function updateBaselineInfo(startStr) {
+            if (!startStr) return;
+            const startDateObj = new Date(startStr);
+            const bEnd = new Date(startDateObj);
+            bEnd.setDate(startDateObj.getDate() - 1);
+            const bStart = new Date(bEnd);
+            bStart.setDate(bEnd.getDate() - 29);
+            const fmt = d => d.toISOString().split('T')[0];
+            document.getElementById('baselineInfoText').textContent = `Baseline (30 Hari): ${fmt(bStart)} s/d ${fmt(bEnd)}`;
+        }
+
+        // Dropdown Cascade Helpers
+        async function loadPicDropdown() {
+            try {
+                const res = await fetch(`${API_BASE}/api/baseline-vs-current/pics`);
+                const data = await res.json();
+                const select = document.getElementById('picSelect');
+                select.innerHTML = '<option value="">Semua PIC</option>';
+                if (data.pics && Array.isArray(data.pics)) {
+                    data.pics.forEach(pic => {
+                        const opt = document.createElement('option');
+                        opt.value = pic;
+                        opt.textContent = pic;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading PICs:', err);
+            }
+        }
+
+        async function handlePicChange() {
+            await loadOwnerDropdown();
+            await loadOutletDropdown();
+        }
+
+        async function loadOwnerDropdown() {
+            const pic = document.getElementById('picSelect').value;
+            try {
+                let url = `${API_BASE}/api/baseline-vs-current/owners`;
+                if (pic) url += `?pic=${encodeURIComponent(pic)}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                const select = document.getElementById('ownerSelect');
+                select.innerHTML = '<option value="">Semua Owner</option>';
+                if (data.owners && Array.isArray(data.owners)) {
+                    data.owners.forEach(owner => {
+                        const opt = document.createElement('option');
+                        opt.value = owner;
+                        opt.textContent = owner;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading owners:', err);
+            }
+        }
+
+        async function handleOwnerChange() {
+            await loadOutletDropdown();
+        }
+
+        async function loadOutletDropdown() {
+            const pic = document.getElementById('picSelect').value;
+            const owner = document.getElementById('ownerSelect').value;
+            try {
+                let url = `${API_BASE}/api/baseline-vs-current/outlets?1=1`;
+                if (pic) url += `&pic=${encodeURIComponent(pic)}`;
+                if (owner) url += `&owner=${encodeURIComponent(owner)}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                const select = document.getElementById('outletSelect');
+                select.innerHTML = '<option value="">Semua Outlet</option>';
+                if (data.outlets && Array.isArray(data.outlets)) {
+                    data.outlets.forEach(outlet => {
+                        const opt = document.createElement('option');
+                        opt.value = outlet;
+                        opt.textContent = outlet;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading outlets:', err);
+            }
+        }
+
+        // Form Submit Logic
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            fetchBaselineData();
+        }
+
+        async function fetchBaselineData() {
+            const pic = document.getElementById('picSelect').value;
+            const owner = document.getElementById('ownerSelect').value;
+            const outlet = document.getElementById('outletSelect').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const targetGrowth = document.getElementById('targetGrowthInput').value || 10.0;
+            const perfFilter = document.getElementById('performanceFilterSelect').value;
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="17" class="state-wrapper">
+                        <div class="spinner"></div>
+                        Memuat data analisis Baseline vs Current...
+                    </td>
+                </tr>
+            `;
+
+            const btnSubmit = document.getElementById('btnSubmit');
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = 'Memuat Data...';
+
+            try {
+                let url = `${API_BASE}/api/baseline-vs-current?start_date=${startDate}&end_date=${endDate}&target_growth_pct=${targetGrowth}`;
+                if (pic) url += `&pic=${encodeURIComponent(pic)}`;
+                if (owner) url += `&owner=${encodeURIComponent(owner)}`;
+                if (outlet) url += `&outlet=${encodeURIComponent(outlet)}`;
+                if (perfFilter && perfFilter !== 'All') url += `&status_filter=${encodeURIComponent(perfFilter)}`;
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+
+                rawDataList = result.data || [];
+                filteredDataList = [...rawDataList];
+
+                updateExecutiveSummary(result.summary);
+                renderTable(filteredDataList);
+                renderCharts(filteredDataList);
+
+            } catch (error) {
+                console.error('Error fetching baseline data:', error);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="17" class="state-wrapper text-danger">
+                            Gagal memuat data baseline: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            } finally {
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = 'Analisis Baseline vs Current';
+            }
+        }
+
+        // Formatters
+        function formatCurrency(val) {
+            if (val === null || val === undefined) return '-';
+            return 'Rp ' + Math.round(val).toLocaleString('id-ID');
+        }
+
+        function formatPercent(val) {
+            if (val === null || val === undefined) return '-';
+            const pct = (val * 100).toFixed(2);
+            const colorClass = val >= 0 ? 'text-success' : 'text-danger';
+            return `<span class="${colorClass}">${val >= 0 ? '+' : ''}${pct}%</span>`;
+        }
+
+        function formatNumber(val) {
+            if (val === null || val === undefined) return '-';
+            return val.toLocaleString('id-ID');
+        }
+
+        function formatDecimal(val) {
+            if (val === null || val === undefined) return '-';
+            return Number(val).toFixed(2);
+        }
+
+        function getStatusBadge(status) {
+            if (!status) return '-';
+            const map = {
+                'Achieved': 'status-achieved',
+                'GMV Below Target': 'status-gmv-below',
+                'Order Below Target': 'status-order-below',
+                'Not Achieved': 'status-not-achieved'
+            };
+            const cls = map[status] || '';
+            return `<span class="status-badge ${cls}">${status}</span>`;
+        }
+
+        // Executive Summary Cards Update
+        function updateExecutiveSummary(summary) {
+            if (!summary) return;
+            const avgGmv = summary.avg_gmv_growth || 0;
+            const avgOrd = summary.avg_order_growth || 0;
+
+            const gmvEl = document.getElementById('valAvgGMVGrowth');
+            gmvEl.textContent = (avgGmv * 100).toFixed(2) + '%';
+            gmvEl.style.color = avgGmv >= 0 ? 'var(--color-status-achieved)' : 'var(--color-status-not-achieved)';
+
+            const ordEl = document.getElementById('valAvgOrderGrowth');
+            ordEl.textContent = (avgOrd * 100).toFixed(2) + '%';
+            ordEl.style.color = avgOrd >= 0 ? 'var(--color-status-order-below)' : 'var(--color-status-not-achieved)';
+
+            document.getElementById('valTotalOutlet').textContent = summary.total_outlet || 0;
+            document.getElementById('valGrowingOutlet').textContent = summary.growing_outlet || 0;
+        }
+
+        // Render Table
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody');
+            document.getElementById('recordBadge').textContent = `${data.length} Outlet`;
+
+            if (data.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="17" class="state-wrapper">
+                            Tidak ada data outlet yang memenuhi kriteria filter.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Summary row calculation
+            let sumBGMV = 0, sumCGMV = 0, sumBDGMV = 0, sumCDGMV = 0;
+            let sumBOrd = 0, sumCOrd = 0, sumBDOrd = 0, sumCDOrd = 0;
+            let validGMVGrowths = [], validOrdGrowths = [];
+
+            let rowsHtml = data.map(item => {
+                const bGmv = item.baseline_gmv || 0;
+                const cGmv = item.current_gmv || 0;
+                const bdGmv = item.baseline_daily_gmv || 0;
+                const cdGmv = item.current_daily_gmv || 0;
+                const bOrd = item.baseline_order || 0;
+                const cOrd = item.current_order || 0;
+                const bdOrd = item.baseline_daily_order || 0;
+                const cdOrd = item.current_daily_order || 0;
+
+                sumBGMV += bGmv; sumCGMV += cGmv; sumBDGMV += bdGmv; sumCDGMV += cdGmv;
+                sumBOrd += bOrd; sumCOrd += cOrd; sumBDOrd += bdOrd; sumCDOrd += cdOrd;
+
+                if (item.daily_gmv_growth !== null && item.daily_gmv_growth !== undefined) validGMVGrowths.push(item.daily_gmv_growth);
+                if (item.daily_order_growth !== null && item.daily_order_growth !== undefined) validOrdGrowths.push(item.daily_order_growth);
+
+                return `
+                    <tr>
+                        <td><strong>${item.pic || '-'}</strong></td>
+                        <td>${item.owner_name || '-'}</td>
+                        <td>${item.outlet_name || '-'}</td>
+                        <td>${item.live_date || '-'}</td>
+                        <td>${item.age || '-'}</td>
+                        <td class="text-center">${item.selected_days || '-'}</td>
+                        <td class="text-right">${formatCurrency(item.baseline_gmv)}</td>
+                        <td class="text-right">${formatCurrency(item.current_gmv)}</td>
+                        <td class="text-right">${formatCurrency(item.baseline_daily_gmv)}</td>
+                        <td class="text-right">${formatCurrency(item.current_daily_gmv)}</td>
+                        <td class="text-right">${formatPercent(item.daily_gmv_growth)}</td>
+                        <td class="text-right">${formatNumber(item.baseline_order)}</td>
+                        <td class="text-right">${formatNumber(item.current_order)}</td>
+                        <td class="text-right">${formatDecimal(item.baseline_daily_order)}</td>
+                        <td class="text-right">${formatDecimal(item.current_daily_order)}</td>
+                        <td class="text-right">${formatPercent(item.daily_order_growth)}</td>
+                        <td class="text-center">${getStatusBadge(item.status)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const avgGMVGrowth = validGMVGrowths.length ? sumBDGMV > 0 ? (sumCDGMV / sumBDGMV) - 1 : 0 : 0;
+            const avgOrdGrowth = validOrdGrowths.length ? sumBDOrd > 0 ? (sumCDOrd / sumBDOrd) - 1 : 0 : 0;
+
+            const summaryHtml = `
+                <tr class="row-summary">
+                    <td colspan="5">TOTAL / AVERAGE (${data.length} OUTLET)</td>
+                    <td class="text-center">-</td>
+                    <td class="text-right">${formatCurrency(sumBGMV)}</td>
+                    <td class="text-right">${formatCurrency(sumCGMV)}</td>
+                    <td class="text-right">${formatCurrency(sumBDGMV)}</td>
+                    <td class="text-right">${formatCurrency(sumCDGMV)}</td>
+                    <td class="text-right">${formatPercent(avgGMVGrowth)}</td>
+                    <td class="text-right">${formatNumber(sumBOrd)}</td>
+                    <td class="text-right">${formatNumber(sumCOrd)}</td>
+                    <td class="text-right">${formatDecimal(sumBDOrd)}</td>
+                    <td class="text-right">${formatDecimal(sumCDOrd)}</td>
+                    <td class="text-right">${formatPercent(avgOrdGrowth)}</td>
+                    <td class="text-center">-</td>
+                </tr>
+            `;
+
+            tbody.innerHTML = rowsHtml + summaryHtml;
+        }
+
+        // Search Input Handling
+        function handleSearchInput() {
+            const query = document.getElementById('tableSearchInput').value.toLowerCase().trim();
+            if (!query) {
+                filteredDataList = [...rawDataList];
+            } else {
+                filteredDataList = rawDataList.filter(item => 
+                    (item.outlet_name && item.outlet_name.toLowerCase().includes(query)) ||
+                    (item.owner_name && item.owner_name.toLowerCase().includes(query)) ||
+                    (item.pic && item.pic.toLowerCase().includes(query))
+                );
+            }
+            renderTable(filteredDataList);
+            renderCharts(filteredDataList);
+        }
+
+        // Sorting Logic
+        function sortTable(columnKey) {
+            if (currentSortColumn === columnKey) {
+                isSortAsc = !isSortAsc;
+            } else {
+                currentSortColumn = columnKey;
+                isSortAsc = true;
+            }
+
+            // Update Sort Indicators
+            const columns = ['pic','owner_name','outlet_name','live_date','age','selected_days','baseline_gmv','current_gmv','baseline_daily_gmv','current_daily_gmv','daily_gmv_growth','baseline_order','current_order','baseline_daily_order','current_daily_order','daily_order_growth','status'];
+            columns.forEach(col => {
+                const el = document.getElementById(`sort_${col}`);
+                if (el) el.textContent = col === columnKey ? (isSortAsc ? '▲' : '▼') : '';
+            });
+
+            filteredDataList.sort((a, b) => {
+                let valA = a[columnKey];
+                let valB = b[columnKey];
+
+                if (valA === null || valA === undefined) valA = '';
+                if (valB === null || valB === undefined) valB = '';
+
+                if (typeof valA === 'number' && typeof valB === 'number') {
+                    return isSortAsc ? valA - valB : valB - valA;
+                }
+                return isSortAsc ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
+            });
+
+            renderTable(filteredDataList);
+        }
+
+        // Chart.js Visual Comparison Charts
+        function renderCharts(data) {
+            const isDark = document.documentElement.classList.contains('dark');
+            const textColor = isDark ? '#a1a1aa' : '#64748b';
+            const gridColor = isDark ? 'rgba(63, 63, 70, 0.4)' : 'rgba(226, 232, 240, 0.6)';
+
+            // Limit to top 15 outlets by Current GMV for visual clarity
+            const chartData = [...data].sort((a, b) => (b.current_gmv || 0) - (a.current_gmv || 0)).slice(0, 15);
+
+            const labels = chartData.map(d => {
+                const name = d.outlet_name || 'Unknown';
+                return name.length > 18 ? name.substring(0, 18) + '...' : name;
+            });
+
+            // Daily GMV Comparison Data
+            const baseDailyGMV = chartData.map(d => d.baseline_daily_gmv || 0);
+            const currDailyGMV = chartData.map(d => d.current_daily_gmv || 0);
+
+            // Daily Order Comparison Data
+            const baseDailyOrd = chartData.map(d => d.baseline_daily_order || 0);
+            const currDailyOrd = chartData.map(d => d.current_daily_order || 0);
+
+            // Render GMV Chart
+            const ctxGMV = document.getElementById('chartGMVComp').getContext('2d');
+            if (chartGMVInstance) chartGMVInstance.destroy();
+
+            chartGMVInstance = new Chart(ctxGMV, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Daily GMV Base (30D)',
+                            data: baseDailyGMV,
+                            backgroundColor: isDark ? 'rgba(161, 161, 170, 0.5)' : 'rgba(100, 116, 139, 0.5)',
+                            borderColor: isDark ? '#a1a1aa' : '#64748b',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Daily GMV Current',
+                            data: currDailyGMV,
+                            backgroundColor: isDark ? 'rgba(74, 222, 128, 0.7)' : 'rgba(22, 163, 74, 0.7)',
+                            borderColor: isDark ? '#4ade80' : '#16a34a',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: textColor, font: { family: 'Plus Jakarta Sans', size: 11 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ctx.dataset.label + ': Rp ' + Math.round(ctx.raw).toLocaleString('id-ID')
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+                        y: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } }
+                    }
+                }
+            });
+
+            // Render Order Chart
+            const ctxOrder = document.getElementById('chartOrderComp').getContext('2d');
+            if (chartOrderInstance) chartOrderInstance.destroy();
+
+            chartOrderInstance = new Chart(ctxOrder, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Daily Order Base (30D)',
+                            data: baseDailyOrd,
+                            backgroundColor: isDark ? 'rgba(161, 161, 170, 0.5)' : 'rgba(100, 116, 139, 0.5)',
+                            borderColor: isDark ? '#a1a1aa' : '#64748b',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Daily Order Current',
+                            data: currDailyOrd,
+                            backgroundColor: isDark ? 'rgba(96, 165, 250, 0.7)' : 'rgba(37, 99, 235, 0.7)',
+                            borderColor: isDark ? '#60a5fa' : '#2563eb',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: textColor, font: { family: 'Plus Jakarta Sans', size: 11 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ctx.dataset.label + ': ' + Number(ctx.raw).toFixed(2)
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+                        y: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
