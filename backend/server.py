@@ -1536,9 +1536,12 @@ def serve_laporan_performa_ui():
         raise HTTPException(status_code=404, detail="laporan_performa.html not found.")
     return FileResponse(file_path)
 
-@app.get("/performa-comparison", response_class=FileResponse, summary="Serve Laporan Performa Web Dashboard Page (Alias)")
+@app.get("/performa-comparison", response_class=FileResponse, summary="Serve Performa Comparison Web Dashboard Page")
 def serve_performa_comparison_ui():
-    return serve_laporan_performa_ui()
+    file_path = os.path.join(STATIC_DIR, "performa_comparison.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="performa_comparison.html not found.")
+    return FileResponse(file_path)
 
 @app.get("/api/performa-comparison/filters", summary="Get Filter Options for Performa Comparison with Cascading Support")
 def get_performa_comparison_filter_options(
