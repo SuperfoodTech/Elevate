@@ -733,6 +733,136 @@ def get_laporan_ojol_monthly(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching Ojol monthly breakdown: {e}")
 
+# ── Baseline Growth Endpoints ──
+
+@app.get("/baseline-growth", response_class=FileResponse, summary="Serve Baseline Growth Web Dashboard UI")
+def serve_baseline_growth_ui():
+    html_file = os.path.join(STATIC_DIR, "baseline_growth.html")
+    if not os.path.exists(html_file):
+        raise HTTPException(status_code=404, detail="Baseline Growth UI file not found.")
+    return FileResponse(html_file)
+
+@app.get("/api/baseline-growth/outlets", summary="Get Active Outlets List for Dropdown Filter")
+def get_baseline_outlets(owner: Optional[str] = Query(None, description="Owner name filter")):
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(m.outlet_name, c.merchant_name) AS outlet_name
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(m.outlet_name, c.merchant_name) IS NOT NULL
+              AND COALESCE(m.outlet_name, c.merchant_name) <> 'UNKNOWN'
+              AND TRIM(COALESCE(m.outlet_name, c.merchant_name)) <> ''
+              AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name)) = LOWER(:p_owner))
+            ORDER BY outlet_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_owner": owner if owner else None}).fetchall()
+
+        outlets = [r[0] for r in rows]
+        return {"total": len(outlets), "outlets": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+@app.get("/api/baseline-growth", summary="Query Baseline Growth per Outlet")
+def get_baseline_growth_data(
+    owner: Optional[str] = Query(None, description="Owner name filter"),
+    outlet: Optional[str] = Query(None, description="Outlet name filter"),
+    start_date: Optional[str] = Query("2026-07-01", description="Start date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    growth_target_pct: Optional[float] = Query(0.0, description="Growth target percentage e.g. 10 for 10%")
+):
+    try:
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        sql_params = {
+            "p_owner": owner if owner else None,
+            "p_outlet": outlet if outlet else None,
+            "p_start_date": start_date,
+            "p_end_date": end_date,
+            "p_growth_target_pct": growth_target_pct if growth_target_pct is not None else 0.0
+        }
+
+        query_sql = """
+            SELECT
+                outlet_name,
+                owner_name,
+                live_date,
+                selected_days,
+                growth_target_pct,
+                days_to_eom,
+                baseline_gmv,
+                baseline_order,
+                target_gmv,
+                target_order,
+                current_gmv,
+                current_daily_gmv_growth,
+                current_order,
+                current_daily_order_growth,
+                eom_gmv,
+                eom_gmv_growth,
+                eom_order,
+                eom_order_growth,
+                remaining_gmv,
+                required_daily_gmv,
+                remaining_order,
+                required_daily_order
+            FROM layer3_dim.get_baseline_growth(
+                :p_owner,
+                :p_outlet,
+                CAST(:p_start_date AS DATE),
+                CAST(:p_end_date AS DATE),
+                :p_growth_target_pct
+            );
+        """
+
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), sql_params).mappings().all()
+
+        data_list = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, '__class__') and v.__class__.__name__ == 'Decimal':
+                    row[k] = float(v)
+            data_list.append(row)
+
+        total_baseline_gmv = sum(float(r.get('baseline_gmv') or 0) for r in data_list)
+        total_baseline_order = sum(int(r.get('baseline_order') or 0) for r in data_list)
+        total_target_gmv = sum(float(r.get('target_gmv') or 0) for r in data_list)
+        total_target_order = sum(float(r.get('target_order') or 0) for r in data_list)
+        total_current_gmv = sum(float(r.get('current_gmv') or 0) for r in data_list)
+        total_current_order = sum(int(r.get('current_order') or 0) for r in data_list)
+        total_eom_gmv = sum(float(r.get('eom_gmv') or 0) for r in data_list)
+        total_eom_order = sum(float(r.get('eom_order') or 0) for r in data_list)
+        total_remaining_gmv = sum(float(r.get('remaining_gmv') or 0) for r in data_list)
+        total_remaining_order = sum(float(r.get('remaining_order') or 0) for r in data_list)
+
+        summary = {
+            "total_baseline_gmv": total_baseline_gmv,
+            "total_baseline_order": total_baseline_order,
+            "total_target_gmv": total_target_gmv,
+            "total_target_order": total_target_order,
+            "total_current_gmv": total_current_gmv,
+            "total_current_order": total_current_order,
+            "total_eom_gmv": total_eom_gmv,
+            "total_eom_order": total_eom_order,
+            "total_remaining_gmv": total_remaining_gmv,
+            "total_remaining_order": total_remaining_order
+        }
+
+        return {
+            "owner": owner,
+            "outlet": outlet,
+            "start_date": start_date,
+            "end_date": end_date,
+            "growth_target_pct": growth_target_pct,
+            "summary": summary,
+            "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error querying baseline growth: {e}")
+
 # ── Week to Week Comparison Endpoints ──
 
 @app.get("/weektoweekcomparison", response_class=FileResponse, summary="Serve Week to Week Comparison Web Dashboard UI")
