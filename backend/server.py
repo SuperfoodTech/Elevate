@@ -1396,13 +1396,44 @@ def serve_laporan_performa_ui():
 def serve_performa_comparison_ui():
     return serve_laporan_performa_ui()
 
-@app.get("/api/performa-comparison/filters", summary="Get Filter Options for Performa Comparison")
-def get_performa_comparison_filter_options():
+@app.get("/api/performa-comparison/filters", summary="Get Filter Options for Performa Comparison with Cascading Support")
+def get_performa_comparison_filter_options(
+    owner: Optional[str] = Query(default=None),
+    outlet: Optional[str] = Query(default=None)
+):
     try:
         with db_manager.engine.connect() as conn:
-            owners = [row[0] for row in conn.execute(text("SELECT DISTINCT owner_name FROM layer3_dim.mv_performa_comparison WHERE owner_name IS NOT NULL ORDER BY owner_name;")).fetchall()]
-            outlets = [row[0] for row in conn.execute(text("SELECT DISTINCT outlet_name FROM layer3_dim.mv_performa_comparison WHERE outlet_name IS NOT NULL ORDER BY outlet_name;")).fetchall()]
-            brands = [row[0] for row in conn.execute(text("SELECT DISTINCT brand FROM layer3_dim.mv_performa_comparison WHERE brand IS NOT NULL ORDER BY brand;")).fetchall()]
+            owners_sql = "SELECT DISTINCT owner_name FROM layer3_dim.mv_performa_comparison WHERE owner_name IS NOT NULL ORDER BY owner_name;"
+            owners = [row[0] for row in conn.execute(text(owners_sql)).fetchall()]
+
+            outlets_sql = """
+                SELECT DISTINCT outlet_name 
+                FROM layer3_dim.mv_performa_comparison 
+                WHERE outlet_name IS NOT NULL
+                  AND (:owner IS NULL OR :owner = '' OR LOWER(owner_name) = LOWER(:owner))
+                ORDER BY outlet_name;
+            """
+            outlets = [row[0] for row in conn.execute(text(outlets_sql), {"owner": owner}).fetchall()]
+
+            brands_sql = """
+                SELECT DISTINCT brand 
+                FROM layer3_dim.mv_performa_comparison 
+                WHERE brand IS NOT NULL
+                  AND (:owner IS NULL OR :owner = '' OR LOWER(owner_name) = LOWER(:owner))
+                  AND (:outlet IS NULL OR :outlet = '' OR LOWER(outlet_name) = LOWER(:outlet))
+                ORDER BY brand;
+            """
+            brands = [row[0] for row in conn.execute(text(brands_sql), {"owner": owner, "outlet": outlet}).fetchall()]
+
+            mapping_sql = """
+                SELECT DISTINCT owner_name, outlet_name, brand
+                FROM layer3_dim.mv_performa_comparison
+                WHERE owner_name IS NOT NULL AND outlet_name IS NOT NULL AND brand IS NOT NULL
+                ORDER BY owner_name, outlet_name, brand;
+            """
+            mapping_rows = conn.execute(text(mapping_sql)).fetchall()
+            mapping = [{"owner": r[0], "outlet": r[1], "brand": r[2]} for r in mapping_rows]
+
             date_range = conn.execute(text("SELECT MIN(transaction_date), MAX(transaction_date) FROM layer3_dim.mv_performa_comparison;")).fetchone()
             
             return {
@@ -1410,6 +1441,7 @@ def get_performa_comparison_filter_options():
                 "owners": owners,
                 "outlets": outlets,
                 "brands": brands,
+                "mapping": mapping,
                 "min_date": str(date_range[0]) if date_range and date_range[0] else "2026-01-01",
                 "max_date": str(date_range[1]) if date_range and date_range[1] else "2026-06-30"
             }

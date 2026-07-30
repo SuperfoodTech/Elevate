@@ -484,37 +484,89 @@
             }
         }
 
-        // Initialize Filter Options
+        let filterMapping = [];
+
+        // Initialize Filter Options & Cascading Handlers
         async function initFilters() {
             try {
                 const res = await fetch(`${API_BASE}/api/performa-comparison/filters`);
                 const json = await res.json();
 
                 if (json.status === 'success') {
+                    filterMapping = json.mapping || [];
+
                     const ownerSel = document.getElementById('ownerSelect');
+                    const outletSel = document.getElementById('outletSelect');
+                    const brandSel = document.getElementById('brandSelect');
+
                     json.owners.forEach(o => {
                         const opt = document.createElement('option');
                         opt.value = o; opt.textContent = o;
                         ownerSel.appendChild(opt);
                     });
 
-                    const outletSel = document.getElementById('outletSelect');
-                    json.outlets.forEach(ot => {
-                        const opt = document.createElement('option');
-                        opt.value = ot; opt.textContent = ot;
-                        outletSel.appendChild(opt);
+                    populateOutletOptions(ownerSel.value);
+                    populateBrandOptions(ownerSel.value, outletSel.value);
+
+                    // Owner Change Handler -> Filter Outlet & Brand
+                    ownerSel.addEventListener('change', () => {
+                        populateOutletOptions(ownerSel.value);
+                        populateBrandOptions(ownerSel.value, outletSel.value);
                     });
 
-                    const brandSel = document.getElementById('brandSelect');
-                    json.brands.forEach(b => {
-                        const opt = document.createElement('option');
-                        opt.value = b; opt.textContent = b;
-                        brandSel.appendChild(opt);
+                    // Outlet Change Handler -> Filter Brand
+                    outletSel.addEventListener('change', () => {
+                        populateBrandOptions(ownerSel.value, outletSel.value);
                     });
                 }
             } catch (err) {
                 console.error('Error loading filters:', err);
             }
+        }
+
+        // Populate Outlets based on selected Owner
+        function populateOutletOptions(selectedOwner) {
+            const outletSel = document.getElementById('outletSelect');
+            const currentVal = outletSel.value;
+            outletSel.innerHTML = '<option value="">Semua Outlet</option>';
+
+            let filteredOutlets = [];
+            if (!selectedOwner) {
+                filteredOutlets = [...new Set(filterMapping.map(m => m.outlet))];
+            } else {
+                filteredOutlets = [...new Set(filterMapping.filter(m => m.owner.toLowerCase() === selectedOwner.toLowerCase()).map(m => m.outlet))];
+            }
+
+            filteredOutlets.sort().forEach(ot => {
+                const opt = document.createElement('option');
+                opt.value = ot; opt.textContent = ot;
+                if (ot === currentVal) opt.selected = true;
+                outletSel.appendChild(opt);
+            });
+        }
+
+        // Populate Brands based on selected Owner & Outlet
+        function populateBrandOptions(selectedOwner, selectedOutlet) {
+            const brandSel = document.getElementById('brandSelect');
+            const currentVal = brandSel.value;
+            brandSel.innerHTML = '<option value="">Semua Brand</option>';
+
+            let filteredBrands = filterMapping;
+            if (selectedOwner) {
+                filteredBrands = filteredBrands.filter(m => m.owner.toLowerCase() === selectedOwner.toLowerCase());
+            }
+            if (selectedOutlet) {
+                filteredBrands = filteredBrands.filter(m => m.outlet.toLowerCase() === selectedOutlet.toLowerCase());
+            }
+
+            const uniqueBrands = [...new Set(filteredBrands.map(m => m.brand))].sort();
+
+            uniqueBrands.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b; opt.textContent = b;
+                if (b === currentVal) opt.selected = true;
+                brandSel.appendChild(opt);
+            });
         }
 
         // Load & Render Data + 3 Bar Charts
