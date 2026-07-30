@@ -1381,6 +1381,150 @@ def get_order_status_summary(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching order status summary: {e}")
 
+# ── Order Ranking Endpoints ──
+
+@app.get("/order-ranking", response_class=FileResponse, summary="Serve Order Ranking Web Dashboard Page")
+def serve_order_ranking_ui():
+    file_path = os.path.join(STATIC_DIR, "order_ranking.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="order_ranking.html not found.")
+    return FileResponse(file_path)
+
+@app.get("/api/order-ranking/pics", summary="Get Active PICs List for Order Ranking Dropdown")
+def get_order_ranking_pics():
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) AS pic_name 
+            FROM layer3_dim.dim_merchant_mapping 
+            WHERE COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) IS NOT NULL 
+              AND COALESCE(NULLIF(TRIM(pic), ''), NULLIF(TRIM(bd_pic), '')) <> 'UNKNOWN'
+            ORDER BY pic_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql)).fetchall()
+
+        pics = [r[0] for r in rows if r[0]]
+        return {"pics": pics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching PICs: {e}")
+
+@app.get("/api/order-ranking/owners", summary="Get Active Owners List for Order Ranking Dropdown")
+def get_order_ranking_owners(pic: Optional[str] = Query(None)):
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(c.owner_name, m.owner_name) AS owner_name 
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(c.owner_name, m.owner_name) IS NOT NULL 
+              AND COALESCE(c.owner_name, m.owner_name) <> 'UNKNOWN'
+              AND TRIM(COALESCE(c.owner_name, m.owner_name)) <> ''
+              AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+            ORDER BY owner_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_pic": pic or None}).fetchall()
+
+        owners = [r[0] for r in rows]
+        return {"owners": owners}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching owners: {e}")
+
+@app.get("/api/order-ranking/outlets", summary="Get Active Outlets List for Order Ranking Dropdown")
+def get_order_ranking_outlets(pic: Optional[str] = Query(None), owner: Optional[str] = Query(None)):
+    try:
+        query_sql = """
+            SELECT DISTINCT COALESCE(m.outlet_name, c.merchant_name) AS outlet_name 
+            FROM layer3_dim.dim_merchant_mapping m
+            LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+            WHERE COALESCE(m.outlet_name, c.merchant_name) IS NOT NULL
+              AND COALESCE(m.outlet_name, c.merchant_name) <> 'UNKNOWN'
+              AND TRIM(COALESCE(m.outlet_name, c.merchant_name)) <> ''
+              AND (:p_pic IS NULL OR :p_pic = '' OR LOWER(COALESCE(m.pic, m.bd_pic, '')) = LOWER(:p_pic))
+              AND (:p_owner IS NULL OR :p_owner = '' OR LOWER(COALESCE(c.owner_name, m.owner_name)) = LOWER(:p_owner))
+            ORDER BY outlet_name ASC;
+        """
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), {"p_pic": pic or None, "p_owner": owner or None}).fetchall()
+
+        outlets = [r[0] for r in rows]
+        return {"outlets": outlets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching outlets: {e}")
+
+@app.get("/api/order-ranking", summary="Query Order Ranking Data")
+def get_order_ranking_data(
+    pic: Optional[str] = Query(None),
+    owner: Optional[str] = Query(None),
+    outlet: Optional[str] = Query(None),
+    start_date: str = Query("2026-07-20"),
+    end_date: str = Query("2026-07-26")
+):
+    try:
+        query_sql = """
+            SELECT pic, owner_name, outlet_name, live_date, order_sukses, total_gmv
+            FROM layer3_dim.get_order_ranking(
+                :p_pic, :p_owner, :p_outlet,
+                CAST(:p_start_date AS DATE), CAST(:p_end_date AS DATE)
+            );
+        """
+        params = {
+            "p_pic": pic or None,
+            "p_owner": owner or None,
+            "p_outlet": outlet or None,
+            "p_start_date": start_date,
+            "p_end_date": end_date
+        }
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(text(query_sql), params).mappings().all()
+
+        data_list = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, '__class__') and v.__class__.__name__ == 'Decimal':
+                    row[k] = float(v)
+            data_list.append(row)
+
+        # Date diff / selected days calculation
+        try:
+            d_start = datetime.strptime(start_date, "%Y-%m-%d")
+            d_end = datetime.strptime(end_date, "%Y-%m-%d")
+            selected_days = (d_end - d_start).days + 1
+        except Exception:
+            selected_days = 7
+
+        total_outlet = len(data_list)
+        total_order = sum(int(r.get('order_sukses') or 0) for r in data_list)
+
+        avg_daily_order = round(total_order / selected_days / total_outlet, 2) if total_outlet > 0 and selected_days > 0 else 0.0
+        avg_monthly_order = round((total_order / total_outlet) * (30.0 / selected_days), 2) if total_outlet > 0 and selected_days > 0 else 0.0
+
+        # Productivity Distribution (Histogram Bins)
+        productivity_bins = {
+            "0 - 50 Order": sum(1 for r in data_list if (r.get('order_sukses') or 0) <= 50),
+            "51 - 100 Order": sum(1 for r in data_list if 50 < (r.get('order_sukses') or 0) <= 100),
+            "101 - 200 Order": sum(1 for r in data_list if 100 < (r.get('order_sukses') or 0) <= 200),
+            "201 - 500 Order": sum(1 for r in data_list if 200 < (r.get('order_sukses') or 0) <= 500),
+            "> 500 Order": sum(1 for r in data_list if (r.get('order_sukses') or 0) > 500)
+        }
+
+        summary = {
+            "selected_days": selected_days,
+            "total_order": total_order,
+            "total_outlet": total_outlet,
+            "avg_daily_order_per_outlet": avg_daily_order,
+            "avg_monthly_order_per_outlet": avg_monthly_order,
+            "productivity_bins": productivity_bins
+        }
+
+        return {
+            "pic": pic, "owner": owner, "outlet": outlet,
+            "start_date": start_date, "end_date": end_date,
+            "summary": summary, "data": data_list
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error querying order ranking: {e}")
+
 # ============================================================================
 # LAPORAN PERFORMA ROUTES
 # ============================================================================
@@ -1531,4 +1675,5 @@ def get_performa_comparison_charts_data(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+
 

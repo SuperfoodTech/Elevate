@@ -1284,6 +1284,67 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Order Ranking Function
+-- Objective: Rank active outlets by total success order & GMV for selected date range
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION layer3_dim.get_order_ranking(
+    p_pic          TEXT    DEFAULT NULL,
+    p_owner        TEXT    DEFAULT NULL,
+    p_outlet       TEXT    DEFAULT NULL,
+    p_start_date   DATE    DEFAULT CURRENT_DATE - INTERVAL '6 days',
+    p_end_date     DATE    DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+    pic          TEXT,
+    owner_name   TEXT,
+    outlet_name  TEXT,
+    live_date    TEXT,
+    order_sukses BIGINT,
+    total_gmv    NUMERIC(15,2)
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH target_outlets AS (
+        SELECT DISTINCT
+            COALESCE(NULLIF(TRIM(m.pic), ''), NULLIF(TRIM(m.bd_pic), ''), 'UNKNOWN') AS pic_val,
+            COALESCE(c.owner_name, m.owner_name, 'UNKNOWN')                          AS owner_val,
+            COALESCE(m.outlet_name, c.merchant_name, 'UNKNOWN')                     AS outlet_val,
+            m.store_id,
+            m.live_date AS live_dt
+        FROM layer3_dim.dim_merchant_mapping m
+        LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
+        WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+          AND (p_pic    IS NULL OR p_pic    = '' OR LOWER(COALESCE(m.pic, m.bd_pic, ''))        = LOWER(p_pic))
+          AND (p_owner  IS NULL OR p_owner  = '' OR LOWER(COALESCE(c.owner_name, m.owner_name, '')) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(COALESCE(m.outlet_name, c.merchant_name, '')) = LOWER(p_outlet))
+    ),
+    perf AS (
+        SELECT
+            t.pic_val,
+            t.owner_val,
+            t.outlet_val,
+            t.live_dt,
+            COALESCE(SUM(p.total_orders), 0)::BIGINT AS tot_ord,
+            COALESCE(SUM(p.gmv), 0.00)::NUMERIC(15,2) AS tot_gmv
+        FROM target_outlets t
+        LEFT JOIN layer3_dim.mv_outlet_daily_performance p 
+               ON p.store_id = t.store_id
+              AND p.transaction_date BETWEEN p_start_date AND p_end_date
+        GROUP BY t.pic_val, t.owner_val, t.outlet_val, t.live_dt
+    )
+    SELECT
+        p.pic_val::TEXT,
+        p.owner_val::TEXT,
+        p.outlet_val::TEXT,
+        COALESCE(p.live_dt, '-')::TEXT AS live_date,
+        p.tot_ord::BIGINT              AS order_sukses,
+        p.tot_gmv::NUMERIC(15,2)       AS total_gmv
+    FROM perf p
+    ORDER BY p.tot_ord DESC, p.tot_gmv DESC, p.outlet_val ASC;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ============================================================================
 -- 13. MATERIALIZED VIEW PERFORMA COMPARISON
 -- ============================================================================
