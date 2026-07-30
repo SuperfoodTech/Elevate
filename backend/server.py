@@ -1525,6 +1525,114 @@ def get_order_ranking_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error querying order ranking: {e}")
 
+# ============================================================================
+# LAPORAN PERFORMA ROUTES
+# ============================================================================
+
+@app.get("/laporan-performa", response_class=FileResponse, summary="Serve Laporan Performa Web Dashboard Page")
+def serve_laporan_performa_ui():
+    file_path = os.path.join(STATIC_DIR, "laporan_performa.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="laporan_performa.html not found.")
+    return FileResponse(file_path)
+
+@app.get("/performa-comparison", response_class=FileResponse, summary="Serve Laporan Performa Web Dashboard Page (Alias)")
+def serve_performa_comparison_ui():
+    return serve_laporan_performa_ui()
+
+@app.get("/api/performa-comparison/filters", summary="Get Filter Options for Performa Comparison with Cascading Support")
+def get_performa_comparison_filter_options(
+    owner: Optional[str] = Query(default=None),
+    outlet: Optional[str] = Query(default=None)
+):
+    try:
+        with db_manager.engine.connect() as conn:
+            owners_sql = "SELECT DISTINCT owner_name FROM layer3_dim.mv_performa_comparison WHERE owner_name IS NOT NULL ORDER BY owner_name;"
+            owners = [row[0] for row in conn.execute(text(owners_sql)).fetchall()]
+
+            outlets_sql = """
+                SELECT DISTINCT outlet_name 
+                FROM layer3_dim.mv_performa_comparison 
+                WHERE outlet_name IS NOT NULL
+                  AND (:owner IS NULL OR :owner = '' OR LOWER(owner_name) = LOWER(:owner))
+                ORDER BY outlet_name;
+            """
+            outlets = [row[0] for row in conn.execute(text(outlets_sql), {"owner": owner}).fetchall()]
+
+            brands_sql = """
+                SELECT DISTINCT brand 
+                FROM layer3_dim.mv_performa_comparison 
+                WHERE brand IS NOT NULL
+                  AND (:owner IS NULL OR :owner = '' OR LOWER(owner_name) = LOWER(:owner))
+                  AND (:outlet IS NULL OR :outlet = '' OR LOWER(outlet_name) = LOWER(:outlet))
+                ORDER BY brand;
+            """
+            brands = [row[0] for row in conn.execute(text(brands_sql), {"owner": owner, "outlet": outlet}).fetchall()]
+
+            mapping_sql = """
+                SELECT DISTINCT owner_name, outlet_name, brand
+                FROM layer3_dim.mv_performa_comparison
+                WHERE owner_name IS NOT NULL AND outlet_name IS NOT NULL AND brand IS NOT NULL
+                ORDER BY owner_name, outlet_name, brand;
+            """
+            mapping_rows = conn.execute(text(mapping_sql)).fetchall()
+            mapping = [{"owner": r[0], "outlet": r[1], "brand": r[2]} for r in mapping_rows]
+
+            date_range = conn.execute(text("SELECT MIN(transaction_date), MAX(transaction_date) FROM layer3_dim.mv_performa_comparison;")).fetchone()
+            
+            return {
+                "status": "success",
+                "owners": owners,
+                "outlets": outlets,
+                "brands": brands,
+                "mapping": mapping,
+                "min_date": str(date_range[0]) if date_range and date_range[0] else "2026-01-01",
+                "max_date": str(date_range[1]) if date_range and date_range[1] else "2026-06-30"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching filters: {e}")
+
+@app.get("/api/performa-comparison/data", summary="Get Performa Comparison Breakdown Data")
+def get_performa_comparison_data(
+    tipe_laporan: Optional[str] = Query(default="Bulanan"),
+    owner: Optional[str] = Query(default=None),
+    outlet: Optional[str] = Query(default=None),
+    brand: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default="2026-04-01"),
+    end_date: Optional[str] = Query(default="2026-06-30")
+):
+    try:
+        sql = text("""
+            SELECT periode_label, pendapatan_kotor, potongan_ojol, pendapatan_bersih,
+                   rata_rata_order_per_customer, total_order, order_sukses, order_batal
+            FROM layer3_dim.get_laporan_performa_comparison(
+                :tipe_laporan, :owner, :outlet, :brand, CAST(:start_date AS DATE), CAST(:end_date AS DATE)
+            );
+        """)
+        params = {
+            "tipe_laporan": tipe_laporan or "Bulanan",
+            "owner": owner,
+            "outlet": outlet,
+            "brand": brand,
+            "start_date": start_date or "2026-01-01",
+            "end_date": end_date or "2026-12-31"
+        }
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(sql, params).mappings().fetchall()
+            clean_data = []
+            for r in rows:
+                row_dict = dict(r)
+                for k, v in row_dict.items():
+                    if isinstance(v, Decimal):
+                        row_dict[k] = float(v)
+                clean_data.append(row_dict)
+            return {
+                "status": "success",
+                "data": clean_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching performa comparison data: {e}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rangkuman - SuperFood Elevate</title>
+    <title>Laporan Performa - SuperFood Elevate</title>
     <!-- Google Fonts: Outfit & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,6 +22,7 @@
             --accent-green: #34d399;
             --accent-amber: #fbbf24;
             --accent-purple: #c084fc;
+            --accent-rose: #fb7185;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
             --border-color: #334155;
@@ -82,6 +83,7 @@
         .header-nav-links {
             display: flex;
             gap: 0.75rem;
+            flex-wrap: wrap;
         }
 
         .nav-link-btn {
@@ -102,7 +104,7 @@
             border-color: var(--primary);
         }
 
-        /* Filter Controls Card */
+        /* Filter Controls */
         .filter-card {
             background: var(--bg-card);
             backdrop-filter: blur(12px);
@@ -114,7 +116,7 @@
 
         .filter-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 1.25rem;
             align-items: end;
         }
@@ -173,10 +175,10 @@
             box-shadow: 0 6px 16px rgba(56, 189, 248, 0.4);
         }
 
-        /* Charts Grid */
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(550px, 1fr));
+        /* 3 Bar Charts Section */
+        .charts-container-stack {
+            display: flex;
+            flex-direction: column;
             gap: 1.5rem;
         }
 
@@ -196,15 +198,15 @@
             font-family: 'Outfit', sans-serif;
             font-size: 1.15rem;
             font-weight: 700;
-            color: var(--accent-amber);
+            color: #ffffff;
             border-bottom: 1px solid var(--border-color);
             padding-bottom: 0.75rem;
         }
 
-        .chart-container {
+        .chart-canvas-box {
             position: relative;
             width: 100%;
-            height: 350px;
+            height: 320px;
         }
 
         /* Table Card */
@@ -272,13 +274,6 @@
             background-color: rgba(255, 255, 255, 0.03);
         }
 
-        tr.row-subtotal {
-            background-color: rgba(56, 189, 248, 0.08) !important;
-            font-weight: 700;
-            border-top: 1px solid rgba(56, 189, 248, 0.3);
-            border-bottom: 1px solid rgba(56, 189, 248, 0.3);
-        }
-
         tr.row-grand-total {
             background-color: rgba(192, 132, 252, 0.15) !important;
             font-weight: 800;
@@ -290,15 +285,6 @@
         tr.row-grand-total td {
             color: #ffffff;
         }
-
-        /* Channel text labels without background */
-        .channel-text {
-            font-weight: 600;
-        }
-
-        .channel-gofood { color: #34d399; }
-        .channel-grabfood { color: #10b981; }
-        .channel-shopeefood { color: #fb923c; }
 
         /* Loading Spinner */
         .loading-state {
@@ -329,13 +315,15 @@
         <!-- Header Navigation -->
         <header class="dashboard-header">
             <div class="brand-section">
-                <h1>Rangkuman</h1>
+                <h1>Laporan Performa</h1>
             </div>
 
             <div class="header-nav-links">
                 <a href="/rekap-tagihan-billing" class="nav-link-btn">Rekap Tagihan Billing</a>
-                <a href="/rangkuman" class="nav-link-btn active">Rangkuman</a>
+                <a href="/rangkuman" class="nav-link-btn">Rangkuman</a>
                 <a href="/laporan-jam-ramai" class="nav-link-btn">Laporan Jam Ramai</a>
+                <a href="/order-sukses-vs-batal" class="nav-link-btn">Order Sukses vs Batal</a>
+                <a href="/laporan-performa" class="nav-link-btn active">Laporan Performa</a>
             </div>
         </header>
 
@@ -343,6 +331,24 @@
         <div class="filter-card">
             <form id="filterForm" onsubmit="handleFilterSubmit(event)">
                 <div class="filter-grid">
+                    <!-- Tipe Laporan -->
+                    <div class="form-group">
+                        <label for="tipeLaporanSelect" class="form-label">Tipe Laporan</label>
+                        <select id="tipeLaporanSelect" class="form-control" onchange="handleTipeLaporanChange(this.value)">
+                            <option value="Bulanan" selected>Bulanan</option>
+                            <option value="Mingguan">Mingguan</option>
+                            <option value="Harian">Harian</option>
+                        </select>
+                    </div>
+
+                    <!-- Filter Owner -->
+                    <div class="form-group">
+                        <label for="ownerSelect" class="form-label">Filter Owner</label>
+                        <select id="ownerSelect" class="form-control">
+                            <option value="">Semua Owner</option>
+                        </select>
+                    </div>
+
                     <!-- Filter Outlet -->
                     <div class="form-group">
                         <label for="outletSelect" class="form-label">Filter Outlet</label>
@@ -359,68 +365,64 @@
                         </select>
                     </div>
 
-                    <!-- Filter Channel -->
-                    <div class="form-group">
-                        <label for="channelSelect" class="form-label">Filter Channel</label>
-                        <select id="channelSelect" class="form-control">
-                            <option value="">Semua Channel</option>
-                            <option value="GoFood">GoFood</option>
-                            <option value="GrabFood">GrabFood</option>
-                            <option value="ShopeeFood">ShopeeFood</option>
-                        </select>
-                    </div>
-
                     <!-- Filter Date Range: Dari -->
                     <div class="form-group">
-                        <label for="startDateInput" class="form-label">Dari</label>
+                        <label for="startDateInput" class="form-label" id="labelStartDate">Dari Bulan</label>
                         <input type="date" id="startDateInput" class="form-control" value="2026-04-01">
                     </div>
 
                     <!-- Filter Date Range: Hingga -->
                     <div class="form-group">
-                        <label for="endDateInput" class="form-label">Hingga</label>
+                        <label for="endDateInput" class="form-label" id="labelEndDate">Hingga Bulan</label>
                         <input type="date" id="endDateInput" class="form-control" value="2026-06-30">
                     </div>
 
                     <!-- Submit Button -->
                     <div class="form-group">
-                        <button type="submit" class="btn-submit">Tampilkan Rangkuman</button>
+                        <button type="submit" class="btn-submit">Tampilkan Laporan</button>
                     </div>
                 </div>
             </form>
         </div>
 
-        <!-- Charts Grid -->
-        <div class="charts-grid">
-            <!-- Bar Chart: Pendapatan Kotor -->
+        <!-- 3 Bar Charts Section -->
+        <div class="charts-container-stack">
+            <!-- Bar Chart 1: Pendapatan Kotor -->
             <div class="chart-card">
                 <h2 class="chart-title">Bar Chart: Pendapatan Kotor</h2>
-                <div class="chart-container">
-                    <canvas id="pendapatanKotorChart"></canvas>
+                <div class="chart-canvas-box">
+                    <canvas id="chartPendapatanKotor"></canvas>
                 </div>
             </div>
 
-            <!-- Bar Chart: Order Sukses -->
+            <!-- Bar Chart 2: Pendapatan Bersih -->
+            <div class="chart-card">
+                <h2 class="chart-title">Bar Chart: Pendapatan Bersih</h2>
+                <div class="chart-canvas-box">
+                    <canvas id="chartPendapatanBersih"></canvas>
+                </div>
+            </div>
+
+            <!-- Bar Chart 3: Order Sukses -->
             <div class="chart-card">
                 <h2 class="chart-title">Bar Chart: Order Sukses</h2>
-                <div class="chart-container">
-                    <canvas id="orderSuksesChart"></canvas>
+                <div class="chart-canvas-box">
+                    <canvas id="chartOrderSukses"></canvas>
                 </div>
             </div>
         </div>
 
-        <!-- Rangkuman Data Table Card -->
+        <!-- Rincian Metrics Data Table Card -->
         <div class="table-card">
             <div class="table-header-bar">
-                <h2 class="table-title">Rangkuman Performa</h2>
+                <h2 class="table-title" id="tableTitleText">Laporan Performa (Bulanan)</h2>
             </div>
             
             <div class="table-responsive">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Bulan</th>
-                            <th>Channel</th>
+                            <th id="thPeriodeLabel">Bulan</th>
                             <th class="num-col">Pendapatan Kotor</th>
                             <th class="num-col">Potongan Ojol</th>
                             <th class="num-col">Pendapatan Bersih</th>
@@ -430,11 +432,11 @@
                             <th class="num-col">Order Batal</th>
                         </tr>
                     </thead>
-                    <tbody id="rangkumanTableBody">
+                    <tbody id="performaTableBody">
                         <tr>
-                            <td colspan="9" class="loading-state">
+                            <td colspan="8" class="loading-state">
                                 <div class="spinner"></div>
-                                Memuat data rangkuman...
+                                Memuat data laporan performa...
                             </td>
                         </tr>
                     </tbody>
@@ -446,6 +448,7 @@
     <script>
         const API_BASE = window.location.origin;
         let chartKotorInstance = null;
+        let chartBersihInstance = null;
         let chartSuksesInstance = null;
 
         // Format Y-Axis Currency Ticks (Rp X Jt / Rp X M)
@@ -471,14 +474,29 @@
             return num < 0 ? `-Rp ${formatted}` : `Rp ${formatted}`;
         }
 
-        // Format Channel Text
-        function getChannelTextHtml(channel) {
-            if (!channel) return '-';
-            const chUpper = channel.trim().toUpperCase();
-            if (chUpper.includes('GOFOOD')) return `<span class="channel-text channel-gofood">GoFood</span>`;
-            if (chUpper.includes('GRABFOOD')) return `<span class="channel-text channel-grabfood">GrabFood</span>`;
-            if (chUpper.includes('SHOPEEFOOD')) return `<span class="channel-text channel-shopeefood">ShopeeFood</span>`;
-            return `<span>${channel}</span>`;
+        // Adjust date labels on Tipe Laporan Change
+        function handleTipeLaporanChange(val) {
+            const lblStart = document.getElementById('labelStartDate');
+            const lblEnd = document.getElementById('labelEndDate');
+            const thPeriode = document.getElementById('thPeriodeLabel');
+            const tblTitle = document.getElementById('tableTitleText');
+
+            if (val === 'Harian') {
+                lblStart.textContent = 'Dari Tanggal';
+                lblEnd.textContent = 'Hingga Tanggal';
+                thPeriode.textContent = 'Tanggal';
+                tblTitle.textContent = 'Laporan Performa (Harian)';
+            } else if (val === 'Mingguan') {
+                lblStart.textContent = 'Dari Minggu';
+                lblEnd.textContent = 'Hingga Minggu';
+                thPeriode.textContent = 'Minggu';
+                tblTitle.textContent = 'Laporan Performa (Mingguan)';
+            } else {
+                lblStart.textContent = 'Dari Bulan';
+                lblEnd.textContent = 'Hingga Bulan';
+                thPeriode.textContent = 'Bulan';
+                tblTitle.textContent = 'Laporan Performa (Bulanan)';
+            }
         }
 
         let filterMapping = [];
@@ -492,20 +510,28 @@
                 if (json.status === 'success') {
                     filterMapping = json.mapping || [];
 
+                    const ownerSel = document.getElementById('ownerSelect');
                     const outletSel = document.getElementById('outletSelect');
                     const brandSel = document.getElementById('brandSelect');
 
-                    json.outlets.forEach(ot => {
+                    json.owners.forEach(o => {
                         const opt = document.createElement('option');
-                        opt.value = ot; opt.textContent = ot;
-                        outletSel.appendChild(opt);
+                        opt.value = o; opt.textContent = o;
+                        ownerSel.appendChild(opt);
                     });
 
-                    populateBrandOptions(outletSel.value);
+                    populateOutletOptions(ownerSel.value);
+                    populateBrandOptions(ownerSel.value, outletSel.value);
+
+                    // Owner Change Handler -> Filter Outlet & Brand
+                    ownerSel.addEventListener('change', () => {
+                        populateOutletOptions(ownerSel.value);
+                        populateBrandOptions(ownerSel.value, outletSel.value);
+                    });
 
                     // Outlet Change Handler -> Filter Brand
                     outletSel.addEventListener('change', () => {
-                        populateBrandOptions(outletSel.value);
+                        populateBrandOptions(ownerSel.value, outletSel.value);
                     });
                 }
             } catch (err) {
@@ -513,13 +539,37 @@
             }
         }
 
-        // Populate Brands based on selected Outlet
-        function populateBrandOptions(selectedOutlet) {
+        // Populate Outlets based on selected Owner
+        function populateOutletOptions(selectedOwner) {
+            const outletSel = document.getElementById('outletSelect');
+            const currentVal = outletSel.value;
+            outletSel.innerHTML = '<option value="">Semua Outlet</option>';
+
+            let filteredOutlets = [];
+            if (!selectedOwner) {
+                filteredOutlets = [...new Set(filterMapping.map(m => m.outlet))];
+            } else {
+                filteredOutlets = [...new Set(filterMapping.filter(m => m.owner.toLowerCase() === selectedOwner.toLowerCase()).map(m => m.outlet))];
+            }
+
+            filteredOutlets.sort().forEach(ot => {
+                const opt = document.createElement('option');
+                opt.value = ot; opt.textContent = ot;
+                if (ot === currentVal) opt.selected = true;
+                outletSel.appendChild(opt);
+            });
+        }
+
+        // Populate Brands based on selected Owner & Outlet
+        function populateBrandOptions(selectedOwner, selectedOutlet) {
             const brandSel = document.getElementById('brandSelect');
             const currentVal = brandSel.value;
             brandSel.innerHTML = '<option value="">Semua Brand</option>';
 
             let filteredBrands = filterMapping;
+            if (selectedOwner) {
+                filteredBrands = filteredBrands.filter(m => m.owner.toLowerCase() === selectedOwner.toLowerCase());
+            }
             if (selectedOutlet) {
                 filteredBrands = filteredBrands.filter(m => m.outlet.toLowerCase() === selectedOutlet.toLowerCase());
             }
@@ -534,51 +584,31 @@
             });
         }
 
-        // Render Bar Charts & Table Data
-        async function loadRangkumanData(params) {
-            const tbody = document.getElementById('rangkumanTableBody');
-            tbody.innerHTML = `<tr><td colspan="9" class="loading-state"><div class="spinner"></div>Memuat data rangkuman...</td></tr>`;
+        // Load & Render Data + 3 Bar Charts
+        async function loadPerformaData(params) {
+            const tbody = document.getElementById('performaTableBody');
+            tbody.innerHTML = `<tr><td colspan="8" class="loading-state"><div class="spinner"></div>Memuat data laporan performa...</td></tr>`;
 
             try {
-                const url = new URL(`${API_BASE}/api/laporan-aplikasi-ojol/monthly`);
-                if (params.outlet) url.searchParams.append('outlet', params.outlet);
-                if (params.brand) url.searchParams.append('brand', params.brand);
-                if (params.start_date) url.searchParams.append('start_date', params.start_date);
-                if (params.end_date) url.searchParams.append('end_date', params.end_date);
+                const url = new URL(`${API_BASE}/api/performa-comparison/data`);
+                Object.keys(params).forEach(k => { if (params[k]) url.searchParams.append(k, params[k]); });
 
                 const res = await fetch(url);
                 const json = await res.json();
 
                 if (json.status !== 'success' || !json.data || json.data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="9" class="loading-state">Tidak ada data transaksi.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="8" class="loading-state">Tidak ada data transaksi untuk filter ini.</td></tr>`;
                     return;
                 }
 
-                let filteredRows = json.data;
-                const selChannel = params.channel ? params.channel.trim() : '';
-
-                if (selChannel) {
-                    // Filter specifically for selected channel
-                    filteredRows = json.data.filter(r => r.channel && r.channel.toLowerCase() === selChannel.toLowerCase());
-                }
-
-                // Render Table Rows
                 let html = '';
-                filteredRows.forEach(row => {
-                    const isGrandTotal = row.bulan === 'Grand Total';
-                    const isSubtotal = row.channel === 'Total';
-                    
-                    let rowClass = '';
-                    if (isGrandTotal) rowClass = 'row-grand-total';
-                    else if (isSubtotal) rowClass = 'row-subtotal';
-
-                    const bulanContent = isGrandTotal ? 'Grand Total' : (isSubtotal ? `${row.bulan} Total` : row.bulan);
-                    const channelContent = isGrandTotal ? '' : (isSubtotal ? 'Total' : getChannelTextHtml(row.channel));
+                json.data.forEach(row => {
+                    const isGrandTotal = row.periode_label === 'Grand Total';
+                    const rowClass = isGrandTotal ? 'row-grand-total' : '';
 
                     html += `
                         <tr class="${rowClass}">
-                            <td>${bulanContent}</td>
-                            <td>${channelContent}</td>
+                            <td><strong>${row.periode_label}</strong></td>
                             <td class="num-col">${formatIDR(row.pendapatan_kotor)}</td>
                             <td class="num-col">${formatIDR(row.potongan_ojol)}</td>
                             <td class="num-col">${formatIDR(row.pendapatan_bersih)}</td>
@@ -592,60 +622,36 @@
 
                 tbody.innerHTML = html;
 
-                // Prepare Chart Datasets
-                const channelRows = json.data.filter(r => r.bulan !== 'Grand Total' && r.channel !== 'Total');
-                const bulanList = [...new Set(channelRows.map(r => r.bulan))];
+                // Prepare Chart Data (exclude Grand Total)
+                const chartRows = json.data.filter(r => r.periode_label !== 'Grand Total');
+                const labels = chartRows.map(r => r.periode_label);
+                const kotorData = chartRows.map(r => r.pendapatan_kotor);
+                const bersihData = chartRows.map(r => r.pendapatan_bersih);
+                const suksesData = chartRows.map(r => r.order_sukses);
 
-                let datasetsKotor = [];
-                let datasetsSukses = [];
-
-                const colors = {
-                    'GoFood': { bg: 'rgba(52, 211, 153, 0.8)', border: '#34d399' },
-                    'GrabFood': { bg: 'rgba(16, 185, 129, 0.8)', border: '#10b981' },
-                    'ShopeeFood': { bg: 'rgba(251, 146, 60, 0.8)', border: '#fb923c' }
-                };
-
-                const channelsToRender = selChannel ? [selChannel] : ['GoFood', 'GrabFood', 'ShopeeFood'];
-
-                channelsToRender.forEach(ch => {
-                    const dataKotor = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel.toLowerCase() === ch.toLowerCase()) || {}).pendapatan_kotor || 0);
-                    const dataSukses = bulanList.map(b => (channelRows.find(r => r.bulan === b && r.channel.toLowerCase() === ch.toLowerCase()) || {}).order_sukses || 0);
-                    
-                    const col = colors[ch] || { bg: 'rgba(56, 189, 248, 0.8)', border: '#38bdf8' };
-
-                    datasetsKotor.push({
-                        label: ch,
-                        data: dataKotor,
-                        backgroundColor: col.bg,
-                        borderColor: col.border,
-                        borderRadius: 4
-                    });
-
-                    datasetsSukses.push({
-                        label: ch,
-                        data: dataSukses,
-                        backgroundColor: col.bg,
-                        borderColor: col.border,
-                        borderRadius: 4
-                    });
-                });
-
-                // Render Bar Chart 1: Pendapatan Kotor
-                const ctxKotor = document.getElementById('pendapatanKotorChart').getContext('2d');
+                // Bar Chart 1: Pendapatan Kotor
+                const ctxKotor = document.getElementById('chartPendapatanKotor').getContext('2d');
                 if (chartKotorInstance) chartKotorInstance.destroy();
                 chartKotorInstance = new Chart(ctxKotor, {
                     type: 'bar',
-                    data: { labels: bulanList, datasets: datasetsKotor },
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Pendapatan Kotor',
+                            data: kotorData,
+                            backgroundColor: 'rgba(56, 189, 248, 0.8)',
+                            borderColor: '#38bdf8',
+                            borderWidth: 1.5,
+                            borderRadius: 6
+                        }]
+                    },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
                             legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11, weight: 600 } } },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) { return ` ${ctx.dataset.label}: ${formatIDR(ctx.raw)}`; }
-                                }
-                            }
+                            tooltip: { callbacks: { label: ctx => ` Pendapatan Kotor: ${formatIDR(ctx.raw)}` } }
+                        },
                         scales: {
                             x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
                             y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', callback: val => formatYAxisCurrency(val) } }
@@ -653,22 +659,58 @@
                     }
                 });
 
-                // Render Bar Chart 2: Order Sukses
-                const ctxSukses = document.getElementById('orderSuksesChart').getContext('2d');
-                if (chartSuksesInstance) chartSuksesInstance.destroy();
-                chartSuksesInstance = new Chart(ctxSukses, {
+                // Bar Chart 2: Pendapatan Bersih
+                const ctxBersih = document.getElementById('chartPendapatanBersih').getContext('2d');
+                if (chartBersihInstance) chartBersihInstance.destroy();
+                chartBersihInstance = new Chart(ctxBersih, {
                     type: 'bar',
-                    data: { labels: bulanList, datasets: datasetsSukses },
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Pendapatan Bersih',
+                            data: bersihData,
+                            backgroundColor: 'rgba(52, 211, 153, 0.8)',
+                            borderColor: '#34d399',
+                            borderWidth: 1.5,
+                            borderRadius: 6
+                        }]
+                    },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
                             legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11, weight: 600 } } },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) { return ` ${ctx.dataset.label}: ${Number(ctx.raw).toLocaleString('id-ID')} Order`; }
-                                }
-                            }
+                            tooltip: { callbacks: { label: ctx => ` Pendapatan Bersih: ${formatIDR(ctx.raw)}` } }
+                        },
+                        scales: {
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', callback: val => formatYAxisCurrency(val) } }
+                        }
+                    }
+                });
+
+                // Bar Chart 3: Order Sukses
+                const ctxSukses = document.getElementById('chartOrderSukses').getContext('2d');
+                if (chartSuksesInstance) chartSuksesInstance.destroy();
+                chartSuksesInstance = new Chart(ctxSukses, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Total Order Sukses',
+                            data: suksesData,
+                            backgroundColor: 'rgba(251, 191, 36, 0.8)',
+                            borderColor: '#fbbf24',
+                            borderWidth: 1.5,
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11, weight: 600 } } },
+                            tooltip: { callbacks: { label: ctx => ` Total Order Sukses: ${Number(ctx.raw).toLocaleString('id-ID')} Order` } }
                         },
                         scales: {
                             x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
@@ -678,23 +720,24 @@
                 });
 
             } catch (err) {
-                console.error('Error loading rangkuman data:', err);
-                tbody.innerHTML = `<tr><td colspan="9" class="loading-state" style="color: #f87171;">Gagal memuat data rangkuman.</td></tr>`;
+                console.error('Error loading performa data:', err);
+                tbody.innerHTML = `<tr><td colspan="8" class="loading-state" style="color: #f87171;">Gagal memuat data laporan performa.</td></tr>`;
             }
         }
 
-        // Handle Filter Form Submit
+        // Handle Filter Submit
         function handleFilterSubmit(e) {
             e.preventDefault();
             const params = {
+                tipe_laporan: document.getElementById('tipeLaporanSelect').value,
+                owner: document.getElementById('ownerSelect').value,
                 outlet: document.getElementById('outletSelect').value,
                 brand: document.getElementById('brandSelect').value,
-                channel: document.getElementById('channelSelect').value,
                 start_date: document.getElementById('startDateInput').value,
                 end_date: document.getElementById('endDateInput').value
             };
 
-            loadRangkumanData(params);
+            loadPerformaData(params);
         }
 
         // Initial Load
@@ -702,14 +745,15 @@
             await initFilters();
             
             const initialParams = {
+                tipe_laporan: 'Bulanan',
+                owner: '',
                 outlet: '',
                 brand: '',
-                channel: '',
                 start_date: '2026-04-01',
                 end_date: '2026-06-30'
             };
 
-            loadRangkumanData(initialParams);
+            loadPerformaData(initialParams);
         });
     </script>
 </body>
