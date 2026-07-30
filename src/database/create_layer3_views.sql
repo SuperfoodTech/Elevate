@@ -1283,3 +1283,148 @@ BEGIN
     ORDER BY a.s_grp ASC, a.ch ASC;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 13. MATERIALIZED VIEW PERFORMA COMPARISON
+-- ============================================================================
+DROP MATERIALIZED VIEW IF EXISTS layer3_dim.mv_performa_comparison CASCADE;
+
+CREATE MATERIALIZED VIEW layer3_dim.mv_performa_comparison AS
+SELECT 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN') AS owner_name,
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN') AS outlet_name,
+    COALESCE(m.brand, 'UNKNOWN') AS brand,
+    ft.merchant_id AS store_id,
+    ft.transaction_date,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS pendapatan_kotor,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.ofd_fees ELSE 0.00 END) AS potongan_ojol,
+    SUM(CASE WHEN ft.is_success = 1 THEN ft.revenue ELSE 0.00 END) AS pendapatan_bersih,
+    COUNT(*)::BIGINT AS total_order,
+    COUNT(CASE WHEN ft.is_success = 1 THEN 1 END)::BIGINT AS order_sukses,
+    COUNT(CASE WHEN ft.is_cancelled = 1 OR ft.is_success = 0 THEN 1 END)::BIGINT AS order_batal
+FROM layer3_dim.fact_transactions ft
+LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
+LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
+WHERE UPPER(COALESCE(m.status, 'LIVE')) = 'LIVE'
+GROUP BY 
+    COALESCE(c.owner_name, m.owner_name, 'UNKNOWN'),
+    COALESCE(m.outlet_name, c.merchant_name, ft.outlet_name, 'UNKNOWN'),
+    COALESCE(m.brand, 'UNKNOWN'),
+    ft.merchant_id,
+    ft.transaction_date;
+
+DROP INDEX IF EXISTS layer3_dim.idx_mv_performa_comp;
+DROP INDEX IF EXISTS layer3_dim.idx_mv_performa_comp_outlet;
+
+CREATE UNIQUE INDEX idx_mv_performa_comp ON layer3_dim.mv_performa_comparison (store_id, transaction_date);
+CREATE INDEX idx_mv_performa_comp_outlet ON layer3_dim.mv_performa_comparison (outlet_name);
+
+-- ============================================================================
+-- 14. STORED FUNCTION GET LAPORAN PERFORMA COMPARISON
+-- ============================================================================
+DROP FUNCTION IF EXISTS layer3_dim.get_laporan_performa_comparison(text,text,text,text,date,date) CASCADE;
+
+CREATE OR REPLACE FUNCTION layer3_dim.get_laporan_performa_comparison(
+    p_tipe_laporan TEXT DEFAULT 'Bulanan',
+    p_owner TEXT DEFAULT NULL,
+    p_outlet TEXT DEFAULT NULL,
+    p_brand TEXT DEFAULT NULL,
+    p_start_date DATE DEFAULT '2026-01-01',
+    p_end_date DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+    periode_label TEXT,
+    pendapatan_kotor NUMERIC(15,2),
+    potongan_ojol NUMERIC(15,2),
+    pendapatan_bersih NUMERIC(15,2),
+    rata_rata_order_per_customer NUMERIC(15,2),
+    total_order BIGINT,
+    order_sukses BIGINT,
+    order_batal BIGINT
+) AS $$
+DECLARE
+    v_mode TEXT := COALESCE(LOWER(TRIM(p_tipe_laporan)), 'bulanan');
+BEGIN
+    RETURN QUERY
+    WITH raw_filtered AS (
+        SELECT 
+            mv.transaction_date,
+            mv.pendapatan_kotor AS pk,
+            mv.potongan_ojol AS po,
+            mv.pendapatan_bersih AS pb,
+            mv.total_order AS tot_ord,
+            mv.order_sukses AS suk_ord,
+            mv.order_batal AS bat_ord,
+            CASE 
+                WHEN v_mode = 'harian' THEN TO_CHAR(mv.transaction_date, 'YYYY-MM-DD')
+                WHEN v_mode = 'mingguan' THEN TO_CHAR(mv.transaction_date, 'IYYY-"W"IW')
+                ELSE TO_CHAR(mv.transaction_date, 'YYYY-MM')
+            END AS p_key,
+            CASE 
+                WHEN v_mode = 'harian' THEN TO_CHAR(mv.transaction_date, 'DD/MM/YYYY')
+                WHEN v_mode = 'mingguan' THEN 'Minggu ' || TO_CHAR(mv.transaction_date, 'IW (IYYY)')
+                ELSE TO_CHAR(mv.transaction_date, 'TMMonth YYYY')
+            END AS p_label
+        FROM layer3_dim.mv_performa_comparison mv
+        WHERE (p_owner IS NULL OR p_owner = '' OR LOWER(mv.owner_name) = LOWER(p_owner))
+          AND (p_outlet IS NULL OR p_outlet = '' OR LOWER(mv.outlet_name) = LOWER(p_outlet))
+          AND (p_brand IS NULL OR p_brand = '' OR LOWER(mv.brand) = LOWER(p_brand))
+          AND mv.transaction_date BETWEEN COALESCE(p_start_date, '2026-01-01') AND COALESCE(p_end_date, CURRENT_DATE)
+    ),
+    grouped AS (
+        SELECT 
+            rf.p_key,
+            rf.p_label,
+            SUM(rf.pk) AS pk,
+            SUM(rf.po) AS po,
+            SUM(rf.pb) AS pb,
+            SUM(rf.tot_ord) AS tot_ord,
+            SUM(rf.suk_ord) AS suk_ord,
+            SUM(rf.bat_ord) AS bat_ord,
+            ROUND(CASE WHEN SUM(rf.suk_ord) > 0 THEN SUM(rf.pk) / SUM(rf.suk_ord) ELSE 0.00 END, 2) AS avg_ord,
+            1 AS s_grp
+        FROM raw_filtered rf
+        GROUP BY rf.p_key, rf.p_label
+    ),
+    combined AS (
+        SELECT 
+            g.p_key,
+            g.p_label,
+            g.pk,
+            g.po,
+            g.pb,
+            g.avg_ord,
+            g.tot_ord,
+            g.suk_ord,
+            g.bat_ord,
+            g.s_grp
+        FROM grouped g
+
+        UNION ALL
+
+        SELECT 
+            '9999-99' AS p_key,
+            'Grand Total' AS p_label,
+            COALESCE(SUM(g.pk), 0.00) AS pk,
+            COALESCE(SUM(g.po), 0.00) AS po,
+            COALESCE(SUM(g.pb), 0.00) AS pb,
+            ROUND(CASE WHEN SUM(g.suk_ord) > 0 THEN SUM(g.pk) / SUM(g.suk_ord) ELSE 0.00 END, 2) AS avg_ord,
+            COALESCE(SUM(g.tot_ord), 0)::BIGINT AS tot_ord,
+            COALESCE(SUM(g.suk_ord), 0)::BIGINT AS suk_ord,
+            COALESCE(SUM(g.bat_ord), 0)::BIGINT AS bat_ord,
+            2 AS s_grp
+        FROM grouped g
+    )
+    SELECT 
+        c.p_label::TEXT AS periode_label,
+        c.pk AS pendapatan_kotor,
+        c.po AS potongan_ojol,
+        c.pb AS pendapatan_bersih,
+        c.avg_ord AS rata_rata_order_per_customer,
+        c.tot_ord::BIGINT AS total_order,
+        c.suk_ord::BIGINT AS order_sukses,
+        c.bat_ord::BIGINT AS order_batal
+    FROM combined c
+    ORDER BY c.s_grp ASC, c.p_key ASC;
+END;
+$$ LANGUAGE plpgsql;
