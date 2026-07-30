@@ -625,12 +625,16 @@ def sync_payment_history_from_sheets():
 # LAPORAN APLIKASI OJOL (GOFOOD, GRABFOOD, SHOPEEFOOD) ROUTES
 # ============================================================================
 
-@app.get("/laporan-aplikasi-ojol", response_class=FileResponse, summary="Serve Laporan Aplikasi Ojol Web Dashboard Page")
-def serve_laporan_aplikasi_ojol_ui():
-    file_path = os.path.join(STATIC_DIR, "laporan_aplikasi_ojol.html")
+@app.get("/rangkuman", response_class=FileResponse, summary="Serve Rangkuman Web Dashboard Page")
+def serve_rangkuman_ui():
+    file_path = os.path.join(STATIC_DIR, "rangkuman.html")
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="laporan_aplikasi_ojol.html not found.")
+        raise HTTPException(status_code=404, detail="rangkuman.html not found.")
     return FileResponse(file_path)
+
+@app.get("/laporan-aplikasi-ojol", response_class=FileResponse, summary="Serve Rangkuman Web Dashboard Page (Alias)")
+def serve_laporan_aplikasi_ojol_ui():
+    return serve_rangkuman_ui()
 
 @app.get("/api/laporan-aplikasi-ojol/filters", summary="Get Filter Options for Laporan Aplikasi Ojol")
 def get_laporan_ojol_filter_options():
@@ -648,6 +652,7 @@ def get_laporan_ojol_filter_options():
                 "owners": owners,
                 "outlets": outlets,
                 "brands": brands,
+                "channels": ["GoFood", "GrabFood", "ShopeeFood"],
                 "min_date": str(date_range[0]) if date_range and date_range[0] else "2026-01-01",
                 "max_date": str(date_range[1]) if date_range and date_range[1] else "2026-06-30"
             }
@@ -859,6 +864,213 @@ def get_baseline_vs_current_data(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error querying baseline_vs_current: {e}")
+
+# ============================================================================
+# LAPORAN JAM RAMAI (PEAK HOURS & OPERATIONAL ANALYSIS) ROUTES
+# ============================================================================
+
+@app.get("/laporan-jam-ramai", response_class=FileResponse, summary="Serve Laporan Jam Ramai Web Dashboard Page")
+def serve_laporan_jam_ramai_ui():
+    file_path = os.path.join(STATIC_DIR, "laporan_jam_ramai.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="laporan_jam_ramai.html not found.")
+    return FileResponse(file_path)
+
+@app.get("/api/laporan-jam-ramai/filters", summary="Get Filter Options for Laporan Jam Ramai")
+def get_laporan_jam_ramai_filter_options():
+    try:
+        with db_manager.engine.connect() as conn:
+            owners = [row[0] for row in conn.execute(text("SELECT DISTINCT owner_name FROM layer3_dim.mv_jam_ramai WHERE owner_name IS NOT NULL ORDER BY owner_name;")).fetchall()]
+            outlets = [row[0] for row in conn.execute(text("SELECT DISTINCT outlet_name FROM layer3_dim.mv_jam_ramai WHERE outlet_name IS NOT NULL ORDER BY outlet_name;")).fetchall()]
+            brands = [row[0] for row in conn.execute(text("SELECT DISTINCT brand FROM layer3_dim.mv_jam_ramai WHERE brand IS NOT NULL ORDER BY brand;")).fetchall()]
+            date_range = conn.execute(text("SELECT MIN(transaction_date), MAX(transaction_date) FROM layer3_dim.mv_jam_ramai;")).fetchone()
+            
+            return {
+                "status": "success",
+                "owners": owners,
+                "outlets": outlets,
+                "brands": brands,
+                "min_date": str(date_range[0]) if date_range and date_range[0] else "2026-01-01",
+                "max_date": str(date_range[1]) if date_range and date_range[1] else "2026-06-30"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching filters: {e}")
+
+@app.get("/api/laporan-jam-ramai/summary", summary="Get Hourly Performance (00:00 to 23:00) Summary")
+def get_laporan_jam_ramai_summary(
+    owner: Optional[str] = Query(default=None),
+    outlet: Optional[str] = Query(default=None),
+    brand: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default="2026-04-01"),
+    end_date: Optional[str] = Query(default="2026-06-30")
+):
+    try:
+        sql = text("""
+            SELECT jam, jam_label, slot_waktu, pendapatan_kotor, potongan_ojol, pendapatan_bersih,
+                   rata_rata_order_per_customer, total_order, order_sukses, order_batal, pct_batal,
+                   is_peak_hour_orders, is_peak_hour_sales
+            FROM layer3_dim.get_laporan_jam_ramai_summary(:owner, :outlet, :brand, CAST(:start_date AS DATE), CAST(:end_date AS DATE));
+        """)
+        params = {
+            "owner": owner,
+            "outlet": outlet,
+            "brand": brand,
+            "start_date": start_date or "2026-01-01",
+            "end_date": end_date or "2026-12-31"
+        }
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(sql, params).mappings().fetchall()
+            clean_data = []
+            for r in rows:
+                row_dict = dict(r)
+                for k, v in row_dict.items():
+                    if isinstance(v, Decimal):
+                        row_dict[k] = float(v)
+                clean_data.append(row_dict)
+            return {
+                "status": "success",
+                "data": clean_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching Jam Ramai summary: {e}")
+
+@app.get("/api/laporan-jam-ramai/by-slot", summary="Get Operational Time Slot Breakdown")
+def get_laporan_jam_ramai_by_slot(
+    owner: Optional[str] = Query(default=None),
+    outlet: Optional[str] = Query(default=None),
+    brand: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default="2026-04-01"),
+    end_date: Optional[str] = Query(default="2026-06-30")
+):
+    try:
+        sql = text("""
+            SELECT slot_waktu, pendapatan_kotor, potongan_ojol, pendapatan_bersih,
+                   rata_rata_order_per_customer, total_order, order_sukses, order_batal, pct_batal
+            FROM layer3_dim.get_laporan_jam_ramai_by_slot(:owner, :outlet, :brand, CAST(:start_date AS DATE), CAST(:end_date AS DATE));
+        """)
+        params = {
+            "owner": owner,
+            "outlet": outlet,
+            "brand": brand,
+            "start_date": start_date or "2026-01-01",
+            "end_date": end_date or "2026-12-31"
+        }
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(sql, params).mappings().fetchall()
+            clean_data = []
+            for r in rows:
+                row_dict = dict(r)
+                for k, v in row_dict.items():
+                    if isinstance(v, Decimal):
+                        row_dict[k] = float(v)
+                clean_data.append(row_dict)
+            return {
+                "status": "success",
+                "data": clean_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching Jam Ramai by slot: {e}")
+
+@app.get("/api/laporan-jam-ramai/by-day", summary="Get 24 Hours x 7 Days Day of Week Matrix")
+def get_laporan_jam_ramai_by_day(
+    owner: Optional[str] = Query(default=None),
+    outlet: Optional[str] = Query(default=None),
+    brand: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default="2026-04-01"),
+    end_date: Optional[str] = Query(default="2026-06-30")
+):
+    try:
+        sql = text("""
+            SELECT dow_num, hari_name, jam, jam_label, pendapatan_kotor, pendapatan_bersih,
+                   total_order, order_sukses, order_batal
+            FROM layer3_dim.get_laporan_jam_ramai_by_day(:owner, :outlet, :brand, CAST(:start_date AS DATE), CAST(:end_date AS DATE));
+        """)
+        params = {
+            "owner": owner,
+            "outlet": outlet,
+            "brand": brand,
+            "start_date": start_date or "2026-01-01",
+            "end_date": end_date or "2026-12-31"
+        }
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(sql, params).mappings().fetchall()
+            clean_data = []
+            for r in rows:
+                row_dict = dict(r)
+                for k, v in row_dict.items():
+                    if isinstance(v, Decimal):
+                        row_dict[k] = float(v)
+                clean_data.append(row_dict)
+            return {
+                "status": "success",
+                "data": clean_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching Jam Ramai by day matrix: {e}")
+
+# ============================================================================
+# ORDER SUKSES VS ORDER BATAL ROUTES
+# ============================================================================
+
+@app.get("/order-sukses-vs-batal", response_class=FileResponse, summary="Serve Order Sukses vs Order Batal Web Dashboard Page")
+def serve_order_status_ui():
+    file_path = os.path.join(STATIC_DIR, "order_sukses_vs_batal.html")
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="order_sukses_vs_batal.html not found.")
+    return FileResponse(file_path)
+
+@app.get("/api/order-status/filters", summary="Get Filter Options for Order Status")
+def get_order_status_filter_options():
+    try:
+        with db_manager.engine.connect() as conn:
+            outlets = [row[0] for row in conn.execute(text("SELECT DISTINCT outlet_name FROM layer3_dim.mv_order_status WHERE outlet_name IS NOT NULL ORDER BY outlet_name;")).fetchall()]
+            brands = [row[0] for row in conn.execute(text("SELECT DISTINCT brand FROM layer3_dim.mv_order_status WHERE brand IS NOT NULL ORDER BY brand;")).fetchall()]
+            date_range = conn.execute(text("SELECT MIN(transaction_date), MAX(transaction_date) FROM layer3_dim.mv_order_status;")).fetchone()
+            
+            return {
+                "status": "success",
+                "outlets": outlets,
+                "brands": brands,
+                "min_date": str(date_range[0]) if date_range and date_range[0] else "2026-01-01",
+                "max_date": str(date_range[1]) if date_range and date_range[1] else "2026-06-30"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching filters: {e}")
+
+@app.get("/api/order-status/summary", summary="Get Order Sukses vs Order Batal Summary")
+def get_order_status_summary(
+    outlet: Optional[str] = Query(default=None),
+    brand: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default="2026-04-01"),
+    end_date: Optional[str] = Query(default="2026-06-30")
+):
+    try:
+        sql = text("""
+            SELECT channel, total_order, order_sukses, order_batal, pct_sukses, pct_batal,
+                   pendapatan_kotor, pendapatan_bersih
+            FROM layer3_dim.get_laporan_order_status(:outlet, :brand, CAST(:start_date AS DATE), CAST(:end_date AS DATE));
+        """)
+        params = {
+            "outlet": outlet,
+            "brand": brand,
+            "start_date": start_date or "2026-01-01",
+            "end_date": end_date or "2026-12-31"
+        }
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(sql, params).mappings().fetchall()
+            clean_data = []
+            for r in rows:
+                row_dict = dict(r)
+                for k, v in row_dict.items():
+                    if isinstance(v, Decimal):
+                        row_dict[k] = float(v)
+                clean_data.append(row_dict)
+            return {
+                "status": "success",
+                "data": clean_data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching order status summary: {e}")
 
 if __name__ == "__main__":
     import uvicorn
