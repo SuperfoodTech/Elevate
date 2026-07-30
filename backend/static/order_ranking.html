@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Baseline vs Current Performance - SuperFood Elevate</title>
+    <title>Order Ranking - SuperFood Elevate</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Chart.js for Visual Comparison Charts -->
+    <!-- Chart.js for Visualizations -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
@@ -258,13 +258,13 @@
 
         .filter-row-top {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: var(--space-16);
         }
 
         .filter-row-bottom {
             display: grid;
-            grid-template-columns: 1fr 1fr auto;
+            grid-template-columns: 1fr auto;
             gap: var(--space-16);
             align-items: center;
             padding-top: var(--space-12);
@@ -293,9 +293,6 @@
             color: var(--color-text-muted);
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
         }
 
         .period-dates-grid {
@@ -341,12 +338,6 @@
             color: var(--color-text-main);
         }
 
-        .info-subtext {
-            font-size: 0.75rem;
-            color: var(--color-text-muted);
-            margin-top: auto;
-        }
-
         .action-button-container {
             display: flex;
             align-items: flex-end;
@@ -376,11 +367,6 @@
             background-color: var(--btn-primary-hover);
         }
 
-        .primary-action:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
         /* Section Header */
         .section-header {
             font-family: var(--font-display);
@@ -404,10 +390,10 @@
             border-radius: 2px;
         }
 
-        /* Executive Cards Grid */
+        /* Executive Cards Grid matching Sheet Header (Selected Days, Total Order, Avg Daily, Avg Monthly, Total Outlet) */
         .executive-cards-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: var(--space-16);
             margin-bottom: var(--space-24);
         }
@@ -443,46 +429,18 @@
             color: var(--color-text-muted);
         }
 
-        /* Status Badges */
-        .status-badge {
-            display: inline-block;
-            padding: var(--space-4) var(--space-12);
-            border-radius: 8px;
-            font-size: 0.75rem;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-
-        .status-achieved {
-            background-color: rgba(22, 163, 74, 0.15);
-            color: var(--color-status-achieved);
-            border: 1px solid rgba(22, 163, 74, 0.3);
-        }
-
-        .status-gmv-below {
-            background-color: rgba(217, 119, 6, 0.15);
-            color: var(--color-status-gmv-below);
-            border: 1px solid rgba(217, 119, 6, 0.3);
-        }
-
-        .status-order-below {
-            background-color: rgba(37, 99, 235, 0.15);
-            color: var(--color-status-order-below);
-            border: 1px solid rgba(37, 99, 235, 0.3);
-        }
-
-        .status-not-achieved {
-            background-color: rgba(220, 38, 38, 0.15);
-            color: var(--color-status-not-achieved);
-            border: 1px solid rgba(220, 38, 38, 0.3);
-        }
-
         /* Charts Grid */
         .charts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            grid-template-columns: 3fr 2fr;
             gap: var(--space-16);
             margin-bottom: var(--space-24);
+        }
+
+        @media (max-width: 992px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .chart-card {
@@ -491,16 +449,24 @@
             border-radius: 16px;
             box-shadow: var(--card-shadow);
             padding: var(--space-16);
-            height: 280px;
+            height: 480px;
+            display: flex;
+            flex-direction: column;
         }
 
         .chart-title {
-            font-size: 0.75rem;
+            font-size: 0.8125rem;
             font-weight: 700;
             color: var(--color-text-muted);
             text-transform: uppercase;
             letter-spacing: 0.05em;
             margin-bottom: var(--space-12);
+        }
+
+        .chart-wrapper {
+            flex: 1;
+            position: relative;
+            min-height: 0;
         }
 
         /* Data Table */
@@ -535,7 +501,7 @@
         }
 
         .search-input {
-            width: 220px;
+            width: 240px;
         }
 
         .badge-count {
@@ -594,6 +560,24 @@
             background-color: var(--table-row-hover);
         }
 
+        .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 700;
+            background-color: var(--subcard-bg);
+            border: 1px solid var(--subcard-border);
+            color: var(--color-text-main);
+        }
+
+        .rank-top1 { background-color: rgba(234, 179, 8, 0.2); border-color: rgba(234, 179, 8, 0.5); color: #eab308; }
+        .rank-top2 { background-color: rgba(148, 163, 184, 0.2); border-color: rgba(148, 163, 184, 0.5); color: #94a3b8; }
+        .rank-top3 { background-color: rgba(217, 119, 6, 0.2); border-color: rgba(217, 119, 6, 0.5); color: #d97706; }
+
         tr.row-summary {
             background-color: rgba(239, 68, 68, 0.08) !important;
             font-weight: 700;
@@ -610,7 +594,6 @@
             font-family: var(--font-display);
         }
 
-        /* States */
         .state-wrapper {
             padding: var(--space-32) var(--space-24);
             text-align: center;
@@ -634,9 +617,7 @@
 
         .text-right { text-align: right; }
         .text-center { text-align: center; }
-        .text-success { color: var(--color-status-achieved); }
-        .text-danger { color: var(--color-status-not-achieved); }
-        .text-muted { color: var(--color-text-muted); font-size: 0.75rem; }
+        .text-bold { font-weight: 700; }
     </style>
 </head>
 <body>
@@ -652,7 +633,7 @@
                 </div>
                 <div>
                     <h1 class="brand-title">FoodMaster</h1>
-                    <p class="brand-subtitle">Baseline vs Current Performance Analysis</p>
+                    <p class="brand-subtitle">Order Ranking & Productivity Analysis</p>
                 </div>
             </div>
             <div class="header-actions">
@@ -664,8 +645,8 @@
                     </span>
                     <span id="themeToggleLabel">Light Mode</span>
                 </button>
-                <a href="/order-ranking" class="btn-secondary">Order Ranking</a>
                 <a href="/weektoweekcomparison" class="btn-secondary">Week to Week</a>
+                <a href="/baseline-vs-current-performance" class="btn-secondary">Baseline vs Current</a>
                 <a href="/rekap-tagihan" class="btn-secondary">Rekap Tagihan</a>
             </div>
         </div>
@@ -674,9 +655,9 @@
     <div class="container">
         <!-- Structured Filter Panel -->
         <div class="surface-card">
-            <form id="baselineForm" onsubmit="handleFormSubmit(event)">
+            <form id="rankingForm" onsubmit="handleFormSubmit(event)">
                 <div class="filter-panel-wrapper">
-                    <!-- Baris 1: Filter Entitas, Target & Performance -->
+                    <!-- Baris 1: Filter Entitas -->
                     <div class="filter-row-top">
                         <div class="form-group">
                             <label for="picSelect" class="form-label">Filter PIC</label>
@@ -696,28 +677,13 @@
                                 <option value="">Semua Outlet</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="targetGrowthInput" class="form-label">Target Growth (%)</label>
-                            <input type="number" id="targetGrowthInput" class="field-control" step="0.1" value="10.0" placeholder="10">
-                        </div>
-                        <div class="form-group">
-                            <label for="performanceFilterSelect" class="form-label">Performance Filter</label>
-                            <select id="performanceFilterSelect" class="field-control">
-                                <option value="All">All Status</option>
-                                <option value="Achieved">Achieved</option>
-                                <option value="GMV Below Target">GMV Below Target</option>
-                                <option value="Order Below Target">Order Below Target</option>
-                                <option value="Not Achieved">Not Achieved</option>
-                            </select>
-                        </div>
                     </div>
 
-                    <!-- Baris 2: Current Period & Action Button -->
+                    <!-- Baris 2: Date Range & Action Button -->
                     <div class="filter-row-bottom">
-                        <!-- Subcard Current Date Range -->
                         <div class="period-subcard">
                             <div class="period-header-title">
-                                <span>Filter Date Range (Current Period)</span>
+                                <span>Filter Date Range</span>
                             </div>
                             <div class="period-dates-grid">
                                 <div class="form-group">
@@ -731,66 +697,66 @@
                             </div>
                         </div>
 
-                        <!-- Subcard Baseline Info -->
-                        <div class="period-subcard">
-                            <div class="period-header-title">
-                                <span>Baseline Window Info</span>
-                            </div>
-                            <p class="info-subtext" id="baselineInfoText">Baseline: 30 Hari sebelum Start Date</p>
-                        </div>
-
-                        <!-- Action Button Container -->
                         <div class="action-button-container">
-                            <button type="submit" id="btnSubmit" class="primary-action">Analisis Baseline vs Current</button>
+                            <button type="submit" id="btnSubmit" class="primary-action">Tampilkan Order Ranking</button>
                         </div>
                     </div>
                 </div>
             </form>
         </div>
 
-        <!-- Executive Summary Section -->
-        <h2 class="section-header">Executive Summary Performa Baseline vs Current</h2>
+        <!-- Executive Summary Cards Grid (Matching Sheet: Selected Days, Total Order, Avg Daily Order/Outlet, Avg Monthly Order/Outlet, Total Outlet) -->
+        <h2 class="section-header">Executive Summary Order & Produktivitas</h2>
         <div class="executive-cards-grid">
             <div class="summary-card">
-                <span class="summary-card-title">Avg GMV Growth</span>
-                <span class="summary-card-value" id="valAvgGMVGrowth" style="color: var(--color-status-achieved);">0.00%</span>
-                <span class="summary-card-subtext">Rata-rata pertumbuhan GMV Harian vs Baseline</span>
+                <span class="summary-card-title">Selected Days</span>
+                <span class="summary-card-value" id="valSelectedDays">7</span>
+                <span class="summary-card-subtext">Jumlah hari pada filter</span>
             </div>
             <div class="summary-card">
-                <span class="summary-card-title">Avg Order Growth</span>
-                <span class="summary-card-value" id="valAvgOrderGrowth" style="color: var(--color-status-order-below);">0.00%</span>
-                <span class="summary-card-subtext">Rata-rata pertumbuhan Order Harian vs Baseline</span>
+                <span class="summary-card-title">Total Order Sukses</span>
+                <span class="summary-card-value" id="valTotalOrder" style="color: var(--color-status-achieved);">0</span>
+                <span class="summary-card-subtext">Total order sukses portofolio</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-title">Avg Daily Order/Outlet</span>
+                <span class="summary-card-value" id="valAvgDailyOrder">0</span>
+                <span class="summary-card-subtext">Rata-rata order harian per outlet</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-card-title">Avg Monthly Order/Outlet</span>
+                <span class="summary-card-value" id="valAvgMonthlyOrder" style="color: var(--color-status-order-below);">0</span>
+                <span class="summary-card-subtext">Proyeksi rata-rata order bulanan</span>
             </div>
             <div class="summary-card">
                 <span class="summary-card-title">Total Outlet</span>
                 <span class="summary-card-value" id="valTotalOutlet">0</span>
-                <span class="summary-card-subtext">Total outlet dievaluasi</span>
-            </div>
-            <div class="summary-card">
-                <span class="summary-card-title">Growing Outlet</span>
-                <span class="summary-card-value" id="valGrowingOutlet" style="color: var(--color-status-achieved);">0</span>
-                <span class="summary-card-subtext">Outlet capai status Achieved</span>
+                <span class="summary-card-subtext">Total outlet aktif teranalisis</span>
             </div>
         </div>
 
-        <!-- Charts Section -->
-        <h2 class="section-header">Visual Comparison Charts (Baseline vs Current)</h2>
+        <!-- Charts Section (Chart 1: Outlet Ranking by Monthly Order, Chart 2: Outlet Productivity) -->
+        <h2 class="section-header">Visual Comparison & Productivity Charts</h2>
         <div class="charts-grid">
             <div class="chart-card">
-                <div class="chart-title">Daily GMV Comparison (Baseline vs Current)</div>
-                <canvas id="chartGMVComp"></canvas>
+                <div class="chart-title">Outlet Ranking by Success Order</div>
+                <div class="chart-wrapper">
+                    <canvas id="chartRanking"></canvas>
+                </div>
             </div>
             <div class="chart-card">
-                <div class="chart-title">Daily Order Comparison (Baseline vs Current)</div>
-                <canvas id="chartOrderComp"></canvas>
+                <div class="chart-title">Outlet Productivity Distribution</div>
+                <div class="chart-wrapper">
+                    <canvas id="chartProductivity"></canvas>
+                </div>
             </div>
         </div>
 
-        <!-- Master Data Table Section -->
-        <h2 class="section-header">Breakdown Performa Detail Outlet</h2>
+        <!-- Master Data Table Section (Outlet, Live Date, Order Sukses) -->
+        <h2 class="section-header">Detail Ranking Performa Outlet</h2>
         <div class="table-card">
             <div class="table-header-bar">
-                <h2 class="table-title">Baseline vs Current Outlet Performance Table</h2>
+                <h2 class="table-title">Outlet Order Ranking Table</h2>
                 <div class="table-controls">
                     <input type="text" id="tableSearchInput" class="field-control search-input" placeholder="Cari outlet/owner/PIC..." oninput="handleSearchInput()">
                     <span class="badge-count" id="recordBadge">0 Outlet</span>
@@ -800,29 +766,19 @@
                 <table>
                     <thead>
                         <tr>
-                            <th onclick="sortTable('pic')">PIC <span id="sort_pic"></span></th>
-                            <th onclick="sortTable('owner_name')">Owner <span id="sort_owner_name"></span></th>
+                            <th class="text-center" style="width: 60px;">Rank</th>
                             <th onclick="sortTable('outlet_name')">Outlet <span id="sort_outlet_name"></span></th>
+                            <th onclick="sortTable('owner_name')">Owner <span id="sort_owner_name"></span></th>
+                            <th onclick="sortTable('pic')">PIC <span id="sort_pic"></span></th>
                             <th onclick="sortTable('live_date')">Live Date <span id="sort_live_date"></span></th>
-                            <th onclick="sortTable('age')">Age <span id="sort_age"></span></th>
-                            <th class="text-center" onclick="sortTable('selected_days')">Hari <span id="sort_selected_days"></span></th>
-                            <th class="text-right" onclick="sortTable('baseline_gmv')">GMV Baseline <span id="sort_baseline_gmv"></span></th>
-                            <th class="text-right" onclick="sortTable('current_gmv')">GMV Current <span id="sort_current_gmv"></span></th>
-                            <th class="text-right" onclick="sortTable('baseline_daily_gmv')">Daily GMV Base <span id="sort_baseline_daily_gmv"></span></th>
-                            <th class="text-right" onclick="sortTable('current_daily_gmv')">Daily GMV Curr <span id="sort_current_daily_gmv"></span></th>
-                            <th class="text-right" onclick="sortTable('daily_gmv_growth')">Daily GMV Growth % <span id="sort_daily_gmv_growth"></span></th>
-                            <th class="text-right" onclick="sortTable('baseline_order')">Order Base <span id="sort_baseline_order"></span></th>
-                            <th class="text-right" onclick="sortTable('current_order')">Order Curr <span id="sort_current_order"></span></th>
-                            <th class="text-right" onclick="sortTable('baseline_daily_order')">Daily Order Base <span id="sort_baseline_daily_order"></span></th>
-                            <th class="text-right" onclick="sortTable('current_daily_order')">Daily Order Curr <span id="sort_current_daily_order"></span></th>
-                            <th class="text-right" onclick="sortTable('daily_order_growth')">Daily Order Growth % <span id="sort_daily_order_growth"></span></th>
-                            <th class="text-center" onclick="sortTable('status')">Status <span id="sort_status"></span></th>
+                            <th class="text-right" onclick="sortTable('order_sukses')">Order Sukses <span id="sort_order_sukses"></span></th>
+                            <th class="text-right" onclick="sortTable('total_gmv')">Total GMV <span id="sort_total_gmv"></span></th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
                         <tr>
-                            <td colspan="17" class="state-wrapper">
-                                Silakan pilih kriteria filter dan klik button <strong>Analisis Baseline vs Current</strong>.
+                            <td colspan="7" class="state-wrapper">
+                                Silakan pilih kriteria filter dan klik button <strong>Tampilkan Order Ranking</strong>.
                             </td>
                         </tr>
                     </tbody>
@@ -838,10 +794,10 @@
         // Global State
         let rawDataList = [];
         let filteredDataList = [];
-        let currentSortColumn = '';
-        let isSortAsc = true;
-        let chartGMVInstance = null;
-        let chartOrderInstance = null;
+        let currentSortColumn = 'order_sukses';
+        let isSortAsc = false;
+        let chartRankingInstance = null;
+        let chartProductivityInstance = null;
 
         // Theme Toggle Logic
         function initThemeMode() {
@@ -866,7 +822,7 @@
                 iconEl.innerHTML = `<svg style="width: 16px; height: 16px; color: #3b82f6;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>`;
             }
             localStorage.setItem('foodmaster_theme', theme);
-            if (chartGMVInstance) renderCharts(filteredDataList);
+            if (chartRankingInstance) renderCharts(filteredDataList, window.lastSummary);
         }
 
         function toggleThemeMode() {
@@ -881,7 +837,7 @@
             loadPicDropdown();
             loadOwnerDropdown();
             loadOutletDropdown();
-            fetchBaselineData();
+            fetchOrderRankingData();
         });
 
         function setDefaultDates() {
@@ -892,33 +848,15 @@
             start.setDate(end.getDate() - 6);
 
             const formatDate = d => d.toISOString().split('T')[0];
-            const startStr = formatDate(start);
-            const endStr = formatDate(end);
 
-            document.getElementById('startDate').value = startStr;
-            document.getElementById('endDate').value = endStr;
-            updateBaselineInfo(startStr);
-        }
-
-        document.getElementById('startDate').addEventListener('change', (e) => {
-            updateBaselineInfo(e.target.value);
-        });
-
-        function updateBaselineInfo(startStr) {
-            if (!startStr) return;
-            const startDateObj = new Date(startStr);
-            const bEnd = new Date(startDateObj);
-            bEnd.setDate(startDateObj.getDate() - 1);
-            const bStart = new Date(bEnd);
-            bStart.setDate(bEnd.getDate() - 29);
-            const fmt = d => d.toISOString().split('T')[0];
-            document.getElementById('baselineInfoText').textContent = `Baseline (30 Hari): ${fmt(bStart)} s/d ${fmt(bEnd)}`;
+            document.getElementById('startDate').value = formatDate(start);
+            document.getElementById('endDate').value = formatDate(end);
         }
 
         // Dropdown Cascade Helpers
         async function loadPicDropdown() {
             try {
-                const res = await fetch(`${API_BASE}/api/baseline-vs-current/pics`);
+                const res = await fetch(`${API_BASE}/api/order-ranking/pics`);
                 const data = await res.json();
                 const select = document.getElementById('picSelect');
                 select.innerHTML = '<option value="">Semua PIC</option>';
@@ -943,7 +881,7 @@
         async function loadOwnerDropdown() {
             const pic = document.getElementById('picSelect').value;
             try {
-                let url = `${API_BASE}/api/baseline-vs-current/owners`;
+                let url = `${API_BASE}/api/order-ranking/owners`;
                 if (pic) url += `?pic=${encodeURIComponent(pic)}`;
                 const res = await fetch(url);
                 const data = await res.json();
@@ -970,7 +908,7 @@
             const pic = document.getElementById('picSelect').value;
             const owner = document.getElementById('ownerSelect').value;
             try {
-                let url = `${API_BASE}/api/baseline-vs-current/outlets?1=1`;
+                let url = `${API_BASE}/api/order-ranking/outlets?1=1`;
                 if (pic) url += `&pic=${encodeURIComponent(pic)}`;
                 if (owner) url += `&owner=${encodeURIComponent(owner)}`;
                 const res = await fetch(url);
@@ -993,24 +931,22 @@
         // Form Submit Logic
         function handleFormSubmit(event) {
             event.preventDefault();
-            fetchBaselineData();
+            fetchOrderRankingData();
         }
 
-        async function fetchBaselineData() {
+        async function fetchOrderRankingData() {
             const pic = document.getElementById('picSelect').value;
             const owner = document.getElementById('ownerSelect').value;
             const outlet = document.getElementById('outletSelect').value;
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
-            const targetGrowth = document.getElementById('targetGrowthInput').value || 10.0;
-            const perfFilter = document.getElementById('performanceFilterSelect').value;
 
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="17" class="state-wrapper">
+                    <td colspan="7" class="state-wrapper">
                         <div class="spinner"></div>
-                        Memuat data analisis Baseline vs Current...
+                        Memuat data Order Ranking...
                     </td>
                 </tr>
             `;
@@ -1020,11 +956,10 @@
             btnSubmit.textContent = 'Memuat Data...';
 
             try {
-                let url = `${API_BASE}/api/baseline-vs-current?start_date=${startDate}&end_date=${endDate}&target_growth_pct=${targetGrowth}`;
+                let url = `${API_BASE}/api/order-ranking?start_date=${startDate}&end_date=${endDate}`;
                 if (pic) url += `&pic=${encodeURIComponent(pic)}`;
                 if (owner) url += `&owner=${encodeURIComponent(owner)}`;
                 if (outlet) url += `&outlet=${encodeURIComponent(outlet)}`;
-                if (perfFilter && perfFilter !== 'All') url += `&status_filter=${encodeURIComponent(perfFilter)}`;
 
                 const response = await fetch(url);
                 if (!response.ok) {
@@ -1034,23 +969,24 @@
 
                 rawDataList = result.data || [];
                 filteredDataList = [...rawDataList];
+                window.lastSummary = result.summary || {};
 
                 updateExecutiveSummary(result.summary);
                 renderTable(filteredDataList);
-                renderCharts(filteredDataList);
+                renderCharts(filteredDataList, result.summary);
 
             } catch (error) {
-                console.error('Error fetching baseline data:', error);
+                console.error('Error fetching order ranking data:', error);
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="17" class="state-wrapper text-danger">
-                            Gagal memuat data baseline: ${error.message}
+                        <td colspan="7" class="state-wrapper text-danger">
+                            Gagal memuat data order ranking: ${error.message}
                         </td>
                     </tr>
                 `;
             } finally {
                 btnSubmit.disabled = false;
-                btnSubmit.textContent = 'Analisis Baseline vs Current';
+                btnSubmit.textContent = 'Tampilkan Order Ranking';
             }
         }
 
@@ -1060,51 +996,19 @@
             return 'Rp ' + Math.round(val).toLocaleString('id-ID');
         }
 
-        function formatPercent(val) {
-            if (val === null || val === undefined) return '-';
-            const pct = (val * 100).toFixed(2);
-            const colorClass = val >= 0 ? 'text-success' : 'text-danger';
-            return `<span class="${colorClass}">${val >= 0 ? '+' : ''}${pct}%</span>`;
-        }
-
         function formatNumber(val) {
             if (val === null || val === undefined) return '-';
             return val.toLocaleString('id-ID');
         }
 
-        function formatDecimal(val) {
-            if (val === null || val === undefined) return '-';
-            return Number(val).toFixed(2);
-        }
-
-        function getStatusBadge(status) {
-            if (!status) return '-';
-            const map = {
-                'Achieved': 'status-achieved',
-                'GMV Below Target': 'status-gmv-below',
-                'Order Below Target': 'status-order-below',
-                'Not Achieved': 'status-not-achieved'
-            };
-            const cls = map[status] || '';
-            return `<span class="status-badge ${cls}">${status}</span>`;
-        }
-
         // Executive Summary Cards Update
         function updateExecutiveSummary(summary) {
             if (!summary) return;
-            const avgGmv = summary.avg_gmv_growth || 0;
-            const avgOrd = summary.avg_order_growth || 0;
-
-            const gmvEl = document.getElementById('valAvgGMVGrowth');
-            gmvEl.textContent = (avgGmv * 100).toFixed(2) + '%';
-            gmvEl.style.color = avgGmv >= 0 ? 'var(--color-status-achieved)' : 'var(--color-status-not-achieved)';
-
-            const ordEl = document.getElementById('valAvgOrderGrowth');
-            ordEl.textContent = (avgOrd * 100).toFixed(2) + '%';
-            ordEl.style.color = avgOrd >= 0 ? 'var(--color-status-order-below)' : 'var(--color-status-not-achieved)';
-
+            document.getElementById('valSelectedDays').textContent = summary.selected_days || 0;
+            document.getElementById('valTotalOrder').textContent = formatNumber(summary.total_order || 0);
+            document.getElementById('valAvgDailyOrder').textContent = summary.avg_daily_order_per_outlet || 0;
+            document.getElementById('valAvgMonthlyOrder').textContent = summary.avg_monthly_order_per_outlet || 0;
             document.getElementById('valTotalOutlet').textContent = summary.total_outlet || 0;
-            document.getElementById('valGrowingOutlet').textContent = summary.growing_outlet || 0;
         }
 
         // Render Table
@@ -1115,7 +1019,7 @@
             if (data.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="17" class="state-wrapper">
+                        <td colspan="7" class="state-wrapper">
                             Tidak ada data outlet yang memenuhi kriteria filter.
                         </td>
                     </tr>
@@ -1123,68 +1027,40 @@
                 return;
             }
 
-            // Summary row calculation
-            let sumBGMV = 0, sumCGMV = 0, sumBDGMV = 0, sumCDGMV = 0;
-            let sumBOrd = 0, sumCOrd = 0, sumBDOrd = 0, sumCDOrd = 0;
-            let validGMVGrowths = [], validOrdGrowths = [];
+            let totalOrder = 0;
+            let totalGMV = 0;
 
-            let rowsHtml = data.map(item => {
-                const bGmv = item.baseline_gmv || 0;
-                const cGmv = item.current_gmv || 0;
-                const bdGmv = item.baseline_daily_gmv || 0;
-                const cdGmv = item.current_daily_gmv || 0;
-                const bOrd = item.baseline_order || 0;
-                const cOrd = item.current_order || 0;
-                const bdOrd = item.baseline_daily_order || 0;
-                const cdOrd = item.current_daily_order || 0;
+            let rowsHtml = data.map((item, index) => {
+                const ord = item.order_sukses || 0;
+                const gmv = item.total_gmv || 0;
+                totalOrder += ord;
+                totalGMV += gmv;
 
-                sumBGMV += bGmv; sumCGMV += cGmv; sumBDGMV += bdGmv; sumCDGMV += cdGmv;
-                sumBOrd += bOrd; sumCOrd += cOrd; sumBDOrd += bdOrd; sumCDOrd += cdOrd;
-
-                if (item.daily_gmv_growth !== null && item.daily_gmv_growth !== undefined) validGMVGrowths.push(item.daily_gmv_growth);
-                if (item.daily_order_growth !== null && item.daily_order_growth !== undefined) validOrdGrowths.push(item.daily_order_growth);
+                const rank = index + 1;
+                let rankClass = 'rank-badge';
+                if (rank === 1) rankClass += ' rank-top1';
+                else if (rank === 2) rankClass += ' rank-top2';
+                else if (rank === 3) rankClass += ' rank-top3';
 
                 return `
                     <tr>
-                        <td><strong>${item.pic || '-'}</strong></td>
+                        <td class="text-center"><span class="${rankClass}">${rank}</span></td>
+                        <td class="text-bold">${item.outlet_name || '-'}</td>
                         <td>${item.owner_name || '-'}</td>
-                        <td>${item.outlet_name || '-'}</td>
+                        <td>${item.pic || '-'}</td>
                         <td>${item.live_date || '-'}</td>
-                        <td>${item.age || '-'}</td>
-                        <td class="text-center">${item.selected_days || '-'}</td>
-                        <td class="text-right">${formatCurrency(item.baseline_gmv)}</td>
-                        <td class="text-right">${formatCurrency(item.current_gmv)}</td>
-                        <td class="text-right">${formatCurrency(item.baseline_daily_gmv)}</td>
-                        <td class="text-right">${formatCurrency(item.current_daily_gmv)}</td>
-                        <td class="text-right">${formatPercent(item.daily_gmv_growth)}</td>
-                        <td class="text-right">${formatNumber(item.baseline_order)}</td>
-                        <td class="text-right">${formatNumber(item.current_order)}</td>
-                        <td class="text-right">${formatDecimal(item.baseline_daily_order)}</td>
-                        <td class="text-right">${formatDecimal(item.current_daily_order)}</td>
-                        <td class="text-right">${formatPercent(item.daily_order_growth)}</td>
-                        <td class="text-center">${getStatusBadge(item.status)}</td>
+                        <td class="text-right text-bold">${formatNumber(item.order_sukses)}</td>
+                        <td class="text-right">${formatCurrency(item.total_gmv)}</td>
                     </tr>
                 `;
             }).join('');
 
-            const avgGMVGrowth = validGMVGrowths.length ? sumBDGMV > 0 ? (sumCDGMV / sumBDGMV) - 1 : 0 : 0;
-            const avgOrdGrowth = validOrdGrowths.length ? sumBDOrd > 0 ? (sumCDOrd / sumBDOrd) - 1 : 0 : 0;
-
             const summaryHtml = `
                 <tr class="row-summary">
-                    <td colspan="5">TOTAL / AVERAGE (${data.length} OUTLET)</td>
                     <td class="text-center">-</td>
-                    <td class="text-right">${formatCurrency(sumBGMV)}</td>
-                    <td class="text-right">${formatCurrency(sumCGMV)}</td>
-                    <td class="text-right">${formatCurrency(sumBDGMV)}</td>
-                    <td class="text-right">${formatCurrency(sumCDGMV)}</td>
-                    <td class="text-right">${formatPercent(avgGMVGrowth)}</td>
-                    <td class="text-right">${formatNumber(sumBOrd)}</td>
-                    <td class="text-right">${formatNumber(sumCOrd)}</td>
-                    <td class="text-right">${formatDecimal(sumBDOrd)}</td>
-                    <td class="text-right">${formatDecimal(sumCDOrd)}</td>
-                    <td class="text-right">${formatPercent(avgOrdGrowth)}</td>
-                    <td class="text-center">-</td>
+                    <td colspan="4">TOTAL (${data.length} OUTLET)</td>
+                    <td class="text-right">${formatNumber(totalOrder)}</td>
+                    <td class="text-right">${formatCurrency(totalGMV)}</td>
                 </tr>
             `;
 
@@ -1204,7 +1080,7 @@
                 );
             }
             renderTable(filteredDataList);
-            renderCharts(filteredDataList);
+            renderCharts(filteredDataList, window.lastSummary);
         }
 
         // Sorting Logic
@@ -1213,11 +1089,11 @@
                 isSortAsc = !isSortAsc;
             } else {
                 currentSortColumn = columnKey;
-                isSortAsc = true;
+                isSortAsc = columnKey === 'outlet_name' || columnKey === 'owner_name' || columnKey === 'pic' || columnKey === 'live_date';
             }
 
             // Update Sort Indicators
-            const columns = ['pic','owner_name','outlet_name','live_date','age','selected_days','baseline_gmv','current_gmv','baseline_daily_gmv','current_daily_gmv','daily_gmv_growth','baseline_order','current_order','baseline_daily_order','current_daily_order','daily_order_growth','status'];
+            const columns = ['outlet_name','owner_name','pic','live_date','order_sukses','total_gmv'];
             columns.forEach(col => {
                 const el = document.getElementById(`sort_${col}`);
                 if (el) el.textContent = col === columnKey ? (isSortAsc ? '▲' : '▼') : '';
@@ -1239,114 +1115,98 @@
             renderTable(filteredDataList);
         }
 
-        // Chart.js Visual Comparison Charts
-        function renderCharts(data) {
+        // Chart.js Visualizations
+        function renderCharts(data, summary) {
             const isDark = document.documentElement.classList.contains('dark');
             const textColor = isDark ? '#a1a1aa' : '#64748b';
             const gridColor = isDark ? 'rgba(63, 63, 70, 0.4)' : 'rgba(226, 232, 240, 0.6)';
 
-            // Limit to top 15 outlets by Current GMV for visual clarity
-            const chartData = [...data].sort((a, b) => (b.current_gmv || 0) - (a.current_gmv || 0)).slice(0, 15);
+            // Chart 1: Horizontal Bar Chart - Outlet Ranking by Order
+            const chartData = [...data].sort((a, b) => (b.order_sukses || 0) - (a.order_sukses || 0)).slice(0, 20);
 
-            const labels = chartData.map(d => {
+            const rankingLabels = chartData.map(d => {
                 const name = d.outlet_name || 'Unknown';
-                return name.length > 18 ? name.substring(0, 18) + '...' : name;
+                return name.length > 22 ? name.substring(0, 22) + '...' : name;
             });
+            const rankingValues = chartData.map(d => d.order_sukses || 0);
 
-            // Daily GMV Comparison Data
-            const baseDailyGMV = chartData.map(d => d.baseline_daily_gmv || 0);
-            const currDailyGMV = chartData.map(d => d.current_daily_gmv || 0);
+            const ctxRanking = document.getElementById('chartRanking').getContext('2d');
+            if (chartRankingInstance) chartRankingInstance.destroy();
 
-            // Daily Order Comparison Data
-            const baseDailyOrd = chartData.map(d => d.baseline_daily_order || 0);
-            const currDailyOrd = chartData.map(d => d.current_daily_order || 0);
-
-            // Render GMV Chart
-            const ctxGMV = document.getElementById('chartGMVComp').getContext('2d');
-            if (chartGMVInstance) chartGMVInstance.destroy();
-
-            chartGMVInstance = new Chart(ctxGMV, {
+            chartRankingInstance = new Chart(ctxRanking, {
                 type: 'bar',
                 data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Daily GMV Base (30D)',
-                            data: baseDailyGMV,
-                            backgroundColor: isDark ? 'rgba(161, 161, 170, 0.5)' : 'rgba(100, 116, 139, 0.5)',
-                            borderColor: isDark ? '#a1a1aa' : '#64748b',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        },
-                        {
-                            label: 'Daily GMV Current',
-                            data: currDailyGMV,
-                            backgroundColor: isDark ? 'rgba(74, 222, 128, 0.7)' : 'rgba(22, 163, 74, 0.7)',
-                            borderColor: isDark ? '#4ade80' : '#16a34a',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        }
-                    ]
+                    labels: rankingLabels,
+                    datasets: [{
+                        label: 'Total Order Sukses',
+                        data: rankingValues,
+                        backgroundColor: isDark ? '#3b82f6' : '#2563eb',
+                        borderColor: isDark ? '#60a5fa' : '#1d4ed8',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
                 },
                 options: {
+                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { labels: { color: textColor, font: { family: 'Plus Jakarta Sans', size: 11 } } },
+                        legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: ctx => ctx.dataset.label + ': Rp ' + Math.round(ctx.raw).toLocaleString('id-ID')
+                                label: ctx => `Order Sukses: ${ctx.raw.toLocaleString('id-ID')} order`
                             }
                         }
                     },
                     scales: {
-                        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
-                        y: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } }
+                        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } },
+                        y: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } }
                     }
                 }
             });
 
-            // Render Order Chart
-            const ctxOrder = document.getElementById('chartOrderComp').getContext('2d');
-            if (chartOrderInstance) chartOrderInstance.destroy();
+            // Chart 2: Vertical Bar Chart - Outlet Productivity Distribution
+            let prodBins = (summary && summary.productivity_bins) ? summary.productivity_bins : {
+                "0 - 50 Order": data.filter(r => (r.order_sukses || 0) <= 50).length,
+                "51 - 100 Order": data.filter(r => 50 < (r.order_sukses || 0) && (r.order_sukses || 0) <= 100).length,
+                "101 - 200 Order": data.filter(r => 100 < (r.order_sukses || 0) && (r.order_sukses || 0) <= 200).length,
+                "201 - 500 Order": data.filter(r => 200 < (r.order_sukses || 0) && (r.order_sukses || 0) <= 500).length,
+                "> 500 Order": data.filter(r => (r.order_sukses || 0) > 500).length
+            };
 
-            chartOrderInstance = new Chart(ctxOrder, {
+            const prodLabels = Object.keys(prodBins);
+            const prodValues = Object.values(prodBins);
+
+            const ctxProd = document.getElementById('chartProductivity').getContext('2d');
+            if (chartProductivityInstance) chartProductivityInstance.destroy();
+
+            chartProductivityInstance = new Chart(ctxProd, {
                 type: 'bar',
                 data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Daily Order Base (30D)',
-                            data: baseDailyOrd,
-                            backgroundColor: isDark ? 'rgba(161, 161, 170, 0.5)' : 'rgba(100, 116, 139, 0.5)',
-                            borderColor: isDark ? '#a1a1aa' : '#64748b',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        },
-                        {
-                            label: 'Daily Order Current',
-                            data: currDailyOrd,
-                            backgroundColor: isDark ? 'rgba(96, 165, 250, 0.7)' : 'rgba(37, 99, 235, 0.7)',
-                            borderColor: isDark ? '#60a5fa' : '#2563eb',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        }
-                    ]
+                    labels: prodLabels,
+                    datasets: [{
+                        label: 'Total Outlet',
+                        data: prodValues,
+                        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.75)' : 'rgba(37, 99, 235, 0.75)',
+                        borderColor: isDark ? '#3b82f6' : '#2563eb',
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { labels: { color: textColor, font: { family: 'Plus Jakarta Sans', size: 11 } } },
+                        legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: ctx => ctx.dataset.label + ': ' + Number(ctx.raw).toFixed(2)
+                                label: ctx => `Total Outlet: ${ctx.raw} outlet`
                             }
                         }
                     },
                     scales: {
-                        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
-                        y: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } }
+                        x: { ticks: { color: textColor, font: { size: 11, weight: '600' } }, grid: { display: false } },
+                        y: { ticks: { color: textColor, font: { size: 10 }, precision: 0 }, grid: { color: gridColor }, title: { display: true, text: 'Outlet Count', color: textColor, font: { size: 11, weight: '600' } } }
                     }
                 }
             });
