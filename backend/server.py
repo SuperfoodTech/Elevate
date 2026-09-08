@@ -32,6 +32,12 @@ if DB_DIR not in sys.path:
 from layer1_db_manager import DatabaseManager
 db_manager = DatabaseManager()
 
+
+def refresh_agency_settlement_views() -> None:
+    """Refresh the owner-level Agency report after a successful fact load."""
+    with db_manager.engine.begin() as conn:
+        conn.execute(text("SELECT layer3_dim.refresh_agency_settlements()"))
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -192,6 +198,12 @@ def _execute_scrape_job(job_id: str, req: ScrapeRequest):
             results["GoFood"] = False
 
     elapsed = datetime.now() - start_time
+    if req.auto_db and any(results.values()):
+        try:
+            refresh_agency_settlement_views()
+            log("Agency owner settlement views refreshed.")
+        except Exception as refresh_error:
+            log(f"WARNING: Agency settlement refresh failed: {refresh_error}")
     log(f"Pipeline job completed in {int(elapsed.total_seconds() // 60)}m {int(elapsed.total_seconds() % 60)}s.")
 
     with jobs_lock:
@@ -265,12 +277,30 @@ def trigger_db_ingest(req: IngestRequest):
         success = ingest_to_db(p, s_clean, e_clean, auto_normalize=req.auto_normalize)
         results[p] = success
 
+    settlement_refresh = None
+    if any(results.values()):
+        try:
+            refresh_agency_settlement_views()
+            settlement_refresh = "completed"
+        except Exception as refresh_error:
+            settlement_refresh = f"failed: {refresh_error}"
+
     return {
         "status": "success",
         "start_date": s_clean,
         "end_date": e_clean,
-        "ingest_results": results
+        "ingest_results": results,
+        "agency_settlement_refresh": settlement_refresh,
     }
+
+
+@app.post("/api/pipeline/agency-settlement/refresh", summary="Refresh Agency Owner Settlement Report")
+def refresh_agency_settlement_report():
+    try:
+        refresh_agency_settlement_views()
+        return {"status": "success", "message": "Agency owner settlement views refreshed."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agency settlement refresh failed: {e}")
 
 @app.post("/api/pipeline/normalize", summary="Trigger Database Cleaning & Normalization (Layer 2 & Master Table)")
 def trigger_db_normalization():
@@ -291,7 +321,7 @@ def trigger_db_normalization():
             counts["stg_grab_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_grab_orders")).scalar()
             counts["stg_go_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_go_orders")).scalar()
             counts["stg_shopee_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_shopee_orders")).scalar()
-            counts["fact_transactions"] = conn.execute(text("SELECT COUNT(*) FROM public.fact_transactions")).scalar()
+            counts["fact_transactions"] = conn.execute(text("SELECT COUNT(*) FROM layer3_dim.fact_transactions")).scalar()
     except Exception as e:
         counts["error"] = str(e)
 
@@ -332,7 +362,7 @@ def get_dashboard_summary():
                     COUNT(*) FILTER (WHERE UPPER(status_pembayaran) = 'LUNAS') AS jumlah_lunas,
                     ROUND(COALESCE(SUM(total_tagihan) FILTER (WHERE UPPER(status_pembayaran) = 'LUNAS'), 0)) AS bagi_hasil_lunas,
                     ROUND(COALESCE(SUM(total_tagihan), 0)) AS total_tagihan_pool
-                FROM layer3_dim.mv_rekap_tagihan
+                FROM layer3_dim.v_agency_settlement_report
             """)).mappings().one()
 
             # 2. Overall Merchant Status (All-Time Cumulative)
@@ -544,7 +574,7 @@ def get_baseline_vs_current():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error baseline-vs-current: {e}")
 
-@app.get("/api/transactions", summary="Query Master Cleaned Transactions (public.fact_transactions)")
+@app.get("/api/transactions", summary="Query Master Cleaned Transactions (layer3_dim.fact_transactions)")
 def get_transactions(
     platform: Optional[str] = Query(None, description="Filter by platform: GrabFood, ShopeeFood, GoFood"),
     start_date: Optional[str] = Query(None, description="Filter start date YYYY-MM-DD"),
@@ -577,13 +607,13 @@ def get_transactions(
         query_sql = f"""
             SELECT id, platform, external_id, transaction_date, outlet_name, branch_name, store_name,
                    is_success, gross_amount, discounts, net_sales, commission, ofd_fees, revenue
-            FROM public.fact_transactions
+            FROM layer3_dim.fact_transactions
             WHERE {where_sql}
             ORDER BY transaction_date DESC, id DESC
             LIMIT {limit} OFFSET {offset}
         """
 
-        count_sql = f"SELECT COUNT(*) FROM public.fact_transactions WHERE {where_sql}"
+        count_sql = f"SELECT COUNT(*) FROM layer3_dim.fact_transactions WHERE {where_sql}"
 
         with db.engine.connect() as conn:
             total_count = conn.execute(text(count_sql), params).scalar()
@@ -665,17 +695,16 @@ def get_rekap_tagihan_data(
         sql_params = {
             "p_owner": owner if owner else None,
             "p_start_date": start_date,
-            "p_end_date": end_date,
-            "p_override_nominal_bagi_hasil": nominal_bagi_hasil
+            "p_end_date": end_date
         }
 
         query_sql = """
-            SELECT tanggal, pendapatan_kotor, potongan_ojol, pendapatan_bersih, total_order_sukses, total_bagi_hasil
-            FROM layer3_dim.get_rekap_tagihan(
+            SELECT tanggal, pendapatan_kotor, potongan_ojol, pendapatan_bersih,
+                   total_order_sukses, total_bagi_hasil, settlement_status
+            FROM layer3_dim.get_agency_daily_recap(
                 :p_owner,
                 CAST(:p_start_date AS DATE),
-                CAST(:p_end_date AS DATE),
-                :p_override_nominal_bagi_hasil
+                CAST(:p_end_date AS DATE)
             );
         """
 
@@ -686,7 +715,7 @@ def get_rekap_tagihan_data(
             "owner": owner,
             "start_date": start_date,
             "end_date": end_date,
-            "nominal_override": nominal_bagi_hasil,
+            "nominal_override": None,
             "data": [dict(r) for r in rows]
         }
     except Exception as e:
@@ -741,20 +770,39 @@ def get_rekap_tagihan_billing_data(
             "p_status_pembayaran": status_pembayaran if status_pembayaran else None
         }
 
-        query_sql = """
-            SELECT owner_name, outlet_name, brand, nama_resto_final, store_id, periode,
-                   jumlah_order_sukses, biaya, subtotal_tagihan, penyesuaian, total_tagihan,
-                   TO_CHAR(tanggal_tagihan, 'YYYY-MM-DD') AS tanggal_tagihan,
-                   transfer_id,
-                   TO_CHAR(tanggal_pembayaran, 'YYYY-MM-DD') AS tanggal_pembayaran,
-                   link_bukti, status_pembayaran
-            FROM layer3_dim.get_rekap_tagihan_billing(
-                :p_billing_cycle,
-                :p_owner,
-                :p_periode,
-                :p_status_pembayaran
-            );
-        """
+        # Agency settlement is owner-level and Monday-Sunday. Keep the old
+        # monthly function available for legacy callers, but make the weekly
+        # dashboard consume the authoritative owner settlement view.
+        if str(billing_cycle).lower().startswith("week"):
+            query_sql = """
+                SELECT owner_name, outlet_name, brand, nama_resto_final, store_id, periode,
+                       jumlah_order_sukses, biaya, subtotal_tagihan, penyesuaian, total_tagihan,
+                       TO_CHAR(tanggal_tagihan, 'YYYY-MM-DD') AS tanggal_tagihan,
+                       transfer_id,
+                       TO_CHAR(tanggal_pembayaran, 'YYYY-MM-DD') AS tanggal_pembayaran,
+                       link_bukti, status_pembayaran, settlement_status,
+                       period_start, period_end_exclusive
+                FROM layer3_dim.v_agency_settlement_report
+                WHERE (:p_owner IS NULL OR :p_owner = '' OR LOWER(owner_name) = LOWER(:p_owner))
+                  AND (:p_periode IS NULL OR :p_periode = '' OR periode = :p_periode)
+                  AND (:p_status_pembayaran IS NULL OR :p_status_pembayaran = '' OR LOWER(status_pembayaran) = LOWER(:p_status_pembayaran))
+                ORDER BY period_start DESC, owner_name ASC;
+            """
+        else:
+            query_sql = """
+                SELECT owner_name, outlet_name, brand, nama_resto_final, store_id, periode,
+                       jumlah_order_sukses, biaya, subtotal_tagihan, penyesuaian, total_tagihan,
+                       TO_CHAR(tanggal_tagihan, 'YYYY-MM-DD') AS tanggal_tagihan,
+                       transfer_id,
+                       TO_CHAR(tanggal_pembayaran, 'YYYY-MM-DD') AS tanggal_pembayaran,
+                       link_bukti, status_pembayaran
+                FROM layer3_dim.get_rekap_tagihan_billing(
+                    :p_billing_cycle,
+                    :p_owner,
+                    :p_periode,
+                    :p_status_pembayaran
+                );
+            """
 
         with db.engine.connect() as conn:
             rows = conn.execute(text(query_sql), sql_params).mappings().all()
@@ -826,7 +874,41 @@ def update_billing_payment_record(req: MonthlyPaymentUpdateRequest):
         }
 
         with db.engine.begin() as conn:
-            conn.execute(text(upsert_sql), params)
+            # Weekly Agency payments are keyed by owner + Monday period.
+            # The UI still calls the field store_id for backward compatibility.
+            weekly_owner_payment = False
+            try:
+                from datetime import date
+                period_start = date.fromisoformat(req.periode)
+                weekly_owner_payment = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM layer3_dim.mv_agency_settlement_owner
+                        WHERE owner_name = :owner_name AND period_start = :period_start
+                    )
+                """), {"owner_name": req.store_id, "period_start": period_start}).scalar()
+            except ValueError:
+                period_start = None
+
+            if weekly_owner_payment:
+                conn.execute(text("""
+                    INSERT INTO layer3_dim.agency_settlement_payments (
+                        owner_name, period_start, penyesuaian, transfer_id,
+                        tanggal_pembayaran, link_bukti, status_pembayaran, notes, updated_at
+                    ) VALUES (
+                        :owner_name, :period_start, :penyesuaian, :transfer_id,
+                        CAST(:tanggal_pembayaran AS DATE), :link_bukti, :status_pembayaran, :notes, CURRENT_TIMESTAMP
+                    )
+                    ON CONFLICT (owner_name, period_start) DO UPDATE SET
+                        penyesuaian = EXCLUDED.penyesuaian,
+                        transfer_id = EXCLUDED.transfer_id,
+                        tanggal_pembayaran = EXCLUDED.tanggal_pembayaran,
+                        link_bukti = EXCLUDED.link_bukti,
+                        status_pembayaran = EXCLUDED.status_pembayaran,
+                        notes = EXCLUDED.notes,
+                        updated_at = CURRENT_TIMESTAMP
+                """), {**params, "owner_name": req.store_id, "period_start": period_start})
+            else:
+                conn.execute(text(upsert_sql), params)
             # Refresh Materialized Views to reflect payment updates
             conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_billing_history;"))
             conn.execute(text("REFRESH MATERIALIZED VIEW layer3_dim.mv_rekap_tagihan;"))
@@ -855,6 +937,50 @@ def sync_payment_history_from_sheets():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal menyinkronkan riwayat pembayaran: {e}")
+
+# ── Approved Agency/VB Business Grouping ──
+
+@app.post("/api/business-grouping/sync", summary="Sync Approved Agency/VB Grouping CSV")
+def sync_business_grouping_data():
+    """Consume the manually approved grouping sheet; no auto-matching is performed."""
+    try:
+        from sync_business_grouping import sync_business_grouping
+        result = sync_business_grouping(trigger_type="MANUAL")
+        return {"status": "success", **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal menyinkronkan business grouping: {e}")
+
+
+@app.get("/api/business-grouping", summary="Get Current Approved Agency/VB Grouping")
+def get_business_grouping(
+    owner: Optional[str] = Query(default=None),
+    relationship_type: Optional[str] = Query(default=None),
+):
+    try:
+        filters = []
+        params = {}
+        if owner:
+            filters.append("LOWER(owner_name) = LOWER(:owner)")
+            params["owner"] = owner
+        if relationship_type:
+            filters.append("relationship_type = :relationship_type")
+            params["relationship_type"] = relationship_type.upper()
+
+        where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+        query = text(f"""
+            SELECT relationship_id, import_id, source_row_number,
+                   owner_name, agency_outlet_name, vb_brand_name,
+                   relationship_type, mapping_status, imported_at
+            FROM layer3_dim.v_current_business_grouping
+            {where_sql}
+            ORDER BY owner_name NULLS LAST, agency_outlet_name NULLS LAST,
+                     vb_brand_name NULLS LAST, relationship_id
+        """)
+        with db_manager.engine.connect() as conn:
+            rows = conn.execute(query, params).mappings().all()
+        return {"status": "success", "count": len(rows), "data": [dict(row) for row in rows]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal mengambil business grouping: {e}")
 
 # ============================================================================
 # LAPORAN APLIKASI OJOL (GOFOOD, GRABFOOD, SHOPEEFOOD) ROUTES
@@ -1913,5 +2039,3 @@ def get_performa_comparison_charts_data(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
-
-

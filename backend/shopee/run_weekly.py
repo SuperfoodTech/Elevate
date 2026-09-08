@@ -553,7 +553,18 @@ def run_pipeline():
                                         if download_file(rep.get("download_url"), target_path):
                                             log.info(f"  ✅ [RETRY DOWNLOAD] SUCCESS: {m_name} -> {report_name}")
                                             downloaded = True
-                                            merchants_context[m_name]["downloaded"].append((target_path, report_name))
+                                            # A merchant can reach retry after an initial switch/auth
+                                            # failure, so it may not have a context entry yet.
+                                            # Create the minimal context before recording the file.
+                                            retry_ctx = merchants_context.setdefault(m_name, {
+                                                "entity_id": active_id,
+                                                "tob_token": session["shopee_tob_token"],
+                                                "cookies": session.get("extra_cookies", {}),
+                                                "start_trigger_time": start_trigger_time,
+                                                "ranges": global_ranges,
+                                                "downloaded": []
+                                            })
+                                            retry_ctx["downloaded"].append((target_path, report_name))
                                             break
                             if not downloaded:
                                 time.sleep(5)

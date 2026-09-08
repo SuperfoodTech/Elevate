@@ -25,7 +25,7 @@ interface BillingRow {
 
 export const RekapBillingPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'summary' | 'daily_calculator'>('summary');
-  const [cycle, setCycle] = useState<'Weekly' | 'Monthly'>('Weekly');
+  const [cycle] = useState<'Weekly'>('Weekly');
   const [periodes, setPeriodes] = useState<string[]>([]);
   const [selectedPeriode, setSelectedPeriode] = useState<string>('');
   const [owners, setOwners] = useState<string[]>([]);
@@ -36,8 +36,6 @@ export const RekapBillingPage: React.FC = () => {
 
   // Daily Calculator State (matching screenshot)
   const [calcOwner, setCalcOwner] = useState<string>('Supriyanti');
-  const [calcNominal, setCalcNominal] = useState<number>(1000);
-  const [calcNominalStr, setCalcNominalStr] = useState<string>('1000');
   const [calcStart, setCalcStart] = useState<string>('2026-07-20');
   const [calcEnd, setCalcEnd] = useState<string>('2026-07-26');
   const [calcAdjAgency, setCalcAdjAgency] = useState<number>(0);
@@ -66,7 +64,7 @@ export const RekapBillingPage: React.FC = () => {
     } else {
       loadDailyCalculator();
     }
-  }, [viewMode, cycle, selectedPeriode, selectedOwner, calcOwner, calcNominal, calcStart, calcEnd]);
+  }, [viewMode, cycle, selectedPeriode, selectedOwner, calcOwner, calcStart, calcEnd]);
 
   const loadOwners = async () => {
     try {
@@ -84,7 +82,7 @@ export const RekapBillingPage: React.FC = () => {
     if (!calcOwner) return;
     setLoadingDaily(true);
     try {
-      const res = await api.getRekapTagihanDaily(calcOwner, calcStart, calcEnd, calcNominal);
+      const res = await api.getRekapTagihanDaily(calcOwner, calcStart, calcEnd);
       if (res && res.data) {
         setDailyData(res.data);
       }
@@ -180,28 +178,16 @@ export const RekapBillingPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#6B6B76] uppercase tracking-wider mb-1">Nominal Bagi Hasil</label>
+                <label className="block text-[11px] font-semibold text-[#6B6B76] uppercase tracking-wider mb-1">Fee Owner (dari rule)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#9C9CA6]">Rp</span>
                   <input
                     type="text"
                     inputMode="numeric"
-                    value={calcNominalStr}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === '' || raw === '-' || /^-?\d*$/.test(raw)) {
-                        setCalcNominalStr(raw);
-                        const parsed = parseInt(raw, 10);
-                        if (!isNaN(parsed)) setCalcNominal(parsed);
-                      }
-                    }}
-                    onBlur={() => {
-                      const parsed = parseInt(calcNominalStr, 10);
-                      const val = isNaN(parsed) ? 0 : parsed;
-                      setCalcNominal(val);
-                      setCalcNominalStr(String(val));
-                    }}
-                    className="w-full pl-8 pr-3 py-2 bg-[#FAFAFA] border border-[#E3E3E8] rounded-md text-xs font-medium text-[#1A1A1F]"
+                    value="Owner rule"
+                    disabled
+                    title="Fee ditentukan oleh owner rule; override manual dinonaktifkan"
+                    className="w-full pl-8 pr-3 py-2 bg-[#F1F1F5] border border-[#E3E3E8] rounded-md text-xs font-medium text-[#6B6B76]"
                   />
                 </div>
               </div>
@@ -289,7 +275,7 @@ export const RekapBillingPage: React.FC = () => {
             <div className="px-5 py-3 border-b border-[#E3E3E8] bg-[#F5F5F7] flex items-center justify-between">
               <h2 className="text-sm font-bold text-[#1A1A1F]">Rincian Perhitungan Tagihan Harian - Owner: {calcOwner}</h2>
               <span className="text-xs font-semibold text-[#635BFF] bg-[#EBF3FF] px-2.5 py-1 rounded">
-                Rate: {formatIDR(calcNominal)} / Order
+                Rate: Owner rule / Order
               </span>
             </div>
 
@@ -371,25 +357,17 @@ export const RekapBillingPage: React.FC = () => {
           </div>
         </div>
       ) : (
-        /* ── SUMMARY MODE (WEEKLY / MONTHLY) ── */
+        /* ── SUMMARY MODE (WEEKLY) ── */
         <div className="space-y-6">
           {/* Controls */}
           <div className="bg-white rounded-lg p-5 space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-4 border-b border-[#E3E3E8] pb-4">
               <div className="inline-flex bg-[#F5F5F7] border border-[#E3E3E8] rounded-md p-1">
                 <button
-                  onClick={() => setCycle('Weekly')}
                   className={`px-4 py-1.5 rounded-sm text-xs font-semibold transition-all ${cycle === 'Weekly' ? 'bg-[#635BFF] text-white shadow-sm' : 'text-[#6B6B76] hover:text-[#1A1A1F]'
                     }`}
                 >
                   Mingguan
-                </button>
-                <button
-                  onClick={() => setCycle('Monthly')}
-                  className={`px-4 py-1.5 rounded-sm text-xs font-semibold transition-all ${cycle === 'Monthly' ? 'bg-[#635BFF] text-white shadow-sm' : 'text-[#6B6B76] hover:text-[#1A1A1F]'
-                    }`}
-                >
-                  Bulanan
                 </button>
               </div>
 

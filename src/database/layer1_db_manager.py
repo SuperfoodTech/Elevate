@@ -108,8 +108,10 @@ class DatabaseManager:
         
         # QA-5: Delete-before-Insert Idempotency Logic
         order_ids = df_stg["Transaction ID (Order ID)"].dropna().unique().tolist()
+        df_stg = df_stg.drop_duplicates(subset=["Transaction ID (Order ID)"], keep="last")
         
         with self.engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"), {"lock_name": "ingest:shopee"})
             if order_ids:
                 print(f"[DB] Cleaning {len(order_ids)} existing Shopee raw records to ensure idempotency...")
                 conn.execute(
@@ -181,8 +183,10 @@ class DatabaseManager:
 
         # QA-5: Delete-before-Insert Idempotency Logic
         order_ids = df_stg["Long Order ID"].dropna().unique().tolist()
+        df_stg = df_stg.drop_duplicates(subset=["Long Order ID"], keep="last")
 
         with self.engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"), {"lock_name": "ingest:grab"})
             if order_ids:
                 print(f"[DB] Cleaning {len(order_ids)} existing Grab raw records to ensure idempotency...")
                 conn.execute(
@@ -260,17 +264,31 @@ class DatabaseManager:
         for col in target_cols:
             df_stg[col] = df_stg[col].apply(raw_string_format)
 
-        # QA-5: Delete-before-Insert Idempotency Logic
-        keys = df_stg[["Tanggal", "Store ID"]].dropna().drop_duplicates().values.tolist()
+        # QA-5: Delete-before-Insert Idempotency Logic.
+        # The normalized raw schema uses Transaction ID / Order ID; it does
+        # not contain the old Tanggal / Store ID column names.
+        df_stg["_dedupe_key"] = df_stg["Transaction ID"].fillna("").astype(str).str.strip()
+        fallback = df_stg["Order ID"].fillna("").astype(str).str.strip()
+        df_stg.loc[(df_stg["_dedupe_key"] == "") | (df_stg["_dedupe_key"].str.lower() == "nan"), "_dedupe_key"] = "ORDER:" + fallback
+        df_stg = df_stg[(df_stg["_dedupe_key"] != "") & (df_stg["_dedupe_key"].str.lower() != "nan")]
+        df_stg = df_stg.drop_duplicates(subset=["_dedupe_key"], keep="last").drop(columns=["_dedupe_key"])
+        transaction_ids = df_stg["Transaction ID"].dropna().unique().tolist()
+        fallback_order_ids = df_stg.loc[
+            df_stg["Transaction ID"].isna() | (df_stg["Transaction ID"].str.strip() == ""), "Order ID"
+        ].dropna().unique().tolist()
 
         with self.engine.begin() as conn:
-            if keys:
-                print(f"[DB] Cleaning existing GoFood raw records matching {len(keys)} period-merchant combinations...")
-                for tanggal, store_id in keys:
-                    conn.execute(
-                        text("DELETE FROM layer1_raw.raw_go WHERE \"Tanggal\" = :tanggal AND \"Store ID\" = :store_id"),
-                        {"tanggal": tanggal, "store_id": store_id}
-                    )
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"), {"lock_name": "ingest:gofood"})
+            if transaction_ids:
+                conn.execute(
+                    text('DELETE FROM layer1_raw.raw_go WHERE "Transaction ID" = ANY(:ids)'),
+                    {"ids": transaction_ids}
+                )
+            if fallback_order_ids:
+                conn.execute(
+                    text('DELETE FROM layer1_raw.raw_go WHERE "Order ID" = ANY(:ids) AND NULLIF(TRIM("Transaction ID"), \'\') IS NULL'),
+                    {"ids": fallback_order_ids}
+                )
             df_stg.to_sql('raw_go', conn, schema='layer1_raw', if_exists='append', index=False)
             
         print("[DB] GoFood raw ingestion completed.")

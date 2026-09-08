@@ -161,7 +161,7 @@ def normalize_all():
     """
     
     # 2. GoFood Normalization Query (1:1 Aligned with layer1_raw.raw_go)
-    gofood_query = """
+    gofood_query = r"""
     TRUNCATE TABLE layer2_clean.stg_go_orders;
 
     WITH go_ranked AS (
@@ -175,26 +175,26 @@ def normalize_all():
                 NULLIF(TRIM(raw."Transaction ID"), '')
             ) AS order_id,
             TRIM(raw."Transaction ID") AS transaction_id,
-            CAST(CASE WHEN TRIM(raw."Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Amount") ELSE '0' END AS NUMERIC(15,2)) AS amount,
-            CAST(CASE WHEN TRIM(raw."Net Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Net Amount") ELSE '0' END AS NUMERIC(15,2)) AS net_amount,
+            CAST(CASE WHEN TRIM(raw."Amount") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Amount") ELSE '0' END AS NUMERIC(15,2)) AS amount,
+            CAST(CASE WHEN TRIM(raw."Net Amount") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Net Amount") ELSE '0' END AS NUMERIC(15,2)) AS net_amount,
             TRIM(raw."Transaction Time")::TIMESTAMPTZ::TIMESTAMP AS transaction_time,
             TRIM(raw."Payment Type") AS payment_type,
             TRIM(raw."GoPay Promo") AS gopay_promo,
             TRIM(raw."Promo Type") AS promo_type,
             TRIM(raw."Promo Name") AS promo_name,
-            CAST(CASE WHEN TRIM(raw."Merchant Promo Contribution") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Merchant Promo Contribution") ELSE '0' END AS NUMERIC(15,2)) AS merchant_promo_contribution,
+            CAST(CASE WHEN TRIM(raw."Merchant Promo Contribution") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Merchant Promo Contribution") ELSE '0' END AS NUMERIC(15,2)) AS merchant_promo_contribution,
             TRIM(raw."Voucher Description") AS voucher_description,
-            CAST(CASE WHEN TRIM(raw."GoFood Discount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."GoFood Discount") ELSE '0' END AS NUMERIC(15,2)) AS gofood_discount,
-            CAST(CASE WHEN TRIM(raw."Voucher Commission") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Voucher Commission") ELSE '0' END AS NUMERIC(15,2)) AS voucher_commission,
-            CAST(CASE WHEN TRIM(raw."Total Fee") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Total Fee") ELSE '0' END AS NUMERIC(15,2)) AS total_fee,
-            CAST(CASE WHEN TRIM(raw."Value Added Tax") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Value Added Tax") ELSE '0' END AS NUMERIC(15,2)) AS value_added_tax,
-            CAST(CASE WHEN TRIM(raw."Restaurant Tax") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Restaurant Tax") ELSE '0' END AS NUMERIC(15,2)) AS restaurant_tax,
-            CAST(CASE WHEN TRIM(raw."Service") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Service") ELSE '0' END AS NUMERIC(15,2)) AS service,
-            CAST(CASE WHEN TRIM(raw."Withholding Tax") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Withholding Tax") ELSE '0' END AS NUMERIC(15,2)) AS withholding_tax,
+            CAST(CASE WHEN TRIM(raw."GoFood Discount") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."GoFood Discount") ELSE '0' END AS NUMERIC(15,2)) AS gofood_discount,
+            CAST(CASE WHEN TRIM(raw."Voucher Commission") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Voucher Commission") ELSE '0' END AS NUMERIC(15,2)) AS voucher_commission,
+            CAST(CASE WHEN TRIM(raw."Total Fee") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Total Fee") ELSE '0' END AS NUMERIC(15,2)) AS total_fee,
+            CAST(CASE WHEN TRIM(raw."Value Added Tax") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Value Added Tax") ELSE '0' END AS NUMERIC(15,2)) AS value_added_tax,
+            CAST(CASE WHEN TRIM(raw."Restaurant Tax") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Restaurant Tax") ELSE '0' END AS NUMERIC(15,2)) AS restaurant_tax,
+            CAST(CASE WHEN TRIM(raw."Service") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Service") ELSE '0' END AS NUMERIC(15,2)) AS service,
+            CAST(CASE WHEN TRIM(raw."Withholding Tax") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Withholding Tax") ELSE '0' END AS NUMERIC(15,2)) AS withholding_tax,
             TO_CHAR(TRIM(raw."Transaction Time")::TIMESTAMPTZ, 'YYYY-MM') AS month,
             CAST(SUBSTRING(TRIM(raw."Transaction Time") FROM 1 FOR 10) AS DATE) AS date,
-            (CAST(CASE WHEN TRIM(raw."Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Amount") ELSE '0' END AS NUMERIC(15,2)) - 
-             CAST(CASE WHEN TRIM(raw."Net Amount") ~ r'^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Net Amount") ELSE '0' END AS NUMERIC(15,2))) AS total_platform_deduction,
+            (CAST(CASE WHEN TRIM(raw."Amount") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Amount") ELSE '0' END AS NUMERIC(15,2)) -
+             CAST(CASE WHEN TRIM(raw."Net Amount") ~ '^-?[0-9]+(\.[0-9]+)?$' THEN TRIM(raw."Net Amount") ELSE '0' END AS NUMERIC(15,2))) AS total_platform_deduction,
             ROW_NUMBER() OVER(
                 PARTITION BY COALESCE(NULLIF(TRIM(raw."Order ID"), ''), NULLIF(TRIM(raw."Transaction ID"), '')) 
                 ORDER BY raw."Transaction Time" DESC
@@ -321,4 +321,3 @@ def normalize_all():
 
 if __name__ == "__main__":
     normalize_all()
-

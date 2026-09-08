@@ -344,8 +344,8 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Komposisi Platform Ojol */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-[#EBEBEF] p-6 flex flex-col justify-between">
+        {/* Komposisi Platform Ojol — disembunyikan sementara */}
+        {false && <div className="lg:col-span-2 bg-white rounded-xl border border-[#EBEBEF] p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between border-b border-[#EBEBEF] pb-3 mb-4">
               <div className="flex items-center gap-2">
@@ -411,7 +411,7 @@ export const DashboardPage: React.FC = () => {
               Buka Rangkuman Performa →
             </Link>
           </div>
-        </div>
+        </div>}
 
       </div>
 

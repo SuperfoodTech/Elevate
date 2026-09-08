@@ -16,6 +16,11 @@ def init_db():
     print("Executing SQL statements on remote database...")
     with db.engine.begin() as conn:
         conn.execute(text(sql))
+        agency_rules_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agency_settlement_rules.sql")
+        if os.path.exists(agency_rules_path):
+            print(f"Applying Agency settlement rules from {agency_rules_path}...")
+            with open(agency_rules_path, "r", encoding="utf-8") as f:
+                conn.execute(text(f.read()))
     print("Database schema successfully initialized!")
 
 if __name__ == "__main__":

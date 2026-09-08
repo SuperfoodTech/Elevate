@@ -59,13 +59,13 @@ SELECT
     COALESCE(m.brand, 'UNKNOWN') AS brand,
     COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN') AS nama_resto_final,
     ft.merchant_id AS store_id,
-    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS nominal_bagi_hasil_per_order,
+    NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC AS nominal_bagi_hasil_per_order,
     ft.transaction_date,
     SUM(CASE WHEN ft.is_success = 1 THEN ft.net_sales ELSE 0.00 END) AS pendapatan_kotor,
     SUM(CASE WHEN ft.is_success = 1 THEN ft.ofd_fees ELSE 0.00 END) AS potongan_ojol,
     SUM(CASE WHEN ft.is_success = 1 THEN ft.revenue ELSE 0.00 END) AS pendapatan_bersih,
     COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) AS total_order_sukses,
-    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS total_bagi_hasil
+    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC AS total_bagi_hasil
 FROM layer3_dim.fact_transactions ft
 LEFT JOIN layer3_dim.dim_merchant_credentials c ON ft.merchant_id = c.store_id
 LEFT JOIN layer3_dim.dim_merchant_mapping m ON ft.merchant_id = m.store_id
@@ -76,7 +76,7 @@ GROUP BY
     COALESCE(m.brand, 'UNKNOWN'),
     COALESCE(m.nama_resto_final, ft.branch_name, 'UNKNOWN'),
     ft.merchant_id,
-    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
+    NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC,
     ft.transaction_date;
 
 DROP INDEX IF EXISTS layer3_dim.idx_mv_payment_daily;
@@ -119,7 +119,6 @@ BEGIN
             SUM(mv.total_order_sukses)::BIGINT AS os,
             SUM(
                 CASE 
-                    WHEN p_override_nominal_bagi_hasil IS NOT NULL THEN mv.total_order_sukses * p_override_nominal_bagi_hasil
                     ELSE mv.total_bagi_hasil
                 END
             ) AS bh
@@ -205,10 +204,10 @@ SELECT
         ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
     END) AS periode,
     COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END)::BIGINT AS jumlah_order_sukses,
-    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS biaya,
-    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS subtotal_tagihan,
+    NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC AS biaya,
+    COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC AS subtotal_tagihan,
     COALESCE(p.penyesuaian, 0.00) AS penyesuaian,
-    (COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00)) + COALESCE(p.penyesuaian, 0.00) AS total_tagihan,
+    (COUNT(CASE WHEN ft.is_success = 1 AND COALESCE(ft.context, '') <> 'Advertisement' THEN 1 END) * NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC) + COALESCE(p.penyesuaian, 0.00) AS total_tagihan,
     COALESCE(p.tanggal_tagihan, 
         CASE 
             WHEN (CASE WHEN UPPER(COALESCE(m.billing_cycle, 'MONTHLY')) = 'WEEKLY' THEN TO_CHAR(ft.transaction_date, 'YYYY-MM') || '-W' || TO_CHAR(ft.transaction_date, 'W') ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM') END) LIKE '%-W1' THEN (SUBSTRING(TO_CHAR(ft.transaction_date, 'YYYY-MM') FROM 1 FOR 7) || '-08')::DATE
@@ -257,7 +256,7 @@ GROUP BY
         ELSE TO_CHAR(ft.transaction_date, 'YYYY-MM')
     END),
     TO_CHAR(ft.transaction_date, 'YYYY-MM'),
-    COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00),
+    NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC,
     p.penyesuaian,
     p.tanggal_tagihan,
     p.transfer_id,
@@ -358,7 +357,7 @@ BEGIN
             COALESCE(m.brand, 'UNKNOWN') AS b_name,
             COALESCE(m.nama_resto_final, 'UNKNOWN') AS r_name,
             m.store_id AS s_id,
-            COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC, 1000.00) AS fee_val
+            NULLIF(REGEXP_REPLACE(m.fee, '[^0-9]', '', 'g'), '')::NUMERIC AS fee_val
         FROM layer3_dim.dim_merchant_mapping m
         LEFT JOIN layer3_dim.dim_merchant_credentials c ON m.store_id = c.store_id
         CROSS JOIN target_cycle tc

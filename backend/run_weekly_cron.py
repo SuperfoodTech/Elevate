@@ -48,6 +48,47 @@ def get_previous_week_range():
     
     return last_monday.strftime("%Y-%m-%d"), last_sunday.strftime("%Y-%m-%d")
 
+
+def sync_business_grouping(python_exe):
+    """Consume the manually approved Agency/VB grouping snapshot once per run."""
+    grouping_script = os.path.join(base_dir, "..", "src", "database", "sync_business_grouping.py")
+    cmd = [python_exe, "-u", grouping_script, "--trigger", "SCHEDULED"]
+    log.info(f"Syncing approved business grouping: {' '.join(cmd)}")
+    result = subprocess.run(
+        cmd,
+        cwd=base_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env={**os.environ, "PYTHONUNBUFFERED": "1", "TZ": "Asia/Jakarta"},
+        check=False,
+    )
+    for line in result.stdout.splitlines():
+        log.info(line)
+    if result.returncode != 0:
+        raise RuntimeError(f"Business grouping sync failed with exit code {result.returncode}")
+
+
+def refresh_agency_settlements(python_exe):
+    """Build the Monday-Sunday owner settlement snapshot after ingestion."""
+    settlement_script = os.path.join(base_dir, "..", "src", "database", "refresh_agency_settlements.py")
+    cmd = [python_exe, "-u", settlement_script, "--apply-rules"]
+    log.info(f"Refreshing Agency settlement snapshot: {' '.join(cmd)}")
+    result = subprocess.run(
+        cmd,
+        cwd=base_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env={**os.environ, "PYTHONUNBUFFERED": "1", "TZ": "Asia/Jakarta"},
+        check=False,
+    )
+    for line in result.stdout.splitlines():
+        log.info(line)
+    if result.returncode != 0:
+        raise RuntimeError(f"Agency settlement refresh failed with exit code {result.returncode}")
+
+
 def main():
     log.info("=" * 60)
     log.info("🚀 STARTING WEEKLY AGENCY AUTOMATED CRON JOB")
@@ -79,6 +120,8 @@ def main():
     env["TZ"] = "Asia/Jakarta"
     
     try:
+        sync_business_grouping(venv_py)
+
         # Run process and pipe output to log
         process = subprocess.Popen(
             cmd,
@@ -96,6 +139,7 @@ def main():
         process.wait()
         
         if process.returncode == 0:
+            refresh_agency_settlements(python_exe)
             log.info("✅ WEEKLY AUTOMATED CRON JOB FINISHED SUCCESSFULLY!")
         else:
             log.error(f"❌ WEEKLY AUTOMATED CRON JOB FAILED WITH EXIT CODE {process.returncode}")

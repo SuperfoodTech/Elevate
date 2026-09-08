@@ -20,7 +20,7 @@ except ImportError:
         def __enter__(self): return self
         def __exit__(self, *a): pass
 import time
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 import sys
 from pathlib import Path
@@ -678,12 +678,28 @@ def login_outlet_gofood_flow(outlet_info):
                     break
                     
                 page = context.new_page()
-                if current_email:
-                    console.print(f"\n   ➡️ [Email: {current_email}] Membuka halaman login email langsung... (Percobaan {attempt + 1}/{max_login_attempts})")
-                    page.goto("https://portal.gofoodmerchant.co.id/auth/login/email", wait_until="load")
-                else:
-                    console.print(f"\n   ➡️ Membuka halaman login... (Percobaan {attempt + 1}/{max_login_attempts})")
-                    page.goto("https://portal.gofoodmerchant.co.id/auth/login", wait_until="load")
+                login_url = (
+                    "https://portal.gofoodmerchant.co.id/auth/login/email"
+                    if current_email
+                    else "https://portal.gofoodmerchant.co.id/auth/login"
+                )
+                console.print(
+                    f"\n   ➡️ Membuka halaman login{' email langsung' if current_email else ''}... "
+                    f"(Percobaan {attempt + 1}/{max_login_attempts})"
+                )
+                try:
+                    # The portal can keep secondary resources open for a long time.
+                    # DOMContentLoaded is sufficient because the next step only
+                    # needs the email/login form, not every asset on the page.
+                    page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
+                except PlaywrightTimeoutError:
+                    # A timeout can happen after the HTML has already rendered.
+                    # Continue and let the form selector below decide whether the
+                    # page is usable; this avoids failing on slow assets.
+                    console.print(
+                        "   [warning]⚠️ Halaman login lambat memuat; "
+                        "melanjutkan dengan DOM yang sudah tersedia...[/warning]"
+                    )
 
                 # Langsung input ke email field, abaikan cookie & pop-up
                 time.sleep(1.0)
@@ -1463,6 +1479,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-sheet", action="store_true", help="Nonaktifkan pengiriman data ke Google Sheets")
     parser.add_argument("--task", type=str, default="2", help="Task choice: 1 for baseline, 2 for weekly, 3 for VB")
     parser.add_argument("--db", action="store_true", help="Enable database ingestion to layer1_raw schema")
+    parser.add_argument("--skip-existing", action="store_true", help="Skip outlet files already present in the output directory")
     args_cli = parser.parse_args()
 
     if args_cli.output_dir:
@@ -1785,6 +1802,17 @@ if __name__ == "__main__":
             active_nama = target["nama_outlet"]
             active_cabang = target["cabang"]
 
+            if args_cli.skip_existing:
+                safe_target = f"{active_nama}_{active_cabang}_{active_store_id}" if active_cabang and active_cabang.lower() != 'tanpa cabang' else f"{active_nama}_{active_store_id}"
+                safe_target = safe_target.strip().replace(" ", "_").replace("/", "_").replace("\\", "_")
+                existing_target_files = [
+                    filename for filename in os.listdir(GLOBAL_OUTPUT_DIR or "")
+                    if filename.startswith(safe_target) and filename.endswith(".xlsx")
+                ] if (GLOBAL_OUTPUT_DIR and os.path.isdir(GLOBAL_OUTPUT_DIR)) else []
+                if existing_target_files:
+                    console.print(f"[dim]⏭️ Melewati outlet yang sudah memiliki file: {active_nama} - {active_cabang}[/dim]")
+                    continue
+
             os.environ['ACTIVE_STORE_ID']    = active_store_id
             os.environ['ACTIVE_NAMA_OUTLET'] = active_nama
             os.environ['ACTIVE_CABANG']      = active_cabang
@@ -1892,4 +1920,3 @@ if __name__ == "__main__":
     console.print("\n[bold]" + "="*50 + "[/bold]")
     console.print("[success]✅ Semua proses selesai![/success]")
     console.print("[bold]" + "="*50 + "[/bold]")
-

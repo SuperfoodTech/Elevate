@@ -106,6 +106,59 @@ def _load_excel_dataframe(output_dir: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+def _insert_idempotent_single_key(engine, table: str, df: pd.DataFrame, key_column: str, lock_name: str):
+    """Insert only new rows, safely across retries and concurrent ingest jobs."""
+    work = df.copy()
+    work["_dedupe_key"] = work[key_column].fillna("").astype(str).str.strip()
+    work = work[(work["_dedupe_key"] != "") & (work["_dedupe_key"].str.lower() != "nan")]
+    work = work.drop_duplicates(subset=["_dedupe_key"], keep="last")
+    total_rows = len(df)
+
+    with engine.begin() as conn:
+        # Serialize ingests for the same source. The lock is held until commit.
+        conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"), {"lock_name": lock_name})
+        existing = conn.execute(
+            text(f'SELECT DISTINCT "{key_column}" FROM layer1_raw.{table} '
+                 f'WHERE "{key_column}" IS NOT NULL AND TRIM("{key_column}") <> \'\'')
+        ).scalars().all()
+        existing_keys = {str(value).strip() for value in existing if value is not None}
+        new_df = work[~work["_dedupe_key"].isin(existing_keys)].drop(columns=["_dedupe_key"])
+        if not new_df.empty:
+            new_df.to_sql(table, conn, schema="layer1_raw", if_exists="append", index=False)
+
+    return len(new_df), total_rows - len(new_df)
+
+
+def _insert_idempotent_gofood(engine, df: pd.DataFrame):
+    """GoFood uses Transaction ID, falling back to Order ID when needed."""
+    work = df.copy()
+    tx = work["Transaction ID"].fillna("").astype(str).str.strip()
+    order = work["Order ID"].fillna("").astype(str).str.strip()
+    work["_dedupe_key"] = tx.where((tx != "") & (tx.str.lower() != "nan"), "ORDER:" + order)
+    work = work[(work["_dedupe_key"] != "") & (work["_dedupe_key"].str.lower() != "nan")]
+    work = work.drop_duplicates(subset=["_dedupe_key"], keep="last")
+    total_rows = len(df)
+
+    with engine.begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"), {"lock_name": "ingest:gofood"})
+        existing = conn.execute(text(
+            'SELECT "Transaction ID", "Order ID" FROM layer1_raw.raw_go'
+        )).all()
+        existing_keys = set()
+        for existing_tx, existing_order in existing:
+            tx_value = str(existing_tx).strip() if existing_tx is not None else ""
+            order_value = str(existing_order).strip() if existing_order is not None else ""
+            if tx_value and tx_value.lower() != "nan":
+                existing_keys.add(tx_value)
+            elif order_value and order_value.lower() != "nan":
+                existing_keys.add("ORDER:" + order_value)
+        new_df = work[~work["_dedupe_key"].isin(existing_keys)].drop(columns=["_dedupe_key"])
+        if not new_df.empty:
+            new_df.to_sql("raw_go", conn, schema="layer1_raw", if_exists="append", index=False)
+
+    return len(new_df), total_rows - len(new_df)
+
+
 def ingest_grab_to_db(output_dir: str) -> bool:
     """
     Ingests Grab data from output_dir into layer1_raw.raw_grab with anti-duplication protection.
@@ -169,29 +222,14 @@ def ingest_grab_to_db(output_dir: str) -> bool:
 
     engine = get_db_engine()
     try:
-        with engine.connect() as conn:
-            # Query existing Transaction IDs from DB
-            query_sql = text('SELECT DISTINCT "Transaction ID" FROM layer1_raw.raw_grab WHERE "Transaction ID" IS NOT NULL AND "Transaction ID" != \'\'')
-            existing_result = conn.execute(query_sql).fetchall()
-            existing_ids = {str(r[0]).strip() for r in existing_result if r[0] is not None}
-
         total_rows = len(df_stg)
-        # Clean Transaction ID in DataFrame for exact set comparison
-        df_stg["_clean_tx_id"] = df_stg["Transaction ID"].astype(str).str.strip()
-
-        # Deduplicate
-        new_df = df_stg[~df_stg["_clean_tx_id"].isin(existing_ids) & df_stg["_clean_tx_id"].notna() & (df_stg["_clean_tx_id"] != "None") & (df_stg["_clean_tx_id"] != "")].copy()
-        new_df = new_df.drop(columns=["_clean_tx_id"])
-
-        new_count = len(new_df)
-        skipped_count = total_rows - new_count
+        new_count, skipped_count = _insert_idempotent_single_key(
+            engine, "raw_grab", df_stg, "Transaction ID", "ingest:grab"
+        )
 
         if new_count == 0:
             print(f"  {CYAN}ℹ [DUPLICATE CHECK] Semua {total_rows} baris sudah ada di database (0 baris baru di-insert).{RESET}")
             return True
-
-        with engine.begin() as conn:
-            new_df.to_sql('raw_grab', conn, schema='layer1_raw', if_exists='append', index=False)
 
         print(f"  {GREEN}✅ [SUCCESS] Ingest Grab ke layer1_raw.raw_grab selesai:{RESET}")
         print(f"     • Total baris dalam file : {total_rows}")
@@ -276,26 +314,14 @@ def ingest_shopee_to_db(output_dir: str) -> bool:
 
     engine = get_db_engine()
     try:
-        with engine.connect() as conn:
-            query_sql = text('SELECT DISTINCT "Transaction ID (Order ID)" FROM layer1_raw.raw_shopee WHERE "Transaction ID (Order ID)" IS NOT NULL AND "Transaction ID (Order ID)" != \'\'')
-            existing_result = conn.execute(query_sql).fetchall()
-            existing_ids = {str(r[0]).strip() for r in existing_result if r[0] is not None}
-
         total_rows = len(df_stg)
-        df_stg["_clean_tx_id"] = df_stg["Transaction ID (Order ID)"].astype(str).str.strip()
-
-        new_df = df_stg[~df_stg["_clean_tx_id"].isin(existing_ids) & df_stg["_clean_tx_id"].notna() & (df_stg["_clean_tx_id"] != "None") & (df_stg["_clean_tx_id"] != "")].copy()
-        new_df = new_df.drop(columns=["_clean_tx_id"])
-
-        new_count = len(new_df)
-        skipped_count = total_rows - new_count
+        new_count, skipped_count = _insert_idempotent_single_key(
+            engine, "raw_shopee", df_stg, "Transaction ID (Order ID)", "ingest:shopee"
+        )
 
         if new_count == 0:
             print(f"  {CYAN}ℹ [DUPLICATE CHECK] Semua {total_rows} baris sudah ada di database (0 baris baru di-insert).{RESET}")
             return True
-
-        with engine.begin() as conn:
-            new_df.to_sql('raw_shopee', conn, schema='layer1_raw', if_exists='append', index=False)
 
         print(f"  {GREEN}✅ [SUCCESS] Ingest Shopee ke layer1_raw.raw_shopee selesai:{RESET}")
         print(f"     • Total baris dalam file : {total_rows}")
@@ -399,33 +425,12 @@ def ingest_gofood_to_db(output_dir: str) -> bool:
 
     engine = get_db_engine()
     try:
-        with engine.connect() as conn:
-            # Query existing Transaction IDs / Order IDs
-            query_sql = text('SELECT DISTINCT "Transaction ID", "Order ID" FROM layer1_raw.raw_go')
-            existing_result = conn.execute(query_sql).fetchall()
-            existing_tx_ids = {str(r[0]).strip() for r in existing_result if r[0] is not None and str(r[0]).strip() != ""}
-            existing_order_ids = {str(r[1]).strip() for r in existing_result if r[1] is not None and str(r[1]).strip() != ""}
-
         total_rows = len(df_stg)
-
-        clean_tx = df_stg["Transaction ID"].astype(str).str.strip()
-        clean_order = df_stg["Order ID"].astype(str).str.strip()
-
-        # Deduplicate by Transaction ID or Order ID
-        is_new_tx = ~clean_tx.isin(existing_tx_ids) & clean_tx.notna() & (clean_tx != "None") & (clean_tx != "")
-        is_new_order = ~clean_order.isin(existing_order_ids) & clean_order.notna() & (clean_order != "None") & (clean_order != "")
-        
-        new_df = df_stg[is_new_tx | (clean_tx.isin(["None", "", "nan"]) & is_new_order)].copy()
-
-        new_count = len(new_df)
-        skipped_count = total_rows - new_count
+        new_count, skipped_count = _insert_idempotent_gofood(engine, df_stg)
 
         if new_count == 0:
             print(f"  {CYAN}ℹ [DUPLICATE CHECK] Semua {total_rows} baris sudah ada di database (0 baris baru di-insert).{RESET}")
             return True
-
-        with engine.begin() as conn:
-            new_df.to_sql('raw_go', conn, schema='layer1_raw', if_exists='append', index=False)
 
         print(f"  {GREEN}✅ [SUCCESS] Ingest GoFood V2 ke layer1_raw.raw_go selesai:{RESET}")
         print(f"     • Total baris dalam file : {total_rows}")
@@ -436,4 +441,3 @@ def ingest_gofood_to_db(output_dir: str) -> bool:
     except Exception as e:
         print(f"  {RED}❌ [DB ERROR] Gagal ingest GoFood ke DB: {e}{RESET}")
         return False
-

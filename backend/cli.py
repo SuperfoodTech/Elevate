@@ -222,7 +222,7 @@ def run_shopee(start_date: str, end_date: str, merchant_filter: str = None, skip
     result = subprocess.run(cmd, cwd=shopee_dir)
     return result.returncode == 0
 
-def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch_filter: str = None, task_choice: str = "2", no_sheet: bool = False, clear_cache: bool = False):
+def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch_filter: str = None, task_choice: str = "2", no_sheet: bool = False, clear_cache: bool = False, skip_existing: bool = False):
     """
     Delegates to the GoFood Login/Dashboard utility.
     Working directory is set to gofood so that
@@ -256,6 +256,8 @@ def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch
         cmd.append("--no-sheet")
     if clear_cache:
         cmd.append("--clear-cache")
+    if skip_existing:
+        cmd.append("--skip-existing")
 
     label = "BASELINE" if task_choice == "1" else "WEEKLY"
     print(f"\n{YELLOW}{BOLD}▶ GOFOOD {label} PIPELINE{RESET}")
@@ -281,39 +283,13 @@ def run_normalization() -> bool:
     """
     Menjalankan proses Pembersihan & Normalisasi Layer 2 dan Refresh Master Table (public.fact_transactions).
     """
-    import sys as _sys
-    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "gofood")
-    send_data_path = os.path.join(gofood_dir, "send_data.py")
-
-    if not os.path.isfile(send_data_path):
-        print(f"{RED}[ERROR]{RESET} send_data.py tidak ditemukan: {send_data_path}")
-        return False
-
-    if task_choice == "1":
-        raw_folder = _resolve_output_dir("gofood_baseline", start_date, end_date)
-    else:
-        raw_folder = _resolve_output_dir("gofood", start_date, end_date)
-    if not os.path.isdir(raw_folder):
-        print(f"  {YELLOW}⚠ Folder raw GoFood tidak ditemukan: {raw_folder}{RESET}")
-        print(f"  {DIM}Pastikan scraping GoFood sudah selesai terlebih dahulu.{RESET}")
-        return False
-
-    print(f"\n{YELLOW}{BOLD}▶ KIRIM DATA GOFOOD → GOOGLE SHEET{RESET}")
-    print(f"  {DIM}Folder  : {raw_folder}{RESET}")
-    print(f"  {DIM}Sheet   : {sheet_name}{RESET}")
-    print(f"  {DIM}Range   : {start_date} → {end_date}{RESET}")
-    print()
-
-    if gofood_dir not in _sys.path:
-        _sys.path.insert(0, gofood_dir)
-
     try:
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         db_dir = os.path.join(project_root, "src", "database")
         if db_dir not in sys.path:
             sys.path.insert(0, db_dir)
         
-        from normalize_layer2 import normalize_all
+        from layer2_normalize import normalize_all
         normalize_all()
         return True
     except Exception as e:
@@ -891,7 +867,7 @@ def main():
             if platform in ("gofood", "all"):
                 go_str = "|".join(gofood_outlet) if gofood_outlet else None
                 b_str = "|".join(branch) if branch else None
-                results["GoFood"] = run_gofood(start_date, end_date, outlet_filter=go_str, branch_filter=b_str, task_choice="2")
+                results["GoFood"] = run_gofood(start_date, end_date, outlet_filter=go_str, branch_filter=b_str, task_choice="2", skip_existing=skip_existing)
 
                 # ── Auto / Prompt Ingest GoFood ke DB ──
                 if results.get("GoFood"):
