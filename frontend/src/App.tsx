@@ -12,6 +12,7 @@ import { OwnersPage } from './pages/OwnersPage';
 import { OwnerDetailPage } from './pages/OwnerDetailPage';
 import { OutletDetailPage } from './pages/OutletDetailPage';
 import { TransactionExplorerPage } from './pages/TransactionExplorerPage';
+import { TransactionDetailPage } from './pages/TransactionDetailPage';
 
 
 export const App: React.FC = () => {
@@ -28,7 +29,7 @@ export const App: React.FC = () => {
         <Route path="/outlets" element={<PlaceholderPage />} />
         <Route path="/outlets/:id" element={<OutletDetailPage />} />
         <Route path="/transactions" element={<TransactionExplorerPage />} />
-        <Route path="/transactions/:orderId" element={<PlaceholderPage />} />
+        <Route path="/transactions/:orderId" element={<TransactionDetailPage />} />
         <Route path="/settlement" element={<PerformaComparisonPage />} />
         <Route path="/reports" element={<LaporanPerformaPage />} />
         <Route path="/payments" element={<RekapBillingPage />} />
