@@ -83,3 +83,7 @@ src/data/discord_notifications/
 # Local development / agent cache
 database.bak/
 .agent/
+
+# Design mockups & local specification docs
+Elevate*.png
+FSR*.md

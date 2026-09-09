@@ -9,13 +9,25 @@ interface DashboardLayoutProps {
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ title, subtitle, children }) => {
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+    return localStorage.getItem('elevate_sidebar_collapsed') === 'true';
+  });
+
+  const toggleCollapse = () => {
+    setCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('elevate_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   return (
     <div className="flex min-h-screen bg-white">
-      {/* 240px Fixed Left Sidebar */}
-      <AppSidebar />
+      {/* Collapsible Left Sidebar */}
+      <AppSidebar collapsed={collapsed} onToggleCollapse={toggleCollapse} />
 
       {/* Main Workspace Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 transition-all duration-200 ease-in-out">
         <HeaderTopbar title={title} subtitle={subtitle} />
 
         <main className="p-8 flex-1 max-w-[1400px] w-full mx-auto space-y-6">
