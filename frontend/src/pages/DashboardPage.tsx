@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { fetchCached } from '../services/api';
@@ -162,6 +162,19 @@ export const DashboardPage: React.FC = () => {
 
   const bagiHasilPending = Number(data?.kpi?.bagi_hasil_pending ?? data?.billing?.total_outstanding ?? data?.billing?.bagi_hasil_pending ?? 133320000);
   const jumlahPending = Number(data?.kpi?.jumlah_pending ?? data?.billing?.jumlah_outstanding ?? data?.billing?.jumlah_pending ?? 1986);
+
+  const platformList = useMemo<PlatformRow[]>(() => {
+    const junePlatformFallback: PlatformRow[] = [
+      { channel: 'GrabFood', gmv: 316817440, orders: 5098 },
+      { channel: 'ShopeeFood', gmv: 64325853, orders: 16282 },
+      { channel: 'GoFood', gmv: 270000, orders: 6 }
+    ];
+    if (!data || !data.platform_breakdown) return junePlatformFallback;
+    if (data.platform_breakdown.some(p => p.channel === 'ShopeeFood')) {
+      return data.platform_breakdown;
+    }
+    return junePlatformFallback;
+  }, [data]);
 
   const outletLive = Number(data?.kpi?.outlet_live ?? 216);
   const outletPending = Number(data?.kpi?.outlet_pending ?? 12);
@@ -362,49 +375,38 @@ export const DashboardPage: React.FC = () => {
 
             {loading ? (
               <Skeleton className="h-44 w-full mt-3" />
-            ) : (() => {
-              const junePlatformFallback = [
-                { channel: 'GrabFood', gmv: 316817440, orders: 5098 },
-                { channel: 'ShopeeFood', gmv: 64325853, orders: 16282 },
-                { channel: 'GoFood', gmv: 270000, orders: 6 }
-              ];
-              const platformList = (data?.platform_breakdown && data.platform_breakdown.some(p => p.channel === 'ShopeeFood'))
-                ? data.platform_breakdown
-                : junePlatformFallback;
-
-              return (
-                <>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <PieChart>
-                      <Pie data={platformList} dataKey="gmv" nameKey="channel" cx="50%" cy="50%" innerRadius={48} outerRadius={70} paddingAngle={3}>
-                        {platformList.map(p => (
-                          <Cell key={p.channel} fill={PLATFORM_COLORS[p.channel] ?? '#9C9CA6'} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(val) => [`Rp ${IDR(Number(val ?? 0), true)}`, 'GMV']} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #EBEBEF' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-1.5 mt-2">
-                    {platformList.map(p => {
-                      const total = platformList.reduce((s, x) => s + Number(x.gmv), 0);
-                      const pct = total > 0 ? ((Number(p.gmv) / total) * 100).toFixed(1) : '0';
-                      return (
-                        <div key={p.channel} className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PLATFORM_COLORS[p.channel] ?? '#9C9CA6' }} />
-                            <span className="font-medium text-[#3D3D47]">{p.channel}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[#9C9CA6] tabular-nums">{NUM(p.orders)} order</span>
-                            <span className="font-bold text-[#1A1A1F] tabular-nums w-8 text-right">{pct}%</span>
-                          </div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={160}>
+                  <PieChart>
+                    <Pie data={platformList} dataKey="gmv" nameKey="channel" cx="50%" cy="50%" innerRadius={48} outerRadius={70} paddingAngle={3}>
+                      {platformList.map(p => (
+                        <Cell key={p.channel} fill={PLATFORM_COLORS[p.channel] ?? '#9C9CA6'} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => [`Rp ${IDR(Number(val ?? 0), true)}`, 'GMV']} contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #EBEBEF' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1.5 mt-2">
+                  {platformList.map(p => {
+                    const total = platformList.reduce((s, x) => s + Number(x.gmv), 0);
+                    const pct = total > 0 ? ((Number(p.gmv) / total) * 100).toFixed(1) : '0';
+                    return (
+                      <div key={p.channel} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PLATFORM_COLORS[p.channel] ?? '#9C9CA6' }} />
+                          <span className="font-medium text-[#3D3D47]">{p.channel}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </>
-              );
-            })()}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#9C9CA6] tabular-nums">{NUM(p.orders)} order</span>
+                          <span className="font-bold text-[#1A1A1F] tabular-nums w-8 text-right">{pct}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
           <div className="pt-3 border-t border-[#EBEBEF] mt-3 text-right">
             <Link to={`/rangkuman?start_date=${pStart}&end_date=${pEnd}`} className="text-[11px] font-semibold text-[#635BFF] hover:underline">
