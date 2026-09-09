@@ -11,6 +11,8 @@ import { PlaceholderPage } from './pages/PlaceholderPage';
 import { OwnersPage } from './pages/OwnersPage';
 import { OwnerDetailPage } from './pages/OwnerDetailPage';
 import { OutletDetailPage } from './pages/OutletDetailPage';
+import { TransactionExplorerPage } from './pages/TransactionExplorerPage';
+
 
 export const App: React.FC = () => {
   return (
@@ -25,7 +27,8 @@ export const App: React.FC = () => {
         <Route path="/modules/owner" element={<OwnersPage />} />
         <Route path="/outlets" element={<PlaceholderPage />} />
         <Route path="/outlets/:id" element={<OutletDetailPage />} />
-        <Route path="/transactions" element={<OrderStatusPage />} />
+        <Route path="/transactions" element={<TransactionExplorerPage />} />
+        <Route path="/transactions/:orderId" element={<PlaceholderPage />} />
         <Route path="/settlement" element={<PerformaComparisonPage />} />
         <Route path="/reports" element={<LaporanPerformaPage />} />
         <Route path="/payments" element={<RekapBillingPage />} />
