@@ -12,6 +12,9 @@ import { OwnersPage } from './pages/OwnersPage';
 import { OwnerDetailPage } from './pages/OwnerDetailPage';
 import { OutletDetailPage } from './pages/OutletDetailPage';
 import { TransactionExplorerPage } from './pages/TransactionExplorerPage';
+import { TransactionDetailPage } from './pages/TransactionDetailPage';
+import { VBTransactionDetailPage } from './pages/VBTransactionDetailPage';
+
 
 
 export const App: React.FC = () => {
@@ -28,12 +31,21 @@ export const App: React.FC = () => {
         <Route path="/outlets" element={<PlaceholderPage />} />
         <Route path="/outlets/:id" element={<OutletDetailPage />} />
         <Route path="/transactions" element={<TransactionExplorerPage />} />
-        <Route path="/transactions/:orderId" element={<PlaceholderPage />} />
+        <Route path="/transactions/:orderId" element={<TransactionDetailPage />} />
+        <Route path="/transactions/vb/:orderId" element={<VBTransactionDetailPage />} />
         <Route path="/settlement" element={<PerformaComparisonPage />} />
         <Route path="/reports" element={<LaporanPerformaPage />} />
         <Route path="/payments" element={<RekapBillingPage />} />
 
+        {/* Virtual Brand (VB) Routes redirecting to unified Transactions page */}
+        <Route path="/vb" element={<Navigate to="/transactions?tab=vb" replace />} />
+        <Route path="/vb/transactions" element={<Navigate to="/transactions?tab=vb" replace />} />
+        <Route path="/vb/transactions/:orderId" element={<VBTransactionDetailPage />} />
+        <Route path="/vb/settlement" element={<PlaceholderPage />} />
+        <Route path="/vb/overview" element={<PlaceholderPage />} />
+
         {/* OPERATIONS Routes */}
+
         <Route path="/operations/:moduleName" element={<PlaceholderPage />} />
 
         {/* SYSTEM Routes */}

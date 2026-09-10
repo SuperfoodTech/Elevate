@@ -43,13 +43,19 @@ const coreNavItems: NavItemConfig[] = [
   {
     name: 'Transactions',
     path: '/transactions',
-    aliases: ['/order-sukses-vs-batal', '/laporan-jam-ramai', '/modules/transaction'],
+    aliases: [
+      '/order-sukses-vs-batal',
+      '/laporan-jam-ramai',
+      '/modules/transaction',
+      '/vb/transactions',
+      '/vb'
+    ],
     icon: SlidersHorizontal
   },
   {
     name: 'Settlement',
     path: '/settlement',
-    aliases: ['/performa-comparison', '/modules/settlement'],
+    aliases: ['/performa-comparison', '/modules/settlement', '/vb/settlement'],
     icon: CircleDollarSign
   },
   {
@@ -61,10 +67,18 @@ const coreNavItems: NavItemConfig[] = [
   {
     name: 'Payments',
     path: '/payments',
-    aliases: ['/rekap-tagihan-billing', '/modules/billing', '/modules/disbursement', '/modules/reconciliation', '/modules/account-receivable'],
+    aliases: [
+      '/rekap-tagihan-billing',
+      '/modules/billing',
+      '/modules/disbursement',
+      '/modules/reconciliation',
+      '/modules/account-receivable'
+    ],
     icon: CreditCard
   }
 ];
+
+
 
 const operationsNavItems: NavItemConfig[] = [
   { name: 'Bot Operations', path: '/operations/bot', aliases: ['/modules/bot'], icon: Bot },
@@ -91,7 +105,8 @@ export const AppSidebar: React.FC<SidebarProps> = ({
 
   const isItemActive = (item: NavItemConfig) => {
     if (location.pathname === item.path) return true;
-    if (item.aliases && item.aliases.includes(location.pathname)) return true;
+    if (item.path !== '/' && item.path !== '/dashboard' && location.pathname.startsWith(item.path + '/')) return true;
+    if (item.aliases && item.aliases.some(alias => location.pathname === alias || location.pathname.startsWith(alias + '/'))) return true;
     return false;
   };
 
@@ -173,6 +188,8 @@ export const AppSidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* OPERATIONS Section */}
+
+
           <div className="pt-2">
             {!collapsed ? (
               <div className="px-3.5 pb-1.5 text-[11px] font-semibold text-[#94A3B8] tracking-wider uppercase">
