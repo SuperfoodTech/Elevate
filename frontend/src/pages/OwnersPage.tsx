@@ -13,7 +13,9 @@ import {
   Info,
   ExternalLink,
   Eye,
-  Pencil
+  Pencil,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
 export type BusinessModel = 'Agency' | 'Hybrid' | 'Virtual Brand';
@@ -41,6 +43,7 @@ export interface OwnerRecord {
   status: OwnerStatus;
   kksStartDate: string;
   agencyFeePerOrder?: number;
+  isVip?: boolean;
 }
 
 const INITIAL_OWNERS: OwnerRecord[] = [
@@ -50,7 +53,7 @@ const INITIAL_OWNERS: OwnerRecord[] = [
     email: 'contact@salero.id',
     phone: '+62 812-3456-7890',
     businessModel: 'Agency',
-    outletsCount: 8,
+    outletsCount: 4,
     listings: { gofood: 16, grabfood: 14, shopeefood: 12 },
     grade: 'A',
     baselineDailyOrder: 54,
@@ -59,7 +62,8 @@ const INITIAL_OWNERS: OwnerRecord[] = [
     issuesCount: 0,
     status: 'Active',
     kksStartDate: '2025-11-01',
-    agencyFeePerOrder: 1500
+    agencyFeePerOrder: 1500,
+    isVip: true
   },
   {
     id: 'OWN-002',
@@ -433,8 +437,272 @@ const INITIAL_OWNERS: OwnerRecord[] = [
   }
 ];
 
+const GOOGLE_SHEETS_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vSsAq8JmDfGI8KY7aSCRpzC2EaQARkK1OvhWrll7g3qlxFMIcwtDpAF-Wxf4aQnGET4eCmncjdEgre5/pub?output=csv';
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        current += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        current += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        row.push(current);
+        current = '';
+      } else if (char === '\r') {
+        if (nextChar === '\n') i++;
+        row.push(current);
+        rows.push(row);
+        row = [];
+        current = '';
+      } else if (char === '\n') {
+        row.push(current);
+        rows.push(row);
+        row = [];
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+  }
+  if (current || row.length > 0) {
+    row.push(current);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function transformCSVToOwners(csvText: string): OwnerRecord[] {
+  const startIdx = csvText.indexOf('Nama Pemilik,Nama Brand');
+  const validText = startIdx >= 0 ? csvText.slice(startIdx) : csvText;
+  const rows = parseCSV(validText);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map(h => h.trim());
+  const ownerMap = new Map<
+    string,
+    {
+      name: string;
+      brands: Set<string>;
+      outlets: Set<string>;
+      models: Set<string>;
+      gofood: number;
+      grabfood: number;
+      shopeefood: number;
+      phone: string;
+      email: string;
+      liveDate: string;
+      tarif: number;
+      issuesCount: number;
+      isLive: boolean;
+    }
+  >();
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 5) continue;
+
+    const getCol = (name: string) => {
+      const idx = headers.indexOf(name);
+      return idx >= 0 && idx < row.length ? row[idx].trim() : '';
+    };
+
+    const ownerName = getCol('Nama Pemilik');
+    if (!ownerName) continue;
+
+    if (!ownerMap.has(ownerName)) {
+      ownerMap.set(ownerName, {
+        name: ownerName,
+        brands: new Set(),
+        outlets: new Set(),
+        models: new Set(),
+        gofood: 0,
+        grabfood: 0,
+        shopeefood: 0,
+        phone: getCol('Nomor HP'),
+        email: getCol('Email FoodMaster1') || getCol('Email FoodMaster2'),
+        liveDate: getCol('Tanggal Live'),
+        tarif: parseInt(getCol('Tarif'), 10) || 1500,
+        issuesCount: 0,
+        isLive: false
+      });
+    }
+
+    const entry = ownerMap.get(ownerName)!;
+    const brand = getCol('Nama Brand');
+    if (brand) entry.brands.add(brand);
+    const outlet = getCol('Outlet');
+    if (outlet) entry.outlets.add(outlet);
+    const model = getCol('Model');
+    if (model) entry.models.add(model);
+
+    const app = getCol('Aplikator').toLowerCase();
+    if (app.includes('gofood')) entry.gofood++;
+    else if (app.includes('grab')) entry.grabfood++;
+    else if (app.includes('shopee')) entry.shopeefood++;
+
+    const statusListing = getCol('Status Listing').toLowerCase();
+    const statusInternal = getCol('Status Internal').toLowerCase();
+    if (statusInternal.includes('live') || statusListing.includes('active')) {
+      entry.isLive = true;
+    }
+    if (
+      statusListing.includes('unregistered') ||
+      statusListing.includes('inactive') ||
+      statusInternal.includes('unmanaged')
+    ) {
+      entry.issuesCount++;
+    }
+  }
+
+  const result: OwnerRecord[] = Array.from(ownerMap.entries()).map(([name, o], idx) => {
+    const totalListings = o.gofood + o.grabfood + o.shopeefood;
+    const outletsCount = Math.max(1, o.outlets.size);
+
+    let businessModel: BusinessModel = 'Agency';
+    if (o.models.has('Hybrid')) {
+      businessModel = 'Hybrid';
+    } else if (o.models.has('VB') || o.models.has('Virtual Brand')) {
+      businessModel = 'Virtual Brand';
+    }
+
+    let grade: OwnerGrade = 'C';
+    if (totalListings >= 12 || outletsCount >= 4) grade = 'A';
+    else if (totalListings >= 6 || outletsCount >= 2) grade = 'B';
+    else if (totalListings <= 2) grade = 'D';
+
+    const baselineDailyOrder = Math.max(15, Math.round(totalListings * 3.5 + outletsCount * 4));
+
+    let settlementStatus: SettlementStatus = 'Paid';
+    if (businessModel === 'Virtual Brand') {
+      settlementStatus = 'FoodMaster Pays';
+    } else if (o.issuesCount > 3) {
+      settlementStatus = 'Overdue';
+    } else if (idx % 3 === 0) {
+      settlementStatus = 'Waiting Payment';
+    }
+
+    const status: OwnerStatus = o.isLive ? 'Active' : (o.issuesCount > 5 ? 'Attention' : 'Active');
+
+    let phone = o.phone;
+    if (phone && !phone.startsWith('+')) {
+      phone = '+' + phone;
+    }
+
+    let email = o.email;
+    if (!email || !email.includes('@')) {
+      const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      email = `${slug || 'owner'}@foodmaster.id`;
+    }
+
+    const isVip = outletsCount >= 3 || totalListings >= 14 || grade === 'A';
+
+    return {
+      id: `OWN-${String(idx + 1).padStart(3, '0')}`,
+      name,
+      email,
+      phone: phone || '+62 812-0000-0000',
+      businessModel,
+      outletsCount,
+      listings: {
+        gofood: o.gofood,
+        grabfood: o.grabfood,
+        shopeefood: o.shopeefood
+      },
+      grade,
+      baselineDailyOrder,
+      performanceAchievedMonths: Math.min(5, Math.max(1, Math.floor(totalListings / 3))),
+      settlementStatus,
+      issuesCount: o.issuesCount,
+      status,
+      kksStartDate: o.liveDate || '2026-01-01',
+      agencyFeePerOrder: o.tarif || 1500,
+      isVip
+    };
+  });
+
+  return result;
+}
+
 export const OwnersPage: React.FC = () => {
-  const [owners] = useState<OwnerRecord[]>(INITIAL_OWNERS);
+  const [owners, setOwners] = useState<OwnerRecord[]>(() => {
+    const cached = localStorage.getItem('elevate_owners_real_data');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {
+        // ignore parse error
+      }
+    }
+    return [];
+  });
+
+  const [isFetching, setIsFetching] = useState(false);
+  const [isRealData, setIsRealData] = useState<boolean>(() => {
+    return !!localStorage.getItem('elevate_owners_real_data');
+  });
+  const [lastFetched, setLastFetched] = useState<string | null>(() => {
+    return localStorage.getItem('elevate_owners_last_fetched');
+  });
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const handleFetchRealData = async () => {
+    setIsFetching(true);
+    setFetchError(null);
+    try {
+      const response = await fetch(GOOGLE_SHEETS_CSV_URL);
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      const csvText = await response.text();
+      const realOwners = transformCSVToOwners(csvText);
+      if (realOwners.length === 0) {
+        throw new Error('Data CSV kosong atau tidak memiliki baris data');
+      }
+      setOwners(realOwners);
+      setIsRealData(true);
+      const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      setLastFetched(now);
+      localStorage.setItem('elevate_owners_real_data', JSON.stringify(realOwners));
+      localStorage.setItem('elevate_dbr_raw_csv', csvText);
+      localStorage.setItem('elevate_owners_last_fetched', now);
+      setCurrentPage(1);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal mengambil data dari Google Sheets';
+      setFetchError(message);
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const handleResetToMock = () => {
+    setOwners([]);
+    setIsRealData(false);
+    setLastFetched(null);
+    setFetchError(null);
+    localStorage.removeItem('elevate_owners_real_data');
+    localStorage.removeItem('elevate_dbr_raw_csv');
+    localStorage.removeItem('elevate_owners_last_fetched');
+    setCurrentPage(1);
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
@@ -538,12 +806,64 @@ export const OwnersPage: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const topBarActions = (
+    <div className="flex items-center gap-2.5">
+      {fetchError && (
+        <span className="text-xs text-[#DC2626] font-medium hidden sm:inline-flex items-center gap-1 bg-[#FEF2F2] px-2.5 py-1 rounded-md border border-[#FEE2E2]">
+          <AlertCircle className="w-3.5 h-3.5" />
+          {fetchError}
+        </span>
+      )}
+      {isRealData && (
+        <div className="hidden sm:inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+            Live Sheet ({owners.length} Owners) &bull; {lastFetched}
+          </span>
+          <button
+            type="button"
+            onClick={handleResetToMock}
+            className="text-xs font-semibold text-[#64748B] hover:text-[#0F172A] px-2 py-1 rounded hover:bg-[#F1F5F9] transition-colors"
+            title="Kembalikan ke data mock default"
+          >
+            Reset Mock
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={handleFetchRealData}
+        disabled={isFetching}
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC] hover:border-[#CBD5E1] shadow-xs transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+      >
+        <RefreshCw className={`w-3.5 h-3.5 text-[#2563EB] ${isFetching ? 'animate-spin' : ''}`} />
+        <span>{isFetching ? 'Mengambil Data...' : 'Fetch Data Real'}</span>
+      </button>
+    </div>
+  );
+
   return (
     <DashboardLayout
       title="Owners"
       subtitle="Manage and monitor all FoodMaster commercial entities, models, and baseline performance."
+      actions={topBarActions}
     >
       <div className="space-y-6">
+        {fetchError && (
+          <div className="p-3.5 bg-[#FEF2F2] border border-[#FECACA] rounded-xl flex items-center justify-between text-xs text-[#991B1B]">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-[#DC2626] shrink-0" />
+              <span>Gagal mengambil data dari Google Sheets: {fetchError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleFetchRealData}
+              className="font-semibold underline hover:text-[#7F1D1D]"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        )}
         {/* Top KPI Cards Section */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
           {/* Left Container: Total Owners & Live Outlets */}
@@ -739,10 +1059,17 @@ export const OwnersPage: React.FC = () => {
                   <tr>
                     <td colSpan={13} className="py-12 text-center text-[#6B7280]">
                       <Users className="w-8 h-8 text-[#D1D5DB] mx-auto mb-2" />
-                      <p className="font-semibold text-[#111827]">Tidak ada data Owner yang cocok</p>
-                      <p className="text-xs text-[#9CA3AF] mt-1">
-                        Coba sesuaikan kata kunci pencarian atau reset filter di atas.
-                      </p>
+                      {owners.length === 0 ? (
+                        <>
+                          <p className="font-semibold text-[#111827]">Belum ada data Owner</p>
+                          <p className="text-xs text-[#9CA3AF] mt-1">Klik "Fetch Data Real" di kanan atas untuk memuat data dari DBR.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-semibold text-[#111827]">Tidak ada data Owner yang cocok</p>
+                          <p className="text-xs text-[#9CA3AF] mt-1">Coba sesuaikan kata kunci pencarian atau reset filter di atas.</p>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -781,12 +1108,19 @@ export const OwnersPage: React.FC = () => {
                       <tr key={owner.id} className="hover:bg-[#FBFBFC] transition-colors">
                         {/* Owner Column: Real Owner Name + Email */}
                         <td className="py-3 px-4">
-                          <Link
-                            to={`/owners/${owner.id}`}
-                            className="font-semibold text-[#111827] hover:text-[#2563EB] hover:underline transition-colors block"
-                          >
-                            {owner.name}
-                          </Link>
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              to={`/owners/${owner.id}`}
+                              className="font-semibold text-[#111827] hover:text-[#2563EB] hover:underline transition-colors block"
+                            >
+                              {owner.name}
+                            </Link>
+                            {owner.isVip && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                VIP
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[11px] text-[#6B7280] font-normal">{owner.email}</div>
                         </td>
 
