@@ -34,6 +34,8 @@ interface NavItemConfig {
   path: string;
   aliases?: string[];
   icon: React.ComponentType<{ className?: string }>;
+  isExternal?: boolean;
+  target?: string;
 }
 
 const coreNavItems: NavItemConfig[] = [
@@ -81,8 +83,20 @@ const coreNavItems: NavItemConfig[] = [
 
 
 const operationsNavItems: NavItemConfig[] = [
-  { name: 'Bot Operations', path: '/operations/bot', aliases: ['/modules/bot'], icon: Bot },
-  { name: 'Menu', path: '/operations/menu', aliases: ['/modules/menu'], icon: LayoutGrid },
+  {
+    name: 'Bot Operations',
+    path: 'https://bot.byfoodmaster.com',
+    aliases: ['/operations/bot', '/modules/bot'],
+    icon: Bot,
+    isExternal: true
+  },
+  {
+    name: 'Menu',
+    path: 'https://menu.byfoodmaster.com',
+    aliases: ['/operations/menu', '/modules/menu'],
+    icon: LayoutGrid,
+    isExternal: true
+  },
   { name: 'Promo', path: '/operations/promo', aliases: ['/modules/promo'], icon: BadgePercent },
   { name: 'KKS', path: '/operations/kks', aliases: ['/modules/kks'], icon: FileCheck },
   { name: 'E-Sign & Proposal', path: '/operations/esign-proposal', aliases: ['/modules/proposal'], icon: PenTool }
@@ -202,6 +216,23 @@ export const AppSidebar: React.FC<SidebarProps> = ({
               {operationsNavItems.map(item => {
                 const Icon = item.icon;
                 const active = isItemActive(item);
+
+                if (item.isExternal) {
+                  return (
+                    <a
+                      key={item.path}
+                      href={item.path}
+                      target={item.target || '_blank'}
+                      rel="noopener noreferrer"
+                      title={collapsed ? item.name : undefined}
+                      className={getItemClassName(active)}
+                    >
+                      <Icon className={getIconClassName(active)} />
+                      {!collapsed && <span>{item.name}</span>}
+                    </a>
+                  );
+                }
+
                 return (
                   <NavLink
                     key={item.path}
