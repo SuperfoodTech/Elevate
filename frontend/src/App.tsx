@@ -13,6 +13,8 @@ import { OwnerDetailPage } from './pages/OwnerDetailPage';
 import { OutletDetailPage } from './pages/OutletDetailPage';
 import { TransactionExplorerPage } from './pages/TransactionExplorerPage';
 import { TransactionDetailPage } from './pages/TransactionDetailPage';
+import { VBTransactionExplorerPage } from './pages/VBTransactionExplorerPage';
+import { VBTransactionDetailPage } from './pages/VBTransactionDetailPage';
 
 
 export const App: React.FC = () => {
@@ -33,6 +35,13 @@ export const App: React.FC = () => {
         <Route path="/settlement" element={<PerformaComparisonPage />} />
         <Route path="/reports" element={<LaporanPerformaPage />} />
         <Route path="/payments" element={<RekapBillingPage />} />
+
+        {/* Virtual Brand (VB) Routes matching Elevate8 mockups */}
+        <Route path="/vb" element={<Navigate to="/vb/transactions" replace />} />
+        <Route path="/vb/transactions" element={<VBTransactionExplorerPage />} />
+        <Route path="/vb/transactions/:orderId" element={<VBTransactionDetailPage />} />
+        <Route path="/vb/settlement" element={<PlaceholderPage />} />
+        <Route path="/vb/overview" element={<PlaceholderPage />} />
 
         {/* OPERATIONS Routes */}
         <Route path="/operations/:moduleName" element={<PlaceholderPage />} />

@@ -420,3 +420,4 @@ export const TransactionDetailPage: React.FC = () => {
 };
 
 export default TransactionDetailPage;
+

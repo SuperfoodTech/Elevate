@@ -34,6 +34,7 @@ interface NavItemConfig {
   path: string;
   aliases?: string[];
   icon: React.ComponentType<{ className?: string }>;
+  color?: 'blue' | 'green';
 }
 
 const coreNavItems: NavItemConfig[] = [
@@ -41,30 +42,50 @@ const coreNavItems: NavItemConfig[] = [
   { name: 'Owners', path: '/owners', aliases: ['/modules/owner'], icon: Users },
   { name: 'Outlets', path: '/outlets', aliases: ['/modules/outlet'], icon: Store },
   {
-    name: 'Transactions',
+    name: 'Reports',
+    path: '/reports',
+    aliases: ['/rangkuman', '/laporan-performa', '/modules/report'],
+    icon: FileBarChart
+  }
+];
+
+const transactionsNavItems: NavItemConfig[] = [
+  {
+    name: 'Agency Transactions',
     path: '/transactions',
     aliases: ['/order-sukses-vs-batal', '/laporan-jam-ramai', '/modules/transaction'],
-    icon: SlidersHorizontal
+    icon: SlidersHorizontal,
+    color: 'blue'
+  },
+  {
+    name: 'VB Transactions',
+    path: '/vb/transactions',
+    aliases: ['/vb'],
+    icon: LayoutGrid,
+    color: 'green'
   },
   {
     name: 'Settlement',
     path: '/settlement',
     aliases: ['/performa-comparison', '/modules/settlement'],
-    icon: CircleDollarSign
+    icon: CircleDollarSign,
+    color: 'blue'
   },
   {
-    name: 'Reports',
-    path: '/reports',
-    aliases: ['/rangkuman', '/laporan-performa', '/modules/report'],
-    icon: FileBarChart
+    name: 'VB Settlement',
+    path: '/vb/settlement',
+    icon: CircleDollarSign,
+    color: 'green'
   },
   {
     name: 'Payments',
     path: '/payments',
     aliases: ['/rekap-tagihan-billing', '/modules/billing', '/modules/disbursement', '/modules/reconciliation', '/modules/account-receivable'],
-    icon: CreditCard
+    icon: CreditCard,
+    color: 'blue'
   }
 ];
+
 
 const operationsNavItems: NavItemConfig[] = [
   { name: 'Bot Operations', path: '/operations/bot', aliases: ['/modules/bot'], icon: Bot },
@@ -91,25 +112,31 @@ export const AppSidebar: React.FC<SidebarProps> = ({
 
   const isItemActive = (item: NavItemConfig) => {
     if (location.pathname === item.path) return true;
-    if (item.aliases && item.aliases.includes(location.pathname)) return true;
+    if (item.path !== '/' && item.path !== '/dashboard' && location.pathname.startsWith(item.path + '/')) return true;
+    if (item.aliases && item.aliases.some(alias => location.pathname === alias || location.pathname.startsWith(alias + '/'))) return true;
     return false;
   };
 
-  const getItemClassName = (isActive: boolean) => {
+  const getItemClassName = (isActive: boolean, color: 'blue' | 'green' = 'blue') => {
     const base =
       'flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[13px] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]';
-    const state = isActive
-      ? 'bg-[#EFF6FF] text-[#2563EB] font-semibold'
-      : 'text-[#4B5565] hover:bg-[#F8FAFC] hover:text-[#0F172A] font-medium';
+    let state = 'text-[#4B5565] hover:bg-[#F8FAFC] hover:text-[#0F172A] font-medium';
+    if (isActive) {
+      state = color === 'green'
+        ? 'bg-[#F0FDF4] text-[#16A34A] font-semibold'
+        : 'bg-[#EFF6FF] text-[#2563EB] font-semibold';
+    }
     const collapseAlign = collapsed ? 'justify-center px-0' : '';
     return `${base} ${state} ${collapseAlign}`;
   };
 
-  const getIconClassName = (isActive: boolean) => {
-    return `w-4 h-4 flex-shrink-0 stroke-[1.8] ${
-      isActive ? 'text-[#2563EB]' : 'text-[#64748B]'
-    }`;
+  const getIconClassName = (isActive: boolean, color: 'blue' | 'green' = 'blue') => {
+    if (!isActive) return 'w-4 h-4 flex-shrink-0 stroke-[1.8] text-[#64748B]';
+    return color === 'green'
+      ? 'w-4 h-4 flex-shrink-0 stroke-[1.8] text-[#16A34A]'
+      : 'w-4 h-4 flex-shrink-0 stroke-[1.8] text-[#2563EB]';
   };
+
 
   return (
     <aside
@@ -172,7 +199,36 @@ export const AppSidebar: React.FC<SidebarProps> = ({
             })}
           </div>
 
+          {/* TRANSACTIONS Section */}
+          <div className="pt-2">
+            {!collapsed ? (
+              <div className="px-3.5 pb-1.5 text-[11px] font-semibold text-[#94A3B8] tracking-wider uppercase">
+                TRANSACTIONS
+              </div>
+            ) : (
+              <div className="w-8 h-[1px] bg-[#E2E8F0] mx-auto my-2" />
+            )}
+            <div className="space-y-0.5">
+              {transactionsNavItems.map(item => {
+                const Icon = item.icon;
+                const active = isItemActive(item);
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    title={collapsed ? item.name : undefined}
+                    className={getItemClassName(active, item.color)}
+                  >
+                    <Icon className={getIconClassName(active, item.color)} />
+                    {!collapsed && <span>{item.name}</span>}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
+
           {/* OPERATIONS Section */}
+
           <div className="pt-2">
             {!collapsed ? (
               <div className="px-3.5 pb-1.5 text-[11px] font-semibold text-[#94A3B8] tracking-wider uppercase">

@@ -23,8 +23,6 @@ import {
   type OrderStatus,
 } from '../data/transactions';
 
-type SubTab = 'agency' | 'vb';
-
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
 
 
@@ -105,7 +103,6 @@ function SelectDropdown({
 }
 
 export const TransactionExplorerPage: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('agency');
   const [filterOwner, setFilterOwner] = useState('all');
   const [filterOutlet, setFilterOutlet] = useState('all');
   const [filterListing, setFilterListing] = useState('all');
@@ -267,26 +264,15 @@ export const TransactionExplorerPage: React.FC = () => {
           {/* Sub-tabs + actions */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-0 border-b border-gray-200">
-              <button
-                onClick={() => setActiveSubTab('agency')}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] ${
-                  activeSubTab === 'agency'
-                    ? 'border-[#E53935] text-[#E53935]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
+              <span className="px-4 py-2.5 text-sm font-medium border-b-2 border-[#E53935] text-[#E53935] cursor-default">
                 Agency Transactions
-              </button>
-              <button
-                onClick={() => setActiveSubTab('vb')}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] ${
-                  activeSubTab === 'vb'
-                    ? 'border-[#E53935] text-[#E53935]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
+              </span>
+              <Link
+                to="/vb/transactions"
+                className="px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
               >
                 VB Transactions
-              </button>
+              </Link>
             </div>
 
             <div className="flex items-center gap-2">
@@ -329,14 +315,8 @@ export const TransactionExplorerPage: React.FC = () => {
             </div>
           </div>
 
-          {activeSubTab === 'vb' ? (
-            <div className="bg-white rounded-xl border border-gray-100 flex flex-col items-center justify-center py-24 text-center">
-              <p className="text-gray-500 text-sm">Tab VB Transactions sedang dalam pengembangan.</p>
-              <p className="text-gray-400 text-xs mt-1">Konten akan tersedia segera.</p>
-            </div>
-          ) : (
-            <>
-              {/* KPI cards */}
+          {/* KPI cards */}
+
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {/* Successful Orders */}
                 <div className="bg-white rounded-xl border border-gray-100 p-5 flex items-start gap-4">
@@ -584,9 +564,8 @@ export const TransactionExplorerPage: React.FC = () => {
                   </nav>
                 </div>
               </div>
-            </>
-          )}
         </div>
+
       </div>
     </DashboardLayout>
   );
