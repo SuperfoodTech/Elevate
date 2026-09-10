@@ -145,7 +145,7 @@ export const VBTransactionDetailPage: React.FC = () => {
               Order ID <span className="font-mono">{orderId}</span> tidak ada dalam sistem.
             </p>
             <button
-              onClick={() => navigate('/vb/transactions')}
+              onClick={() => navigate('/transactions?tab=vb')}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#2563EB] border border-[#2563EB] rounded-lg hover:bg-[#EFF6FF] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -170,13 +170,11 @@ export const VBTransactionDetailPage: React.FC = () => {
               Home
             </button>
             <span>/</span>
-            <span className="text-gray-400">VB</span>
-            <span>/</span>
-            <button onClick={() => navigate('/vb/transactions')} className="hover:text-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded">
+            <button onClick={() => navigate('/transactions')} className="hover:text-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded">
               Transactions
             </button>
             <span>/</span>
-            <button onClick={() => navigate('/vb/transactions')} className="hover:text-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded">
+            <button onClick={() => navigate('/transactions?tab=vb')} className="hover:text-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] rounded">
               VB Transactions
             </button>
             <span>/</span>
@@ -190,7 +188,7 @@ export const VBTransactionDetailPage: React.FC = () => {
               <p className="mt-1 text-sm text-gray-500">Informasi lengkap transaksi order untuk Virtual Brand.</p>
             </div>
             <button
-              onClick={() => navigate('/vb/transactions')}
+              onClick={() => navigate('/transactions?tab=vb')}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
