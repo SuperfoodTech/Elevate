@@ -10,6 +10,7 @@ import { OrderStatusPage } from './pages/OrderStatusPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { OwnersPage } from './pages/OwnersPage';
 import { OwnerDetailPage } from './pages/OwnerDetailPage';
+import { OutletsPage } from './pages/OutletsPage';
 import { OutletDetailPage } from './pages/OutletDetailPage';
 import { TransactionExplorerPage } from './pages/TransactionExplorerPage';
 import { TransactionDetailPage } from './pages/TransactionDetailPage';
@@ -28,8 +29,9 @@ export const App: React.FC = () => {
         <Route path="/owners" element={<OwnersPage />} />
         <Route path="/owners/:id" element={<OwnerDetailPage />} />
         <Route path="/modules/owner" element={<OwnersPage />} />
-        <Route path="/outlets" element={<PlaceholderPage />} />
+        <Route path="/outlets" element={<OutletsPage />} />
         <Route path="/outlets/:id" element={<OutletDetailPage />} />
+        <Route path="/modules/outlet" element={<OutletsPage />} />
         <Route path="/transactions" element={<TransactionExplorerPage />} />
         <Route path="/transactions/:orderId" element={<TransactionDetailPage />} />
         <Route path="/transactions/vb/:orderId" element={<VBTransactionDetailPage />} />

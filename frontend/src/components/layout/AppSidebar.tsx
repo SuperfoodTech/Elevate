@@ -13,7 +13,6 @@ import {
   BadgePercent,
   FileCheck,
   PenTool,
-  CloudUpload,
   KeyRound,
   UserCheck,
   FileText,
@@ -103,7 +102,6 @@ const operationsNavItems: NavItemConfig[] = [
 ];
 
 const systemNavItems: NavItemConfig[] = [
-  { name: 'Data Ingestion', path: '/system/data-ingestion', aliases: ['/modules/data-ingestion'], icon: CloudUpload },
   { name: 'Credentials', path: '/system/credentials', aliases: ['/modules/credentials'], icon: KeyRound },
   { name: 'Users & Roles', path: '/system/users-roles', aliases: ['/modules/users-roles'], icon: UserCheck },
   { name: 'Documents', path: '/system/documents', aliases: ['/modules/documents'], icon: FileText },
