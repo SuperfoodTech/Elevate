@@ -604,24 +604,24 @@ export const DashboardPage: React.FC = () => {
                           const vVal = Number(payload.find(p => p.dataKey === 'virtualOrders')?.value || 0);
                           const total = mVal + vVal;
                           return (
-                            <div className="bg-slate-900 text-white rounded-lg p-3 text-xs shadow-xl border border-slate-800 space-y-1.5 min-w-[170px]">
-                              <div className="font-semibold text-slate-200 border-b border-slate-800 pb-1 flex justify-between items-center">
+                            <div className="bg-white text-slate-900 rounded-xl p-3.5 text-xs shadow-lg border border-slate-200/80 space-y-2 min-w-[185px]">
+                              <div className="font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex justify-between items-center">
                                 <span>{label}</span>
-                                <span className="text-[10px] text-slate-400 font-normal">Total: {formatNumber(total)}</span>
+                                <span className="text-[10px] text-slate-500 font-semibold">Total: {formatNumber(total)}</span>
                               </div>
-                              <div className="flex justify-between items-center text-blue-300">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                              <div className="flex justify-between items-center">
+                                <span className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-2 h-2 rounded-full bg-[#2563EB]" />
                                   Merchant:
                                 </span>
-                                <span className="font-bold tabular-nums">{formatNumber(mVal)}</span>
+                                <span className="font-bold text-slate-900 tabular-nums">{formatNumber(mVal)}</span>
                               </div>
-                              <div className="flex justify-between items-center text-purple-300">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                              <div className="flex justify-between items-center">
+                                <span className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-2 h-2 rounded-full bg-[#7C3AED]" />
                                   Virtual Brand:
                                 </span>
-                                <span className="font-bold tabular-nums">{formatNumber(vVal)}</span>
+                                <span className="font-bold text-slate-900 tabular-nums">{formatNumber(vVal)}</span>
                               </div>
                             </div>
                           );
@@ -1041,31 +1041,31 @@ export const DashboardPage: React.FC = () => {
                           const ofdVal = Number(payload.find(p => p.dataKey === 'ofdFees')?.value || 0);
                           const takeRate = gmvVal > 0 ? ((ofdVal / gmvVal) * 100).toFixed(1) : '0';
                           return (
-                            <div className="bg-slate-900 text-white rounded-lg p-3 text-xs shadow-xl border border-slate-800 space-y-1.5 min-w-[210px]">
-                              <div className="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between items-center">
+                            <div className="bg-white text-slate-900 rounded-xl p-3.5 text-xs shadow-lg border border-slate-200/80 space-y-2 min-w-[220px]">
+                              <div className="font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex justify-between items-center">
                                 <span>{label}</span>
-                                <span className="text-teal-400 font-semibold">{takeRate}% Biaya Platform</span>
+                                <span className="text-[10px] text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded font-semibold">{takeRate}% Biaya Platform</span>
                               </div>
-                              <div className="flex items-center justify-between text-blue-300">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-2 h-2 rounded-full bg-[#2563EB]" />
                                   GMV:
                                 </span>
-                                <span className="font-bold tabular-nums">{formatCurrency(gmvVal)}</span>
+                                <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(gmvVal)}</span>
                               </div>
-                              <div className="flex items-center justify-between text-purple-300">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-2 h-2 rounded-full bg-[#7C3AED]" />
                                   Pendapatan Bersih:
                                 </span>
-                                <span className="font-bold tabular-nums">{formatCurrency(revVal)}</span>
+                                <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(revVal)}</span>
                               </div>
-                              <div className="flex items-center justify-between text-teal-300 pt-1 border-t border-slate-800">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-teal-500" />
+                              <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                                <span className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-2 h-2 rounded-full bg-[#0D9488]" />
                                   Biaya Platform:
                                 </span>
-                                <span className="font-bold tabular-nums">{formatCurrency(ofdVal)}</span>
+                                <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(ofdVal)}</span>
                               </div>
                             </div>
                           );
@@ -1127,22 +1127,28 @@ export const DashboardPage: React.FC = () => {
                           const total = succ + canc;
                           const rate = total > 0 ? ((succ / total) * 100).toFixed(1) : '0';
                           return (
-                            <div className="bg-slate-900 text-white rounded-lg p-3 text-xs shadow-xl border border-slate-800 space-y-1.5 min-w-[200px]">
-                              <div className="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
+                            <div className="bg-white text-slate-900 rounded-xl p-3.5 text-xs shadow-lg border border-slate-200/80 space-y-2 min-w-[210px]">
+                              <div className="font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex justify-between items-center">
                                 <span>{label}</span>
-                                <span className="text-emerald-400 font-semibold">{rate}% Sukses</span>
+                                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold">{rate}% Sukses</span>
                               </div>
-                              <div className="flex items-center justify-between text-emerald-300">
-                                <span>Berhasil:</span>
-                                <span className="font-bold tabular-nums">{formatNumber(succ)}</span>
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                                  Berhasil:
+                                </span>
+                                <span className="font-bold text-slate-900 tabular-nums">{formatNumber(succ)}</span>
                               </div>
-                              <div className="flex items-center justify-between text-rose-300">
-                                <span>Batal:</span>
-                                <span className="font-bold tabular-nums">{formatNumber(canc)}</span>
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-1.5 text-slate-600">
+                                  <span className="w-2 h-2 rounded-full bg-[#F43F5E]" />
+                                  Batal:
+                                </span>
+                                <span className="font-bold text-slate-900 tabular-nums">{formatNumber(canc)}</span>
                               </div>
-                              <div className="flex items-center justify-between text-slate-300 pt-1 border-t border-slate-800 text-[11px]">
-                                <span>Total Order:</span>
-                                <span className="font-bold tabular-nums text-white">{formatNumber(total)}</span>
+                              <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                                <span className="text-slate-600 font-medium">Total Order:</span>
+                                <span className="font-bold tabular-nums text-slate-900">{formatNumber(total)}</span>
                               </div>
                             </div>
                           );
@@ -1347,31 +1353,31 @@ export const DashboardPage: React.FC = () => {
                             const margin = Number(payload.find(p => p.dataKey === 'grossMargin')?.value || 0);
                             const marginPct = rev > 0 ? ((margin / (cogs + margin)) * 100).toFixed(1) : '0';
                             return (
-                              <div className="bg-slate-900 text-white rounded-lg p-3 text-xs shadow-xl border border-slate-800 space-y-1.5 min-w-[210px]">
-                                <div className="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between items-center">
+                              <div className="bg-white text-slate-900 rounded-xl p-3.5 text-xs shadow-lg border border-slate-200/80 space-y-2 min-w-[220px]">
+                                <div className="font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex justify-between items-center">
                                   <span>{label}</span>
-                                  <span className="text-amber-400 font-semibold">{marginPct}% Margin</span>
+                                  <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-semibold">{marginPct}% Margin</span>
                                 </div>
-                                <div className="flex items-center justify-between text-purple-300">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-purple-500" />
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5 text-slate-600">
+                                    <span className="w-2 h-2 rounded-full bg-[#7C3AED]" />
                                     Pendapatan Bersih:
                                   </span>
-                                  <span className="font-bold tabular-nums">{formatCurrency(rev)}</span>
+                                  <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(rev)}</span>
                                 </div>
-                                <div className="flex items-center justify-between text-emerald-300">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5 text-slate-600">
+                                    <span className="w-2 h-2 rounded-full bg-[#059669]" />
                                     Biaya Bahan:
                                   </span>
-                                  <span className="font-bold tabular-nums">{formatCurrency(cogs)}</span>
+                                  <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(cogs)}</span>
                                 </div>
-                                <div className="flex items-center justify-between text-amber-300 pt-1 border-t border-slate-800">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                                  <span className="flex items-center gap-1.5 text-slate-600">
+                                    <span className="w-2 h-2 rounded-full bg-[#D97706]" />
                                     Margin Kotor:
                                   </span>
-                                  <span className="font-bold tabular-nums">{formatCurrency(margin)}</span>
+                                  <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(margin)}</span>
                                 </div>
                               </div>
                             );
@@ -1433,22 +1439,28 @@ export const DashboardPage: React.FC = () => {
                             const total = succ + canc;
                             const rate = total > 0 ? ((succ / total) * 100).toFixed(1) : '0';
                             return (
-                              <div className="bg-slate-900 text-white rounded-lg p-3 text-xs shadow-xl border border-slate-800 space-y-1.5 min-w-[200px]">
-                                <div className="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
+                              <div className="bg-white text-slate-900 rounded-xl p-3.5 text-xs shadow-lg border border-slate-200/80 space-y-2 min-w-[210px]">
+                                <div className="font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex justify-between items-center">
                                   <span>{label}</span>
-                                  <span className="text-purple-400 font-semibold">{rate}% Sukses</span>
+                                  <span className="text-[10px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded font-semibold">{rate}% Sukses</span>
                                 </div>
-                                <div className="flex items-center justify-between text-purple-300">
-                                  <span>Berhasil:</span>
-                                  <span className="font-bold tabular-nums">{formatNumber(succ)}</span>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5 text-slate-600">
+                                    <span className="w-2 h-2 rounded-full bg-[#7C3AED]" />
+                                    Berhasil:
+                                  </span>
+                                  <span className="font-bold text-slate-900 tabular-nums">{formatNumber(succ)}</span>
                                 </div>
-                                <div className="flex items-center justify-between text-rose-300">
-                                  <span>Batal:</span>
-                                  <span className="font-bold tabular-nums">{formatNumber(canc)}</span>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5 text-slate-600">
+                                    <span className="w-2 h-2 rounded-full bg-[#F43F5E]" />
+                                    Batal:
+                                  </span>
+                                  <span className="font-bold text-slate-900 tabular-nums">{formatNumber(canc)}</span>
                                 </div>
-                                <div className="flex items-center justify-between text-slate-300 pt-1 border-t border-slate-800 text-[11px]">
-                                  <span>Total Order:</span>
-                                  <span className="font-bold tabular-nums text-white">{formatNumber(total)}</span>
+                                <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                                  <span className="text-slate-600 font-medium">Total Order:</span>
+                                  <span className="font-bold tabular-nums text-slate-900">{formatNumber(total)}</span>
                                 </div>
                               </div>
                             );
@@ -1547,7 +1559,7 @@ export const DashboardPage: React.FC = () => {
                   {/* Legend Indicator */}
                   <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-1.5 text-xs">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#059669]" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
                       <span className="font-medium text-slate-600">Hak Tagih (Receivable)</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
@@ -1555,7 +1567,7 @@ export const DashboardPage: React.FC = () => {
                       <span className="font-medium text-slate-600">Kewajiban (Payable)</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#0284C7]" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
                       <span className="font-medium text-slate-600">Dicairkan (Payout)</span>
                     </div>
                   </div>
@@ -1585,16 +1597,16 @@ export const DashboardPage: React.FC = () => {
                   <AreaChart data={settlementFlowData} margin={{ top: 10, right: 15, left: -10, bottom: 0 }}>
                     <defs>
                       <linearGradient id="receivableStreamGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#059669" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#059669" stopOpacity={0.02} />
+                        <stop offset="0%" stopColor="#10B981" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#10B981" stopOpacity={0.02} />
                       </linearGradient>
                       <linearGradient id="payableStreamGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#7C3AED" stopOpacity={0.30} />
                         <stop offset="100%" stopColor="#7C3AED" stopOpacity={0.02} />
                       </linearGradient>
                       <linearGradient id="disbursedStreamGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0284C7" stopOpacity={0.25} />
-                        <stop offset="100%" stopColor="#0284C7" stopOpacity={0.02} />
+                        <stop offset="0%" stopColor="#2563EB" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="#2563EB" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -1607,31 +1619,31 @@ export const DashboardPage: React.FC = () => {
                         const pay = Number(payload.find(p => p.dataKey === 'payable')?.value || 0);
                         const disb = Number(payload.find(p => p.dataKey === 'disbursed')?.value || 0);
                         return (
-                          <div className="bg-slate-900 text-white rounded-lg p-3 text-xs shadow-xl border border-slate-800 space-y-1.5 min-w-[210px]">
-                            <div className="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between items-center">
+                          <div className="bg-white text-slate-900 rounded-xl p-3.5 text-xs shadow-lg border border-slate-200/80 space-y-2 min-w-[210px]">
+                            <div className="font-bold text-slate-800 border-b border-slate-100 pb-1.5 flex justify-between items-center">
                               <span>{label}</span>
-                              <span className="text-slate-400 font-medium">Arus Kas Harian</span>
+                              <span className="text-[10px] text-slate-500 font-semibold">Arus Kas Harian</span>
                             </div>
-                            <div className="flex items-center justify-between text-emerald-300">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 text-slate-600">
+                                <span className="w-2 h-2 rounded-full bg-[#10B981]" />
                                 Hak Tagih Merchant:
                               </span>
-                              <span className="font-bold tabular-nums">{formatCurrency(rec)}</span>
+                              <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(rec)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-purple-300">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-purple-500" />
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 text-slate-600">
+                                <span className="w-2 h-2 rounded-full bg-[#7C3AED]" />
                                 Kewajiban Brand:
                               </span>
-                              <span className="font-bold tabular-nums">{formatCurrency(pay)}</span>
+                              <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(pay)}</span>
                             </div>
-                            <div className="flex items-center justify-between text-sky-300 pt-1 border-t border-slate-800">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-sky-500" />
+                            <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                              <span className="flex items-center gap-1.5 text-slate-600">
+                                <span className="w-2 h-2 rounded-full bg-[#2563EB]" />
                                 Dana Dicairkan:
                               </span>
-                              <span className="font-bold tabular-nums">{formatCurrency(disb)}</span>
+                              <span className="font-bold text-slate-900 tabular-nums">{formatCurrency(disb)}</span>
                             </div>
                           </div>
                         );
@@ -1641,7 +1653,7 @@ export const DashboardPage: React.FC = () => {
                       type="monotone"
                       dataKey="receivable"
                       name="Hak Tagih Merchant"
-                      stroke="#059669"
+                      stroke="#10B981"
                       strokeWidth={2.2}
                       fill="url(#receivableStreamGrad)"
                     />
@@ -1657,7 +1669,7 @@ export const DashboardPage: React.FC = () => {
                       type="monotone"
                       dataKey="disbursed"
                       name="Dana Dicairkan"
-                      stroke="#0284C7"
+                      stroke="#2563EB"
                       strokeWidth={2.2}
                       fill="url(#disbursedStreamGrad)"
                     />
@@ -1690,7 +1702,7 @@ export const DashboardPage: React.FC = () => {
                           cx="60"
                           cy="60"
                           r="50"
-                          stroke="#0284C7"
+                          stroke="#2563EB"
                           strokeWidth="5.5"
                           strokeDasharray="314.16"
                           strokeDashoffset={314.16 * (1 - 0.854)}
@@ -1718,7 +1730,7 @@ export const DashboardPage: React.FC = () => {
                           cx="60"
                           cy="60"
                           r="34"
-                          stroke="#059669"
+                          stroke="#10B981"
                           strokeWidth="5.5"
                           strokeDasharray="213.63"
                           strokeDashoffset={213.63 * (1 - 0.981)}
@@ -1742,7 +1754,7 @@ export const DashboardPage: React.FC = () => {
                     <div className="w-full space-y-2 pt-4 mt-2 border-t border-slate-100">
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#0284C7] shrink-0" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB] shrink-0" />
                           <span className="text-slate-600">Pencairan Tepat Waktu</span>
                         </div>
                         <span className="font-bold text-slate-900 tabular-nums">85.4%</span>
@@ -1758,7 +1770,7 @@ export const DashboardPage: React.FC = () => {
 
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-[#059669] shrink-0" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] shrink-0" />
                           <span className="text-slate-600">Rekonsiliasi Otomatis</span>
                         </div>
                         <span className="font-bold text-slate-900 tabular-nums">98.1%</span>
