@@ -20,8 +20,7 @@ import {
   AlertCircle,
   ExternalLink,
   Search,
-  RotateCcw,
-  Receipt
+  RotateCcw
 } from 'lucide-react';
 import { MOCK_TRANSACTIONS } from '../data/transactions';
 

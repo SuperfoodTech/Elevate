@@ -16,7 +16,7 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
-import { MOCK_OUTLETS, type OutletRecord, type OutletStatus } from '../data/outlets';
+import { type OutletRecord, type OutletStatus } from '../data/outlets';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
 

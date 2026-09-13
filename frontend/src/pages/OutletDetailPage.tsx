@@ -274,7 +274,7 @@ export const OutletDetailPage: React.FC = () => {
     return [];
   });
 
-  const [cachedOwners, setCachedOwners] = useState<any[]>(() => {
+  const [cachedOwners] = useState<any[]>(() => {
     const cached = localStorage.getItem('elevate_owners_real_data');
     if (cached) {
       try {
@@ -1630,7 +1630,7 @@ export const OutletDetailPage: React.FC = () => {
 
               {/* Table Footer */}
               <div className="pt-2 text-[11px] text-[#64748B]">
-                Menampilkan {filteredTransactions.length} dari {OUTLET_TRANSACTIONS.length} total transaksi pada seluruh listing outlet ini.
+                Menampilkan {filteredTransactions.length} total transaksi pada seluruh listing outlet ini.
               </div>
             </div>
           </div>
