@@ -1170,7 +1170,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     transactions = fetch_gofood_v2_transactions(_token, _store_id, start_date, end_date)
     console.print(f"[success]✅ Berhasil mengambil {len(transactions)} transaksi dari V2 API.[/success]")
 
-    # ── 22 Kolom Header Excel Detail ──
+    # ── 29 Kolom Header Excel Detail ──
     headers_excel = [
         "Order Status",
         "Outlet Name",
@@ -1194,9 +1194,27 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         "Restaurant Tax",
         "Service",
         "Withholding Tax",
+        "Order Number",
+        "Settlement Time",
+        "Batch ID",
+        "Refund Amount",
+        "Refund Reason",
+        "Promo Code",
+        "Promo Original Amount",
+    ]
+
+    headers_items = [
+        "Order ID",
+        "Merchant ID",
+        "Item Name",
+        "Quantity",
+        "Price Per Item",
+        "Total Item",
+        "Transaction Time",
     ]
 
     rows_excel = []
+    rows_items = []
     total_omzet = 0.0
     total_omzet_bersih = 0.0
     total_komisi = 0.0
@@ -1233,12 +1251,19 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         promo_code = promo.get("promo_code", "") or ""
         voucher_desc = json.dumps(promo) if promo and (promo.get("promo_code") or promo.get("promo_original_amount")) else ""
 
+        order_num = commerce.get("order_number", "") or tx.get("order_id", "")
+        settlement_time = tx.get("settlement_time", "") or ""
+        batch_id = tx.get("batch_id") or tx.get("payout_id") or ""
+        refund_amt = (tx.get("refund_amount", 0) or 0) / 100.0 if tx.get("refund_amount") else 0.0
+        refund_reason = tx.get("refund_reason", "") or ""
+        promo_orig_amt = (promo.get("promo_original_amount", 0) or 0) / 100.0 if promo.get("promo_original_amount") else 0.0
+
         row = [
             status_tx,
             outlet_name_display,
             tx.get("merchant_id", "") or _store_id,
             tx.get("service_type", "") or tx.get("channel_type", ""),
-            tx.get("order_id", "") or commerce.get("order_number", ""),
+            tx.get("order_id", "") or order_num,
             tx.get("id", ""),
             gross_amt,
             net_amt,
@@ -1256,8 +1281,34 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
             restaurant_tax_val,
             tx.get("service_type", ""),
             wht_val,
+            order_num,
+            settlement_time,
+            batch_id,
+            refund_amt,
+            refund_reason,
+            promo_code,
+            promo_orig_amt,
         ]
         rows_excel.append(row)
+
+        # Parse Order Items
+        order_id_val = tx.get("order_id", "") or order_num
+        store_id_val = tx.get("merchant_id", "") or _store_id
+        tx_time_val = tx.get("transaction_time", "")
+        for item in commerce.get("items", []):
+            item_name = item.get("name", "")
+            item_qty = item.get("quantity", 1) or 1
+            item_price = item.get("unit_price", 0) or 0
+            item_total = item_price * item_qty
+            rows_items.append([
+                order_id_val,
+                store_id_val,
+                item_name,
+                item_qty,
+                item_price,
+                item_total,
+                tx_time_val,
+            ])
 
         if status_tx == "SETTLEMENT":
             total_omzet += gross_amt
@@ -1298,9 +1349,16 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         ws_raw.append(headers_excel)
         for r in rows_excel:
             ws_raw.append(r)
+
+        if rows_items:
+            ws_items = wb_raw.create_sheet(title="Items")
+            ws_items.append(headers_items)
+            for it in rows_items:
+                ws_items.append(it)
+
         wb_raw.save(abs_raw_excel_path)
         wb_raw.close()
-        console.print(f"[success]✅ Berkas Excel 22 Kolom tersimpan di: {abs_raw_excel_path}[/success]")
+        console.print(f"[success]✅ Berkas Excel tersimpan ({len(rows_excel)} transaksi, {len(rows_items)} items) di: {abs_raw_excel_path}[/success]")
     except Exception as e:
         console.print(f"[warning]⚠️ Gagal menyimpan file Excel GoFood V2: {e}[/warning]")
 

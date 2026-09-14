@@ -236,6 +236,15 @@ class DatabaseManager:
             "Restaurant Tax": "Restaurant Tax",
             "Service": "Service",
             "Withholding Tax": "Withholding Tax",
+            "Order Number": "Order Number",
+            "Nomor Pesanan": "Order Number",
+            "Settlement Time": "Settlement Time",
+            "Waktu Settlement": "Settlement Time",
+            "Batch ID": "Batch ID",
+            "Refund Amount": "Refund Amount",
+            "Refund Reason": "Refund Reason",
+            "Promo Code": "Promo Code",
+            "Promo Original Amount": "Promo Original Amount",
         }
         
         resolved_mapping = {}
@@ -248,7 +257,9 @@ class DatabaseManager:
             "Transaction ID", "Amount", "Net Amount", "Transaction Time", "Payment Type",
             "GoPay Promo", "Promo Type", "Promo Name", "Merchant Promo Contribution",
             "Voucher Description", "GoFood Discount", "Voucher Commission", "Total Fee",
-            "Value Added Tax", "Restaurant Tax", "Service", "Withholding Tax"
+            "Value Added Tax", "Restaurant Tax", "Service", "Withholding Tax",
+            "Order Number", "Settlement Time", "Batch ID", "Refund Amount",
+            "Refund Reason", "Promo Code", "Promo Original Amount"
         ]
         
         df_mapped = df[list(resolved_mapping.keys())].rename(columns=resolved_mapping).copy()
@@ -292,6 +303,33 @@ class DatabaseManager:
             df_stg.to_sql('raw_go', conn, schema='layer1_raw', if_exists='append', index=False)
             
         print("[DB] GoFood raw ingestion completed.")
+
+    def ingest_gofood_items(self, df_items: pd.DataFrame):
+        """Ingests GoFood line items into layer1_raw.raw_go_items with delete-before-insert idempotency."""
+        if df_items is None or df_items.empty:
+            return
+        print("[DB] Ingesting GoFood items to layer1_raw.raw_go_items...")
+        item_cols = ["Order ID", "Merchant ID", "Item Name", "Quantity", "Price Per Item", "Total Item", "Transaction Time"]
+        df_copy = df_items.copy()
+        for col in item_cols:
+            if col not in df_copy.columns:
+                df_copy[col] = None
+        df_stg = df_copy[item_cols].copy()
+        for col in item_cols:
+            df_stg[col] = df_stg[col].apply(raw_string_format)
+            
+        order_ids = df_stg["Order ID"].dropna().unique().tolist()
+        if not order_ids:
+            return
+            
+        with self.engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"), {"lock_name": "ingest:gofood_items"})
+            conn.execute(
+                text('DELETE FROM layer1_raw.raw_go_items WHERE "Order ID" = ANY(:ids)'),
+                {"ids": order_ids}
+            )
+            df_stg.to_sql('raw_go_items', conn, schema='layer1_raw', if_exists='append', index=False)
+        print(f"[DB] GoFood raw items ingestion completed ({len(df_stg)} items).")
 
 if __name__ == "__main__":
     db = DatabaseManager()
