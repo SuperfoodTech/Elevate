@@ -419,7 +419,6 @@ def ingest_gofood_to_db(output_dir: str) -> bool:
         "Restaurant Tax",
         "Service",
         "Withholding Tax",
-        "Order Number",
         "Settlement Time",
         "Batch ID",
         "Refund Amount",

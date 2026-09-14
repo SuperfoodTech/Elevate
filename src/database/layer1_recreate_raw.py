@@ -31,7 +31,6 @@ def recreate_tables():
             "Restaurant Tax" TEXT,
             "Service" TEXT,
             "Withholding Tax" TEXT,
-            "Order Number" TEXT,
             "Settlement Time" TEXT,
             "Batch ID" TEXT,
             "Refund Amount" TEXT,

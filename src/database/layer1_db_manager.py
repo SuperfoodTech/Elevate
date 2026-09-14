@@ -258,7 +258,7 @@ class DatabaseManager:
             "GoPay Promo", "Promo Type", "Promo Name", "Merchant Promo Contribution",
             "Voucher Description", "GoFood Discount", "Voucher Commission", "Total Fee",
             "Value Added Tax", "Restaurant Tax", "Service", "Withholding Tax",
-            "Order Number", "Settlement Time", "Batch ID", "Refund Amount",
+            "Settlement Time", "Batch ID", "Refund Amount",
             "Refund Reason", "Promo Code", "Promo Original Amount"
         ]
         

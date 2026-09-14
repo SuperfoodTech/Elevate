@@ -18,6 +18,12 @@ import sys
 import os
 from datetime import datetime, timedelta
 from config import get_sheet_url
+import socket
+try:
+    import urllib3.util.connection as urllib3_cn
+    urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
+except Exception:
+    pass
 
 def normalize_date_string(date_str: str) -> str:
     """
@@ -31,6 +37,45 @@ def normalize_date_string(date_str: str) -> str:
         except ValueError:
             continue
     raise ValueError(f"Format tanggal tidak valid: '{date_str}'. Gunakan DD-MM-YYYY atau YYYY-MM-DD.")
+
+
+def normalize_merchant_df(df):
+    """
+    Normalizes column names from Google Sheets:
+    - Strips whitespace from all column names.
+    - Maps 'Outlet' to 'Nama Outlet' if 'Nama Outlet' is missing.
+    - Maps 'Brand' to 'Cabang' if 'Cabang' is missing.
+    - Normalizes casing for standard columns ('Aplikasi', 'Status', 'Merchant Name').
+    """
+    if df is None or not hasattr(df, "columns"):
+        return df
+    df.columns = [str(c).strip() for c in df.columns]
+    col_rename = {}
+    cols_lower = {str(c).strip().lower(): c for c in df.columns}
+    
+    if "nama outlet" not in cols_lower and "outlet" in cols_lower:
+        col_rename[cols_lower["outlet"]] = "Nama Outlet"
+    elif "nama outlet" in cols_lower and cols_lower["nama outlet"] != "Nama Outlet":
+        col_rename[cols_lower["nama outlet"]] = "Nama Outlet"
+
+    if "cabang" not in cols_lower and "brand" in cols_lower:
+        col_rename[cols_lower["brand"]] = "Cabang"
+    elif "cabang" in cols_lower and cols_lower["cabang"] != "Cabang":
+        col_rename[cols_lower["cabang"]] = "Cabang"
+
+    if "aplikasi" in cols_lower and cols_lower["aplikasi"] != "Aplikasi":
+        col_rename[cols_lower["aplikasi"]] = "Aplikasi"
+
+    if "status" in cols_lower and cols_lower["status"] != "Status":
+        col_rename[cols_lower["status"]] = "Status"
+
+    if "merchant name" in cols_lower and cols_lower["merchant name"] != "Merchant Name":
+        col_rename[cols_lower["merchant name"]] = "Merchant Name"
+        
+    if col_rename:
+        df = df.rename(columns=col_rename)
+    return df
+
 
 
 # ── Colour helpers (ANSI) ──────────────────────────────────────────────
@@ -210,42 +255,60 @@ def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None, task_cho
             try:
                 resp = requests.get(GSHEETS_URL, timeout=10)
                 resp.raise_for_status()
-                df = pd.read_csv(io.StringIO(resp.text))
+                df = normalize_merchant_df(pd.read_csv(io.StringIO(resp.text)))
                 os.makedirs(os.path.dirname(cache_path), exist_ok=True)
                 df.to_csv(cache_path, index=False)
             except Exception as download_err:
                 print(f"  {YELLOW}[SHOPEE LOOKUP] Gagal mengunduh GSheets: {download_err}. Menggunakan cache jika ada...{RESET}")
                 if os.path.exists(cache_path):
-                    df = pd.read_csv(cache_path)
+                    df = normalize_merchant_df(pd.read_csv(cache_path))
                     loaded_from_cache = True
         else:
             # Weekly: tetap gunakan cache 24 jam jika ada
             if os.path.exists(cache_path):
                 age_hours = (time.time() - os.path.getmtime(cache_path)) / 3600
                 if age_hours < 24:
-                    df = pd.read_csv(cache_path)
+                    df = normalize_merchant_df(pd.read_csv(cache_path))
                     loaded_from_cache = True
 
             if df is None:
                 resp = requests.get(GSHEETS_URL, timeout=15)
-                df = pd.read_csv(io.StringIO(resp.text))
+                df = normalize_merchant_df(pd.read_csv(io.StringIO(resp.text)))
                 os.makedirs(os.path.dirname(cache_path), exist_ok=True)
                 df.to_csv(cache_path, index=False)
 
         def do_lookup(dataframe):
             # Base filter: ShopeeFood + Nama Outlet cocok
             outlet_lower = outlet_name.strip().lower()
+            outlet_col = 'Nama Outlet' if 'Nama Outlet' in dataframe.columns else ('Outlet' if 'Outlet' in dataframe.columns else None)
+            app_col = 'Aplikasi' if 'Aplikasi' in dataframe.columns else ('aplikasi' if 'aplikasi' in dataframe.columns else None)
+            status_col = 'Status' if 'Status' in dataframe.columns else ('status' if 'status' in dataframe.columns else None)
+            merchant_col = 'Merchant Name' if 'Merchant Name' in dataframe.columns else None
+            if not merchant_col:
+                m_candidates = [c for c in dataframe.columns if 'merchant' in str(c).lower()]
+                if m_candidates:
+                    merchant_col = m_candidates[0]
+
+            if not outlet_col or not app_col or not merchant_col:
+                return outlet_name
+
             if task_choice == "1":
                 b_filter = (
-                    (dataframe['Aplikasi'].str.contains("Shopee", na=False, case=False)) &
-                    (dataframe['Nama Outlet'].str.strip().str.lower() == outlet_lower)
+                    (dataframe[app_col].astype(str).str.contains("Shopee", na=False, case=False)) &
+                    (dataframe[outlet_col].astype(str).str.strip().str.lower() == outlet_lower)
                 )
             else:
-                b_filter = (
-                    (dataframe['Aplikasi'] == 'ShopeeFood') &
-                    (dataframe['Status'] == 'Live') &
-                    (dataframe['Nama Outlet'].str.strip().str.lower() == outlet_lower)
-                )
+                if status_col:
+                    b_filter = (
+                        (dataframe[app_col].astype(str).str.contains("Shopee", na=False, case=False)) &
+                        (dataframe[status_col].astype(str).str.contains("Live", na=False, case=False)) &
+                        (dataframe[outlet_col].astype(str).str.strip().str.lower() == outlet_lower)
+                    )
+                else:
+                    b_filter = (
+                        (dataframe[app_col].astype(str).str.contains("Shopee", na=False, case=False)) &
+                        (dataframe[outlet_col].astype(str).str.strip().str.lower() == outlet_lower)
+                    )
 
             # ── Strategi 1: Lookup dengan Cabang (paling presisi) ──────────
             if branch_name:
@@ -254,12 +317,12 @@ def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None, task_cho
                 if branch_col in dataframe.columns:
                     sf_with_branch = dataframe[
                         b_filter &
-                        (dataframe[branch_col].str.strip().str.lower() == branch_lower)
+                        (dataframe[branch_col].astype(str).str.strip().str.lower() == branch_lower)
                     ]
                 else:
                     sf_with_branch = pd.DataFrame()
                 if not sf_with_branch.empty:
-                    m_name = _clean(sf_with_branch.iloc[0]['Merchant Name'])
+                    m_name = _clean(sf_with_branch.iloc[0][merchant_col])
                     if m_name and m_name not in ('-', 'nan'):
                         print(f"  {CYAN}[SHOPEE LOOKUP] Outlet+Cabang '{outlet_name} / {branch_name}'"
                               f" → Merchant: '{m_name}'{RESET}")
@@ -270,7 +333,7 @@ def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None, task_cho
             if not sf_df.empty:
                 # Hapus duplikat Merchant Name (satu outlet bisa banyak row per merchant)
                 unique_merchants = (
-                    sf_df['Merchant Name']
+                    sf_df[merchant_col]
                     .apply(_clean)
                     .loc[lambda s: (s != '-') & (s != 'nan') & (s != '')]
                     .drop_duplicates()
@@ -660,13 +723,14 @@ def interactive_mode():
         try:
             resp = requests.get(CSV_URL, timeout=30)
             resp.raise_for_status()
-            df = pd.read_csv(io.StringIO(resp.text))
+            df = normalize_merchant_df(pd.read_csv(io.StringIO(resp.text)))
         except Exception as e:
             print(f"  {RED}[ERROR] Gagal mengunduh Google Sheets: {e}{RESET}")
             sys.exit(1)
             
         df_live = df.copy()
-        outlets = sorted(df_live["Nama Outlet"].dropna().unique())
+        col_live = "Nama Outlet" if "Nama Outlet" in df_live.columns else ("Outlet" if "Outlet" in df_live.columns else df_live.columns[1])
+        outlets = sorted(df_live[col_live].dropna().unique())
         print(f"\n  {BOLD}Pilih Outlet untuk Baseline (Menarik seluruh cabang Grab, Shopee, & GoFood sekaligus):{RESET}")
         for idx, o_name in enumerate(outlets):
             print(f"    {GREEN}[{idx + 1}]{RESET} {o_name}")
@@ -711,10 +775,11 @@ def interactive_mode():
         # Terjemahkan Nama Outlet ke Merchant Name (nama toko spesifik di ShopeeFood)
         shopee_merchant = unified_outlet
         try:
+            col_live = "Nama Outlet" if "Nama Outlet" in df_live.columns else ("Outlet" if "Outlet" in df_live.columns else df_live.columns[1])
             if isinstance(unified_outlet, list):
-                shopee_rows = df_live[df_live["Nama Outlet"].isin(unified_outlet) & (df_live["Aplikasi"].str.contains("Shopee", na=False, case=False))]
+                shopee_rows = df_live[df_live[col_live].isin(unified_outlet) & (df_live["Aplikasi"].str.contains("Shopee", na=False, case=False))]
             else:
-                shopee_rows = df_live[(df_live["Nama Outlet"] == unified_outlet) & (df_live["Aplikasi"].str.contains("Shopee", na=False, case=False))]
+                shopee_rows = df_live[(df_live[col_live] == unified_outlet) & (df_live["Aplikasi"].str.contains("Shopee", na=False, case=False))]
             
             if not shopee_rows.empty:
                 merchants_list = []
@@ -785,7 +850,7 @@ def interactive_mode():
             try:
                 resp_main = requests.get(CSV_URL_MAIN, timeout=30)
                 resp_main.raise_for_status()
-                df_main = pd.read_csv(io.StringIO(resp_main.text))
+                df_main = normalize_merchant_df(pd.read_csv(io.StringIO(resp_main.text)))
             except Exception as e:
                 print(f"  {RED}[ERROR] Gagal mengunduh Google Sheets utama: {e}{RESET}")
                 sys.exit(1)
@@ -795,7 +860,7 @@ def interactive_mode():
                 try:
                     resp_vb = requests.get(CSV_URL_VB, timeout=30)
                     resp_vb.raise_for_status()
-                    df_vb = pd.read_csv(io.StringIO(resp_vb.text))
+                    df_vb = normalize_merchant_df(pd.read_csv(io.StringIO(resp_vb.text)))
                 except Exception as e:
                     print(f"  {RED}[ERROR] Gagal mengunduh Google Sheets VB: {e}{RESET}")
                     sys.exit(1)
@@ -807,7 +872,7 @@ def interactive_mode():
                     try:
                         resp_grab_vb = requests.get(CSV_URL_VB_GRAB, timeout=30)
                         resp_grab_vb.raise_for_status()
-                        df_grab_vb = pd.read_csv(io.StringIO(resp_grab_vb.text))
+                        df_grab_vb = normalize_merchant_df(pd.read_csv(io.StringIO(resp_grab_vb.text)))
                         if "Notes" in df_grab_vb.columns:
                             df_grab = df_grab_vb[~df_grab_vb["Notes"].astype(str).str.contains("restricted", na=False, case=False)].copy()
                         else:
@@ -824,7 +889,8 @@ def interactive_mode():
                     df_grab = df_main[df_main["Aplikasi"].str.contains("Grab", na=False, case=False) & df_main["Status"].str.contains("Live", na=False, case=False)]
                 
                 if not df_grab.empty:
-                    outlets_list = sorted(df_grab["Nama Outlet"].dropna().unique())
+                    col_grab = "Nama Outlet" if "Nama Outlet" in df_grab.columns else ("Outlet" if "Outlet" in df_grab.columns else df_grab.columns[1])
+                    outlets_list = sorted(df_grab[col_grab].dropna().unique())
                     print(f"\n  {BOLD}Pilih Outlet Grab:{RESET}")
                     for idx, o_name in enumerate(outlets_list):
                         print(f"    {GREEN}[{idx + 1}]{RESET} {o_name}")
@@ -847,7 +913,7 @@ def interactive_mode():
                         if task_choice == "3":
                             branch = []
                         else:
-                            df_branch = df_grab[df_grab["Nama Outlet"] == outlet[0]]
+                            df_branch = df_grab[df_grab[col_grab] == outlet[0]]
                             branch_col = "Cabang" if "Cabang" in df_branch.columns else "Brand"
                             branches = sorted(df_branch[branch_col].dropna().unique()) if branch_col in df_branch.columns else []
                             print(f"\n  {BOLD}Pilih Cabang Grab untuk '{outlet[0]}':{RESET}")
@@ -908,7 +974,8 @@ def interactive_mode():
             if ("gofood" in platform or platform == "all") and task_choice != "3":
                 df_gofood = df_main[df_main["Aplikasi"].str.contains("GoFood", na=False, case=False) & df_main["Status"].str.contains("Live", na=False, case=False)]
                 if not df_gofood.empty:
-                    gofood_outlets = sorted(df_gofood["Nama Outlet"].dropna().unique())
+                    col_go = "Nama Outlet" if "Nama Outlet" in df_gofood.columns else ("Outlet" if "Outlet" in df_gofood.columns else df_gofood.columns[1])
+                    gofood_outlets = sorted(df_gofood[col_go].dropna().unique())
                     print(f"\n  {BOLD}Pilih Outlet GoFood:{RESET}")
                     for idx, o_name in enumerate(gofood_outlets):
                         print(f"    {GREEN}[{idx + 1}]{RESET} {o_name}")
@@ -1406,16 +1473,17 @@ Examples:
                         try:
                             resp = requests.get(CSV_URL, timeout=10)
                             if resp.status_code == 200:
-                                df_cred = pd.read_csv(io.StringIO(resp.text))
+                                df_cred = normalize_merchant_df(pd.read_csv(io.StringIO(resp.text)))
+                                col_cred = "Nama Outlet" if "Nama Outlet" in df_cred.columns else ("Outlet" if "Outlet" in df_cred.columns else df_cred.columns[1])
                                 outlet_lower = str(outlet_val).strip().lower()
                                 # 1. Exact match (case-insensitive)
                                 matched = df_cred[
-                                    df_cred["Nama Outlet"].astype(str).str.strip().str.lower() == outlet_lower
+                                    df_cred[col_cred].astype(str).str.strip().str.lower() == outlet_lower
                                 ]
                                 # 2. Fallback: partial/contains match jika exact tidak ditemukan
                                 if matched.empty:
                                     matched = df_cred[
-                                        df_cred["Nama Outlet"].astype(str).str.strip().str.lower().str.contains(
+                                        df_cred[col_cred].astype(str).str.strip().str.lower().str.contains(
                                             outlet_lower, na=False, regex=False
                                         )
                                     ]
