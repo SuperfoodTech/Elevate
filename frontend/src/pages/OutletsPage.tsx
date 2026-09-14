@@ -690,7 +690,7 @@ export const OutletsPage: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/60">
-                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[200px]">Outlet Cabang</th>
+                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[200px]">Outlet</th>
                     <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[160px]">Brand / Owner</th>
                     <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[320px]">Alamat</th>
                     <th className="py-2 px-3 text-center border-x border-[#EBEBEF] min-w-[120px]" colSpan={3}>
@@ -732,7 +732,7 @@ export const OutletsPage: React.FC = () => {
                           idx % 2 === 0 ? '' : 'bg-gray-50/30'
                         }`}
                       >
-                        {/* Outlet Cabang */}
+                        {/* Outlet */}
                         <td className="px-4 py-3.5 min-w-[200px]">
                           <Link
                             to={`/outlets/${outlet.id}`}
@@ -740,7 +740,6 @@ export const OutletsPage: React.FC = () => {
                           >
                             {outlet.name}
                           </Link>
-                          <p className="font-mono text-xs text-gray-400 mt-0.5">{outlet.id}</p>
                         </td>
 
                         {/* Brand / Owner */}
