@@ -355,13 +355,17 @@ export const TransactionDetailPage: React.FC = () => {
                     {formatRupiah(transaction.agencyFee)}
                   </p>
                   <div className="mt-3">
-                    {isSukses ? (
+                    {transaction.orderStage === 'akuisisi_to_live' ? (
+                      <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8]">
+                        Potential Lost (Akuisisi s/d Live)
+                      </span>
+                    ) : isSukses ? (
                       <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold bg-[#DCFCE7] text-[#166534]">
                         Earned
                       </span>
                     ) : (
                       <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold border border-[#E53935] text-[#E53935] bg-white">
-                        Lost due to Cancellation
+                        Order Batal
                       </span>
                     )}
                   </div>
@@ -375,7 +379,9 @@ export const TransactionDetailPage: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">Keterangan</p>
                     <p className="text-sm text-gray-600">
-                      {isSukses
+                      {transaction.orderStage === 'akuisisi_to_live'
+                        ? 'Order terjadi pada rentang hari akuisisi hingga tanggal live (pra-live onboarding). Merupakan potensi revenue yang belum terkover sistem agency.'
+                        : isSukses
                         ? 'Fee berhasil diperoleh dari order sukses.'
                         : 'Order batal sebelum dinyatakan sukses di platform. Agency fee tidak diakui sebagai receivable.'}
                     </p>

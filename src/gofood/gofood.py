@@ -1,5 +1,11 @@
 import os
 import json
+import socket
+try:
+    import urllib3.util.connection as urllib3_cn
+    urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
+except Exception:
+    pass
 import requests
 import openpyxl
 import urllib.request
@@ -37,6 +43,13 @@ from rich.text import Text
 from rich.columns import Columns
 from rich.theme import Theme
 
+_gofood_dir = os.path.dirname(os.path.abspath(__file__))
+_gofood_env = os.path.join(_gofood_dir, '.env')
+_parent_env = os.path.join(os.path.dirname(_gofood_dir), '.env')
+if os.path.exists(_parent_env):
+    load_dotenv(_parent_env, override=True)
+if os.path.exists(_gofood_env):
+    load_dotenv(_gofood_env, override=True)
 load_dotenv(override=True)
 
 # Initialize Rich Console
@@ -52,6 +65,11 @@ START_TIME_TOTAL = time.time()
 
 # Master credential Google Sheet — source of truth for ALL scrapers
 SHEET_PUBLISHED_URL = get_sheet_url("gofood_merchant_list")
+DEFAULT_OTP_ENDPOINT_URL = (
+    os.getenv("OTP_ENDPOINT_URL")
+    or os.getenv("APPS_SCRIPT_OTP_URL")
+    or "https://script.google.com/macros/s/AKfycbwRViqfGkDtQGmUDD0PycfSGyEBPgx2uaxelHdKIr__4rZ5aq41j1En5Wb96CgEmRvM/exec"
+)
 
 
 def to_csv_url(url):
@@ -164,9 +182,18 @@ def fetch_gofood_accounts_from_sheet(task="2"):
 
     # Cari indeks kolom dinamis
     def col_idx(names):
+        # 1. Exact match dulu
         for n in names:
+            n_clean = str(n).strip().lower()
             for i, h in enumerate(header):
-                if n in h:
+                if n_clean == str(h).strip().lower():
+                    return i
+        # 2. Substring match
+        for n in names:
+            n_clean = str(n).strip().lower()
+            for i, h in enumerate(header):
+                h_clean = str(h).strip().lower()
+                if n_clean in h_clean or h_clean in n_clean:
                     return i
         return None
 
@@ -197,9 +224,13 @@ def fetch_gofood_accounts_from_sheet(task="2"):
 
         # Parsing format sheet Baseline
         idx_aplikasi   = col_idx(['aplikasi'])
-        idx_outlet     = col_idx(['nama outlet'])
-        idx_email_fm1 = col_idx(['email foodmaster1'])
-        idx_email_fm2 = col_idx(['email foodmaster2'])
+        idx_outlet     = col_idx(['nama outlet', 'outlet'])
+        idx_email_fm1 = col_idx(['email login go 1', 'email go 1', 'email foodmaster1', 'email 1'])
+        if idx_email_fm1 is None:
+            idx_email_fm1 = 24  # Kolom Y (0-indexed)
+        idx_email_fm2 = col_idx(['email login go 2', 'email go 2', 'email foodmaster2', 'email duck', 'email 2'])
+        if idx_email_fm2 is None:
+            idx_email_fm2 = 25  # Kolom Z (0-indexed)
         idx_bd         = col_idx(['bd'])
 
         for row in reader_rows[1:]:
@@ -225,23 +256,17 @@ def fetch_gofood_accounts_from_sheet(task="2"):
                 primary_email = ""
                 emails = []
             else:
-                # Task 1 (Baseline standard)
+                # Task 1 (Baseline standard) - Kolom Y dan Z
                 phone = "-"
-                # Ambil Email FoodMaster2 sebagai sekunder
-                email_fm2 = ""
-                if idx_email_fm2 is not None and len(row) > idx_email_fm2:
-                    email_fm2 = str(row[idx_email_fm2]).strip()
-                
-                # Email FoodMaster1 sebagai prioritas utama
-                email_fm1 = ""
-                if idx_email_fm1 is not None and len(row) > idx_email_fm1:
-                    email_fm1 = str(row[idx_email_fm1]).strip()
-    
                 emails = []
-                if email_fm1 and email_fm1 != "-":
-                    emails.append(email_fm1)
-                if email_fm2 and email_fm2 != "-" and email_fm2 != email_fm1:
-                    emails.append(email_fm2)
+                if len(row) > idx_email_fm1:
+                    e1 = str(row[idx_email_fm1]).strip()
+                    if e1 and e1 != "-" and "@" in e1:
+                        emails.append(e1)
+                if len(row) > idx_email_fm2:
+                    e2 = str(row[idx_email_fm2]).strip()
+                    if e2 and e2 != "-" and "@" in e2 and e2 not in emails:
+                        emails.append(e2)
                     
                 primary_email = emails[0] if emails else ""
 
@@ -260,12 +285,16 @@ def fetch_gofood_accounts_from_sheet(task="2"):
         # Parsing format sheet Live/Weekly (Default)
         idx_aplikasi  = col_idx(['aplikasi'])
         idx_status    = col_idx(['status'])
-        idx_outlet    = col_idx(['nama outlet'])
-        idx_cabang    = col_idx(['cabang'])
-        idx_store     = col_idx(['store id', 'store_id', 'merchant id'])
+        idx_outlet    = col_idx(['nama outlet', 'outlet'])
+        idx_cabang    = col_idx(['cabang', 'brand'])
+        idx_store     = col_idx(['store id', 'store_id', 'merchant id', 'resto id'])
         idx_phone     = 26  # Kolom AA (0-indexed)
-        idx_email_fm  = col_idx(['email foodmaster'])
-        idx_email_duck= col_idx(['email duck'])
+        idx_email_y   = col_idx(['email login go 1', 'email go 1', 'email foodmaster1', 'email foodmaster', 'email 1'])
+        if idx_email_y is None:
+            idx_email_y = 24  # Kolom Y (0-indexed)
+        idx_email_z   = col_idx(['email login go 2', 'email go 2', 'email foodmaster2', 'email duck', 'email 2'])
+        if idx_email_z is None:
+            idx_email_z = 25  # Kolom Z (0-indexed)
 
         for row in reader_rows[1:]:
             if len(row) <= idx_phone:
@@ -279,25 +308,17 @@ def fetch_gofood_accounts_from_sheet(task="2"):
             if 'live' not in status:
                 continue
 
-            email_fm = ""
-            if idx_email_fm is not None and len(row) > idx_email_fm:
-                email_fm = str(row[idx_email_fm]).strip()
-            
-            email_duck = ""
-            if idx_email_duck is not None and len(row) > idx_email_duck:
-                email_duck = str(row[idx_email_duck]).strip()
-
             emails = []
-            if email_fm and email_fm != "-":
-                emails.append(email_fm)
-            if email_duck and email_duck != "-" and email_duck != email_fm:
-                emails.append(email_duck)
-                
-            if not emails and len(row) > 24:
-                fallback_email = str(row[24]).strip()
-                if fallback_email and fallback_email != "-":
-                    emails.append(fallback_email)
-                    
+            if len(row) > idx_email_y:
+                ey = str(row[idx_email_y]).strip()
+                if ey and ey != "-" and "@" in ey:
+                    emails.append(ey)
+
+            if len(row) > idx_email_z:
+                ez = str(row[idx_email_z]).strip()
+                if ez and ez != "-" and "@" in ez and ez not in emails:
+                    emails.append(ez)
+
             primary_email = emails[0] if emails else ""
 
             phone     = str(row[idx_phone]).strip()
@@ -350,12 +371,12 @@ def build_sheet_mapping(rows):
     # try to find "Nama Outlet" index
     name_idx = None
     for i, h in enumerate(header):
-        if (h or '').strip().lower() == 'nama outlet':
+        if (h or '').strip().lower() in ('nama outlet', 'outlet'):
             name_idx = i
             break
     if name_idx is None:
         for i, h in enumerate(header):
-            if 'nama outlet' in (h or '').lower():
+            if 'nama outlet' in (h or '').lower() or 'outlet' in (h or '').lower():
                 name_idx = i
                 break
     aa_idx = 26
@@ -369,7 +390,7 @@ def build_sheet_mapping(rows):
         if not h:
             continue
         hl = h.strip().lower()
-        if 'cabang' in hl:
+        if 'cabang' in hl or 'brand' in hl:
             cabang_idx = i
         if 'aplikasi' in hl:
             aplikasi_idx = i
@@ -518,24 +539,28 @@ def get_sheet_entry(mapping, num, current_name=None):
 def ambil_otp_dari_endpoint(url_dasar, action="getOtp", label_email=None):
     """
     Mengambil OTP terbaru dari endpoint Google Apps Script atau langsung dari Google Sheets CSV.
+    Menggunakan requests dengan IPv4 dan timeout cepat.
     """
     if not url_dasar:
         raise ValueError("URL endpoint OTP kosong.")
 
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
     # Jika URL mengarah langsung ke Google Sheets CSV
     if "docs.google.com/spreadsheets" in url_dasar:
         try:
-            with urlopen(url_dasar, timeout=15) as response:
-                content = response.read().decode("utf-8").strip()
+            resp = requests.get(url_dasar, headers=headers, timeout=(3, 8))
+            if resp.status_code == 200:
+                content = resp.text.strip()
                 lines = content.splitlines()
                 if not lines or len(lines) < 2:
                     return ""
                 reader = csv.reader(lines)
                 rows = list(reader)
-                headers = [h.strip().lower() for h in rows[0]]
+                headers_row = [h.strip().lower() for h in rows[0]]
                 
                 otp_idx = -1
-                for idx, h in enumerate(headers):
+                for idx, h in enumerate(headers_row):
                     if "otp" in h:
                         otp_idx = idx
                         break
@@ -548,7 +573,7 @@ def ambil_otp_dari_endpoint(url_dasar, action="getOtp", label_email=None):
                     return last_row[otp_idx].strip()
                 return ""
         except Exception as e:
-            console.print(f"[warning]⚠️ Gagal membaca OTP dari Sheets: {e}[/warning]")
+            console.print(f"[warning]Gagal membaca OTP dari Sheets: {e}[/warning]")
             return ""
 
     parsed = urlparse(url_dasar)
@@ -558,13 +583,18 @@ def ambil_otp_dari_endpoint(url_dasar, action="getOtp", label_email=None):
         query_params["label"] = label_email
     url_final = urlunparse(parsed._replace(query=urlencode(query_params)))
 
-    with urlopen(url_final, timeout=15) as response:
-        return response.read().decode("utf-8").strip()
+    try:
+        resp = requests.get(url_final, headers=headers, timeout=(3, 8))
+        if resp.status_code == 200:
+            return resp.text.strip()
+        return ""
+    except Exception as e:
+        return ""
 
 
-def tunggu_otp_terbaru(url_dasar, action="getOtp", label_email=None, interval_detik=3, otp_awal_override=None, timeout_detik=30):
+def tunggu_otp_terbaru(url_dasar, action="getOtp", label_email=None, interval_detik=1.5, otp_awal_override=None, timeout_detik=20):
     """
-    Menunggu OTP terbaru dari Gmail/AppsScript yang berbeda dari nilai awal agar tidak memakai OTP sebelumnya.
+    Menunggu OTP terbaru yang berbeda dari nilai awal agar tidak memakai OTP sebelumnya.
     otp_awal_override: Jika diisi, gunakan nilai ini sebagai baseline (snapshot sebelum OTP dikirim).
     """
     if otp_awal_override is not None:
@@ -576,13 +606,13 @@ def tunggu_otp_terbaru(url_dasar, action="getOtp", label_email=None, interval_de
             otp_awal = ""
     
     batas_waktu = time.time() + timeout_detik
-    console.print(f"   [info]🤖 Menunggu OTP baru masuk ke inbox (maksimal {timeout_detik} detik)...[/info]")
+    console.print(f"   [info]Menunggu OTP baru masuk ke inbox (maksimal {timeout_detik} detik)...[/info]")
 
     while time.time() < batas_waktu:
         time.sleep(interval_detik)
         try:
             otp_baru = ambil_otp_dari_endpoint(url_dasar, action=action, label_email=label_email)
-            if otp_baru and otp_baru != otp_awal:
+            if otp_baru and otp_baru != otp_awal and otp_baru.isdigit() and len(otp_baru) in (4, 6):
                 return otp_baru
         except Exception:
             pass
@@ -608,11 +638,11 @@ def login_outlet_gofood_flow(outlet_info):
 
     label = f"{nama} - {cabang}" if cabang and cabang != 'Tanpa Cabang' else nama
 
-    console.print(f"\n[bold yellow]🔄 Membuka browser untuk login otomatis ke: {label}[/bold yellow]")
+    console.print(f"\n[bold yellow]Membuka browser untuk login otomatis ke: {label}[/bold yellow]")
     if emails_to_try:
-        console.print(f"   📧 Emails: {', '.join(emails_to_try)}")
+        console.print(f"   Emails: {', '.join(emails_to_try)}")
     if phone:
-        console.print(f"   📱 Phone: {phone}")
+        console.print(f"   Phone: {phone}")
 
     use_proxy = os.getenv("USE_PROXY", "false").lower() in ("true", "1", "yes")
     proxy_server = os.getenv("PROXY_SERVER")
@@ -650,7 +680,12 @@ def login_outlet_gofood_flow(outlet_info):
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--disable-infobars',
-                '--no-sandbox'
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disk-cache-size=10485760'
             ]
         )
         context = browser.new_context(
@@ -659,8 +694,25 @@ def login_outlet_gofood_flow(outlet_info):
             proxy=proxy_config
         )
 
-        import random
-        
+        # Suntikkan skrip stealth agar mode headless tidak terdeteksi sebagai bot oleh sistem auth Gojek
+        context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            window.chrome = {
+                runtime: {},
+                loadTimes: function() {},
+                csi: function() {},
+                app: {}
+            };
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['id-ID', 'id', 'en-US', 'en']
+            });
+        """)
+
         access_token = None
 
         for email_idx, current_email in enumerate(emails_to_try):
@@ -678,31 +730,15 @@ def login_outlet_gofood_flow(outlet_info):
                     break
                     
                 page = context.new_page()
-                login_url = (
-                    "https://portal.gofoodmerchant.co.id/auth/login/email"
-                    if current_email
-                    else "https://portal.gofoodmerchant.co.id/auth/login"
-                )
-                console.print(
-                    f"\n   ➡️ Membuka halaman login{' email langsung' if current_email else ''}... "
-                    f"(Percobaan {attempt + 1}/{max_login_attempts})"
-                )
-                try:
-                    # The portal can keep secondary resources open for a long time.
-                    # DOMContentLoaded is sufficient because the next step only
-                    # needs the email/login form, not every asset on the page.
-                    page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
-                except PlaywrightTimeoutError:
-                    # A timeout can happen after the HTML has already rendered.
-                    # Continue and let the form selector below decide whether the
-                    # page is usable; this avoids failing on slow assets.
-                    console.print(
-                        "   [warning]⚠️ Halaman login lambat memuat; "
-                        "melanjutkan dengan DOM yang sudah tersedia...[/warning]"
-                    )
+                if current_email:
+                    console.print(f"\n   [Email: {current_email}] Membuka halaman login email langsung... (Percobaan {attempt + 1}/{max_login_attempts})")
+                    page.goto("https://portal.gofoodmerchant.co.id/auth/login/email", wait_until="domcontentloaded")
+                else:
+                    console.print(f"\n   Membuka halaman login... (Percobaan {attempt + 1}/{max_login_attempts})")
+                    page.goto("https://portal.gofoodmerchant.co.id/auth/login", wait_until="domcontentloaded")
 
                 # Langsung input ke email field, abaikan cookie & pop-up
-                time.sleep(1.0)
+                time.sleep(0.5)
                 
                 otp_failed_timeout = False
                 is_banned = False
@@ -713,59 +749,81 @@ def login_outlet_gofood_flow(outlet_info):
                 action_type = "getOtpEmail" if current_email else "getOtp"
                 otp_snapshot_awal = ""
 
-                # --- STEP 4: Ketik email secara human-like ---
+                # Tutup cookie banner jika ada agar tidak menutupi elemen
+                try:
+                    cookie_btn = page.locator('button:has-text("Terima Semua Cookie"), button#onetrust-accept-btn-handler').first
+                    if cookie_btn.count() > 0 and cookie_btn.is_visible():
+                        cookie_btn.click()
+                        time.sleep(0.3)
+                except Exception:
+                    pass
+
+                # --- STEP 4: Ketik email ---
                 if current_email:
                     try:
+                        # Jika halaman terbuka di mode Nomor HP, klik "Masuk dengan email"
+                        try:
+                            btn_switch_email = page.locator('button:has-text("Masuk dengan email"), a:has-text("Masuk dengan email")').first
+                            if btn_switch_email.count() > 0 and btn_switch_email.is_visible():
+                                btn_switch_email.click()
+                                time.sleep(1)
+                        except Exception:
+                            pass
+
                         email_input = page.wait_for_selector(
-                            'input[type="email"], input[name="email"], input[placeholder*="email" i], input[placeholder*="Email" i], input[type="text"]',
+                            'input[type="email"], input[name="email"], input[placeholder*="email" i], input[placeholder*="Email" i]',
                             timeout=15000
                         )
                         if email_input:
                             email_input.click()
+                            email_input.fill(current_email)
                             time.sleep(0.3)
-                            email_input.focus()
-                            time.sleep(0.3)
-                            for char in current_email:
-                                email_input.type(char, delay=0)
-                                time.sleep(random.uniform(0.05, 0.15))
-                            time.sleep(0.5)
 
-                            submit_btn = page.locator('button:has-text("Lanjut"), button:has-text("Submit"), button:has-text("Masuk"), button[type="submit"]')
-                            if submit_btn.count() > 0:
-                                submit_btn.first.click()
+                            submit_btn = page.locator('button:has-text("Lanjut"), button:has-text("Submit"), button:has-text("Masuk"), button[type="submit"]').first
+                            if submit_btn.count() > 0 and submit_btn.is_visible() and submit_btn.is_enabled():
+                                submit_btn.click()
                             else:
                                 email_input.press("Enter")
-                            time.sleep(3)
+                            time.sleep(1.0)
 
-                            # --- Pre-snapshot OTP sebelum tombol OTP diklik ---
-                            if otp_endpoint:
-                                try:
-                                    otp_snapshot_awal = ambil_otp_dari_endpoint(otp_endpoint, action=action_type, label_email=label_email_cfg)
-                                    console.print(f"   [info]📸 Snapshot OTP awal: '{otp_snapshot_awal or '(kosong)'}' (sebelum OTP dikirim)[/info]")
-                                except Exception:
-                                    otp_snapshot_awal = ""
-
-                            # Jika ada halaman pilihan login (password/OTP)
+                            # Tunggu tombol "Masuk dengan OTP" muncul di layar pilihan login (password/OTP)
                             try:
                                 btn_otp = page.locator('button:has-text("Masuk dengan OTP"), a:has-text("Masuk dengan OTP")').first
-                                if btn_otp.count() > 0 and btn_otp.is_visible():
-                                    btn_otp.click()
-                                    console.print("   [info]✅ Tombol 'Masuk dengan OTP' diklik. OTP sedang dikirim...[/info]")
-                                    time.sleep(2)
+                                btn_otp.wait_for(state="visible", timeout=6000)
+                                time.sleep(0.5)
+
+                                # Snapshot OTP diambil TEPAT SEBELUM request OTP dikirim agar tidak mengambil OTP usang
+                                if otp_endpoint:
+                                    try:
+                                        otp_snapshot_awal = ambil_otp_dari_endpoint(otp_endpoint, action=action_type, label_email=label_email_cfg)
+                                        console.print(f"   [info]Snapshot OTP awal: '{otp_snapshot_awal or '(kosong)'}' (sebelum OTP dikirim)[/info]")
+                                    except Exception:
+                                        otp_snapshot_awal = ""
+
+                                btn_otp.click()
+                                console.print("   [info]Tombol 'Masuk dengan OTP' diklik. OTP sedang dikirim...[/info]")
+                                time.sleep(2)
                             except Exception:
-                                pass
+                                # Jika langsung masuk ke halaman OTP (tanpa opsi password)
+                                if otp_endpoint and not otp_snapshot_awal:
+                                    try:
+                                        otp_snapshot_awal = ambil_otp_dari_endpoint(otp_endpoint, action=action_type, label_email=label_email_cfg)
+                                        console.print(f"   [info]Snapshot OTP awal: '{otp_snapshot_awal or '(kosong)'}' (sebelum OTP dikirim)[/info]")
+                                    except Exception:
+                                        otp_snapshot_awal = ""
 
                             # --- STEP 5: Automated OTP Polling & Fill ---
                             if otp_endpoint:
-                                # 1. Tunggu field OTP muncul — Jika timeout/error, berarti akun kena banned 15 menit
+                                # 1. Tunggu field OTP muncul - Jika timeout/error, berarti akun kena banned 15 menit
                                 try:
-                                    console.print("   [info]🤖 Menunggu field OTP muncul...[/info]")
-                                    otp_input_selector = 'input[autocomplete="one-time-code"], input[aria-label*="digit" i], div[class*="otp" i] input:not([type="checkbox"]):not([type="radio"]), input[name*="otp" i]:not([type="checkbox"]):not([type="radio"]), input[maxlength="1"]:not([type="checkbox"]):not([type="radio"])'
+                                    console.print("   [info]Menunggu field OTP muncul...[/info]")
+                                    otp_input_selector = '#auth-otp-input, input[name="otp"]:not(#vendor-search-handler), input[autocomplete="one-time-code"]:not(#vendor-search-handler), input[aria-label*="digit" i]:not(#vendor-search-handler), input[maxlength="1"]:not(#vendor-search-handler):not([type="checkbox"]):not([type="radio"])'
                                     
                                     otp_appeared = False
                                     start_wait_otp = time.time()
-                                    while time.time() - start_wait_otp < 15:
-                                        if page.locator(otp_input_selector).count() > 0 and page.locator(otp_input_selector).first.is_visible():
+                                    while time.time() - start_wait_otp < 20:
+                                        all_otp = page.locator(otp_input_selector).all()
+                                        if any(f.is_visible() for f in all_otp):
                                             otp_appeared = True
                                             break
                                         
@@ -777,7 +835,7 @@ def login_outlet_gofood_flow(outlet_info):
                                             if (ban_msg1.count() > 0 and ban_msg1.first.is_visible()) or \
                                                (ban_msg2.count() > 0 and ban_msg2.first.is_visible()) or \
                                                (ban_msg3.count() > 0 and ban_msg3.first.is_visible()):
-                                                console.print("   [warning]⚠️ Terdeteksi teks peringatan Limit/Banned. Membatalkan tunggu OTP...[/warning]")
+                                                console.print("   [warning]Terdeteksi teks peringatan Limit/Banned. Membatalkan tunggu OTP...[/warning]")
                                                 break
                                         except Exception:
                                             pass
@@ -789,7 +847,7 @@ def login_outlet_gofood_flow(outlet_info):
                                         
                                     time.sleep(1)
                                 except Exception as e:
-                                    console.print(f"   [warning]⚠️ {e}: Field OTP tidak muncul. Indikasi limit/banned 15 menit untuk email {current_email}. Menghentikan percobaan dan rotasi akun.[/warning]")
+                                    console.print(f"   [warning]{e}: Field OTP tidak muncul. Indikasi limit/banned 15 menit untuk email {current_email}. Menghentikan percobaan dan rotasi akun.[/warning]")
                                     is_banned = True
                                     try:
                                         page.close()
@@ -800,40 +858,68 @@ def login_outlet_gofood_flow(outlet_info):
                                 # 2. Lakukan polling dan input OTP
                                 if not is_banned:
                                     try:
-                                        console.print("   [info]🤖 Polling OTP dari Gmail (snapshot awal sudah diambil sebelumnya)...[/info]")
+                                        console.print("   [info]Polling OTP dari Gmail (snapshot awal sudah diambil sebelumnya)...[/info]")
                                         
                                         otp_code = tunggu_otp_terbaru(otp_endpoint, action=action_type, label_email=label_email_cfg, interval_detik=3, otp_awal_override=otp_snapshot_awal, timeout_detik=15)
                                         
                                         if otp_code and not (otp_code.isdigit() and len(otp_code) in (4, 6)):
-                                            console.print(f"   [warning]⚠️ OTP dari endpoint bukan format angka valid: {otp_code[:50]}...[/warning]")
+                                            console.print(f"   [warning]OTP dari endpoint bukan format angka valid: {otp_code[:50]}...[/warning]")
                                             otp_code = None
                                             
                                         if otp_code:
-                                            console.print(f"   [info]🤖 OTP didapat: {otp_code}. Memasukkan OTP...[/info]")
-                                            otp_fields = page.locator(otp_input_selector).all()
-                                            if len(otp_fields) > 0:
+                                            console.print(f"   [info]OTP didapat: {otp_code}. Memasukkan OTP...[/info]")
+                                            raw_otp = page.locator(otp_input_selector).all()
+                                            otp_fields = [f for f in raw_otp if f.is_visible()]
+                                            if len(otp_fields) == 1:
                                                 otp_fields[0].focus()
-                                                time.sleep(0.5)
-                                                otp_fields[0].type(otp_code, delay=300)
-                                                console.print("   [success]✅ OTP berhasil diisi otomatis.[/success]")
+                                                time.sleep(0.2)
+                                                otp_fields[0].fill(otp_code)
+                                                time.sleep(0.3)
+                                                console.print("   [success]OTP berhasil diisi otomatis.[/success]")
+                                            elif len(otp_fields) > 1:
+                                                console.print(f"   [info]Mengisi {len(otp_fields)} digit OTP ke masing-masing field...[/info]")
+                                                for idx, digit in enumerate(otp_code[:len(otp_fields)]):
+                                                    otp_fields[idx].focus()
+                                                    otp_fields[idx].fill(digit)
+                                                    time.sleep(0.1)
+                                                console.print("   [success]OTP multi-field berhasil diisi otomatis.[/success]")
+                                            else:
+                                                console.print("   [warning]Tidak ada field OTP yang tampak (visible) untuk diisi.[/warning]")
                                                 
-                                                # Coba klik tombol submit/konfirmasi/masuk OTP
-                                                time.sleep(1)
-                                                submit_otp_btn = page.locator('button:has-text("Masuk"), button:has-text("Konfirmasi"), button:has-text("Verifikasi"), button:has-text("Lanjut"), button[type="submit"]')
-                                                clicked = False
+                                            # Coba klik tombol submit/konfirmasi/masuk OTP
+                                            time.sleep(1.0)
+                                            clicked = False
+                                            # 1. Prioritas ID eksplisit tombol submit OTP Gojek (#verify-otp-button)
+                                            specific_submit = page.locator('#verify-otp-button, button[name="verify-otp-button"]').first
+                                            if specific_submit.count() > 0 and specific_submit.is_visible():
+                                                for _ in range(15):
+                                                    if specific_submit.is_enabled():
+                                                        console.print("   [info]Mengklik tombol submit OTP: 'Masuk'[/info]")
+                                                        specific_submit.click()
+                                                        clicked = True
+                                                        break
+                                                    time.sleep(0.2)
+
+                                            # 2. Fallback tombol submit jika ID berbeda (hindari tombol "Masuk dengan password")
+                                            if not clicked:
+                                                submit_otp_btn = page.locator('button[type="submit"]:has-text("Masuk"), button:has-text("Konfirmasi"), button:has-text("Verifikasi")')
                                                 for i in range(submit_otp_btn.count()):
                                                     btn = submit_otp_btn.nth(i)
+                                                    btn_text = btn.text_content().strip().lower()
+                                                    if "password" in btn_text:
+                                                        continue
                                                     if btn.is_visible() and btn.is_enabled():
-                                                        console.print(f"   [info]🤖 Mengklik tombol OTP: '{btn.text_content().strip()}'[/info]")
+                                                        console.print(f"   [info]Mengklik tombol OTP: '{btn.text_content().strip()}'[/info]")
                                                         btn.click()
                                                         clicked = True
                                                         break
-                                                if not clicked:
-                                                    console.print("   [info]🤖 Mengirim Enter sebagai fallback...[/info]")
-                                                    page.keyboard.press("Enter")
-                                                time.sleep(2)
+
+                                            if not clicked:
+                                                console.print("   [info]Mengirim Enter sebagai fallback...[/info]")
+                                                page.keyboard.press("Enter")
+                                            time.sleep(2)
                                         else:
-                                            console.print("   [warning]⚠️ Gagal mendapatkan OTP dalam 15 detik (atau format tidak valid).[/warning]")
+                                            console.print("   [warning]Gagal mendapatkan OTP dalam 15 detik (atau format tidak valid).[/warning]")
                                             if email_idx == len(emails_to_try) - 1 and attempt >= max_login_attempts - 1:
                                                 send_discord_error(
                                                     platform="GoFood", 
@@ -844,7 +930,7 @@ def login_outlet_gofood_flow(outlet_info):
                                                 )
                                             otp_failed_timeout = True
                                     except Exception as e:
-                                        console.print(f"   [warning]⚠️ Gagal melakukan automasi OTP: {e}.[/warning]")
+                                        console.print(f"   [warning]Gagal melakukan automasi OTP: {e}.[/warning]")
                                         if email_idx == len(emails_to_try) - 1 and attempt >= max_login_attempts - 1:
                                             send_discord_error(
                                                     platform="GoFood", 
@@ -855,9 +941,9 @@ def login_outlet_gofood_flow(outlet_info):
                                             )
                                         otp_failed_timeout = True
                             else:
-                                console.print("   [info]👉 Silakan isi kode OTP secara MANUAL di browser.[/info]")
+                                console.print("   [info]Silakan isi kode OTP secara manual di browser.[/info]")
                     except Exception as e:
-                        console.print(f"   [error]⚠️ Gagal ketik email: {e}[/error]")
+                        console.print(f"   [error]Gagal ketik email: {e}[/error]")
 
                 # Jika banned (field OTP tidak muncul), sudah di-break di atas, skip token wait
                 if is_banned:
@@ -866,7 +952,7 @@ def login_outlet_gofood_flow(outlet_info):
                 # Jika OTP gagal timeout, tunggu 15 detik lalu retry attempt berikutnya
                 if otp_failed_timeout:
                     if attempt < max_login_attempts - 1:
-                        console.print("   [warning]⚠️ Menutup halaman dan menunggu 15 detik sebelum mengulang login (attempt ke-2)...[/warning]")
+                        console.print("   [warning]Menutup halaman dan menunggu 15 detik sebelum mengulang login (attempt ke-2)...[/warning]")
                         try:
                             page.close()
                         except Exception:
@@ -874,46 +960,43 @@ def login_outlet_gofood_flow(outlet_info):
                         time.sleep(15)
                         continue
                     else:
-                        console.print(f"   [warning]⚠️ Melewati batas percobaan login untuk {current_email}. Rotasi ke email berikutnya/gagal.[/warning]")
+                        console.print(f"   [warning]Melewati batas percobaan login untuk {current_email}. Rotasi ke email berikutnya/gagal.[/warning]")
                         try:
                             page.close()
                         except Exception:
                             pass
                         continue
 
-                # --- Tunggu access_token muncul di cookies (max 15 detik) ---
+                # --- Tunggu access_token muncul di cookies / storage (max 10 detik) ---
                 attempt_token = None
                 start_time = time.time()
                 try:
                     while True:
                         if page.is_closed():
-                            console.print("[warning]⚠️ Browser ditutup sebelum login selesai.[/warning]")
+                            console.print("[warning]Browser ditutup sebelum login selesai.[/warning]")
                             if email_idx == len(emails_to_try) - 1 and attempt >= max_login_attempts - 1:
                                 send_discord_error("GoFood", nama, "SYSTEM_ERROR", "Proses login terganggu karena browser tertutup secara tiba-tiba atau kehilangan koneksi di tengah jalan.", phone)
                             break
 
+                        # 1. Cek cookies browser
                         cookies = context.cookies()
                         for cookie in cookies:
-                            if cookie['name'] == 'access_token':
+                            if cookie.get('name') == 'access_token' and cookie.get('value'):
                                 attempt_token = cookie['value']
                                 break
+
+                        # 2. Cek localStorage & sessionStorage jika belum ada di cookies
+                        if not attempt_token:
+                            try:
+                                ls_token = page.evaluate("() => localStorage.getItem('access_token') || sessionStorage.getItem('access_token')")
+                                if ls_token and len(str(ls_token)) > 20:
+                                    attempt_token = ls_token
+                            except Exception:
+                                pass
 
                         if attempt_token:
                             access_token = attempt_token
                             break
-
-                        # Deteksi akun baru yang butuh verifikasi email
-                        try:
-                            error_msg1 = page.locator('text=/Email belum diverifikasi/i')
-                            error_msg2 = page.locator('text=/silahkan login ulang/i')
-                            if (error_msg1.count() > 0 and error_msg1.first.is_visible()) or \
-                               (error_msg2.count() > 0 and error_msg2.first.is_visible()):
-                                console.print("   [warning]⚠️ Terdeteksi akun baru: 'Email belum diverifikasi'. Mempercepat percobaan ulang...[/warning]")
-                                max_login_attempts = 3
-                                time.sleep(2.0)
-                                break
-                        except Exception:
-                            pass
 
                         # Deteksi OTP Salah / Kadaluarsa
                         try:
@@ -923,7 +1006,7 @@ def login_outlet_gofood_flow(outlet_info):
                             if (otp_err1.count() > 0 and otp_err1.first.is_visible()) or \
                                (otp_err2.count() > 0 and otp_err2.first.is_visible()) or \
                                (otp_err3.count() > 0 and otp_err3.first.is_visible()):
-                                console.print("   [warning]⚠️ Terdeteksi pesan 'OTP Salah/Tidak Valid'. Mempercepat percobaan ulang...[/warning]")
+                                console.print("   [warning]Terdeteksi pesan 'OTP Salah/Tidak Valid'. Mempercepat percobaan ulang...[/warning]")
                                 break
                         except Exception:
                             pass
@@ -936,34 +1019,67 @@ def login_outlet_gofood_flow(outlet_info):
                             if (ban_err1.count() > 0 and ban_err1.first.is_visible()) or \
                                (ban_err2.count() > 0 and ban_err2.first.is_visible()) or \
                                (ban_err3.count() > 0 and ban_err3.first.is_visible()):
-                                console.print("   [warning]⚠️ Terdeteksi teks Limit/Banned. Membatalkan tunggu token...[/warning]")
+                                console.print("   [warning]Terdeteksi teks Limit/Banned. Membatalkan tunggu token...[/warning]")
                                 is_banned = True
                                 break
                         except Exception:
                             pass
 
+                        # Deteksi layar pemilihan outlet / onboarding akun baru
+                        try:
+                            if "/choose-outlet" in page.url or "/outlet" in page.url:
+                                outlet_pick = page.locator('button:has-text("Pilih"), div[role="button"]:has-text("Pilih")').first
+                                if outlet_pick.count() > 0 and outlet_pick.is_visible() and outlet_pick.is_enabled():
+                                    console.print("   [info]Terdeteksi halaman pemilihan outlet. Memilih outlet...[/info]")
+                                    outlet_pick.click()
+                                    time.sleep(2)
+                        except Exception:
+                            pass
+
+                        # Deteksi eksplisit jika URL sudah berhasil masuk ke /dashboard atau /analytics
+                        try:
+                            if any(route in page.url for route in ("/dashboard", "/analytics", "/order", "/reports")):
+                                if not attempt_token:
+                                    for c in context.cookies():
+                                        if c.get('name') in ('access_token', 'token', 'session_token') and c.get('value'):
+                                            attempt_token = c['value']
+                                            break
+                                    if not attempt_token:
+                                        ls_t = page.evaluate("() => localStorage.getItem('access_token') || sessionStorage.getItem('access_token')")
+                                        if ls_t and len(str(ls_t)) > 20:
+                                            attempt_token = ls_t
+                                if attempt_token:
+                                    console.print(f"   [success]Browser berhasil berpindah ke dashboard ({page.url}) dan token berhasil ditangkap.[/success]")
+                                    access_token = attempt_token
+                                    break
+                        except Exception:
+                            pass
+
+                        # Deteksi modal persetujuan / popup "Saya Mengerti"
+                        try:
+                            modal_btn = page.locator('button:has-text("Saya Mengerti"), button:has-text("Mengerti"), button:has-text("Setuju")').first
+                            if modal_btn.count() > 0 and modal_btn.is_visible() and modal_btn.is_enabled():
+                                modal_btn.click()
+                                time.sleep(1)
+                        except Exception:
+                            pass
+
                         time.sleep(1.0)
 
-                        if time.time() - start_time > 5:
-                            # Fallback URL Check: Jika setelah 5 detik masih stuck di URL login, anggap butuh retry/verifikasi
+                        if time.time() - start_time > 10:
+                            console.print("[warning]Timeout 10 detik menunggu access_token / perpindahan ke dashboard.[/warning]")
                             try:
-                                if "/auth/login" in page.url:
-                                    console.print("   [warning]⚠️ (Fallback) Timeout 5 detik: URL masih stuck di halaman login. Mempercepat percobaan ulang...[/warning]")
-                                    # Menambah kompensasi karena bisa jadi ini peringatan verifikasi yang terlewat dari deteksi teks
-                                    max_login_attempts = 3
-                                    break
+                                page.screenshot(path="login_timeout_debug.png")
+                                console.print("   [info]Screenshot debug disimpan di 'login_timeout_debug.png'.[/info]")
                             except Exception:
                                 pass
-
-                        if time.time() - start_time > 15:
-                            console.print("[warning]⚠️ Timeout 15 detik menunggu access_token.[/warning]")
                             break
 
                 except KeyboardInterrupt:
-                    console.print("\n[warning]⚠️ Dibatalkan oleh pengguna.[/warning]")
+                    console.print("\n[warning]Dibatalkan oleh pengguna.[/warning]")
                     break
                 except Exception as e:
-                    console.print(f"[error]❌ Error: {e}[/error]")
+                    console.print(f"[error]Error: {e}[/error]")
 
                 if not access_token:
                     try:
@@ -972,16 +1088,16 @@ def login_outlet_gofood_flow(outlet_info):
                         pass
 
                     if is_banned:
-                        console.print(f"   [warning]⚠️ Akun {current_email} terindikasi Limit/Banned. Langsung rotasi ke email berikutnya.[/warning]")
+                        console.print(f"   [warning]Akun {current_email} terindikasi Limit/Banned. Langsung rotasi ke email berikutnya.[/warning]")
                         break  # Keluar dari loop attempt, pindah ke email berikutnya
 
                     if attempt < max_login_attempts - 1:
-                        # Percobaan 1 gagal → ulangi login dengan email yang sama
-                        console.print(f"   [warning]⚠️ Token tidak ditemukan. Kembali ke login page dengan email yang sama ({current_email})...[/warning]")
+                        # Percobaan 1 gagal -> ulangi login dengan email yang sama
+                        console.print(f"   [warning]Token tidak ditemukan. Kembali ke login page dengan email yang sama ({current_email})...[/warning]")
                         continue
                     else:
-                        # Percobaan ke-2 habis → rotasi ke email berikutnya
-                        console.print(f"   [warning]⚠️ Token tidak ditemukan setelah {max_login_attempts} percobaan untuk {current_email}. Rotasi ke email berikutnya...[/warning]")
+                        # Percobaan ke-2 habis -> rotasi ke email berikutnya
+                        console.print(f"   [warning]Token tidak ditemukan setelah {max_login_attempts} percobaan untuk {current_email}. Rotasi ke email berikutnya...[/warning]")
 
         try:
             browser.close()
@@ -1170,7 +1286,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     transactions = fetch_gofood_v2_transactions(_token, _store_id, start_date, end_date)
     console.print(f"[success]✅ Berhasil mengambil {len(transactions)} transaksi dari V2 API.[/success]")
 
-    # ── 22 Kolom Header Excel Detail ──
+    # 33 Kolom Header Excel Flat Line-Items (Rencana 1)
     headers_excel = [
         "Order Status",
         "Outlet Name",
@@ -1178,10 +1294,16 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         "Feature",
         "Order ID",
         "Transaction ID",
-        "Amount",
-        "Net Amount",
         "Transaction Time",
         "Payment Type",
+        "Line No",
+        "Item Name",
+        "Quantity",
+        "Price Per Item",
+        "Total Item",
+        "Amount",
+        "Net Amount",
+        "Total Fee",
         "GoPay Promo",
         "Promo Type",
         "Promo Name",
@@ -1189,11 +1311,16 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         "Voucher Description",
         "GoFood Discount",
         "Voucher Commission",
-        "Total Fee",
         "Value Added Tax",
         "Restaurant Tax",
         "Service",
         "Withholding Tax",
+        "Settlement Time",
+        "Batch ID",
+        "Refund Amount",
+        "Refund Reason",
+        "Promo Code",
+        "Promo Original Amount",
     ]
 
     rows_excel = []
@@ -1233,31 +1360,98 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         promo_code = promo.get("promo_code", "") or ""
         voucher_desc = json.dumps(promo) if promo and (promo.get("promo_code") or promo.get("promo_original_amount")) else ""
 
-        row = [
-            status_tx,
-            outlet_name_display,
-            tx.get("merchant_id", "") or _store_id,
-            tx.get("service_type", "") or tx.get("channel_type", ""),
-            tx.get("order_id", "") or commerce.get("order_number", ""),
-            tx.get("id", ""),
-            gross_amt,
-            net_amt,
-            tx.get("transaction_time", ""),
-            tx.get("payment_type", ""),
-            gopay_promo,
-            promo_code,
-            promo_code,
-            merchant_promo_contrib,
-            voucher_desc,
-            gofood_discount,
-            voucher_comm,
-            total_fee,
-            vat_val,
-            restaurant_tax_val,
-            tx.get("service_type", ""),
-            wht_val,
-        ]
-        rows_excel.append(row)
+        order_num = commerce.get("order_number", "") or tx.get("order_id", "")
+        order_id_val = tx.get("order_id", "") or order_num
+        store_id_val = tx.get("merchant_id", "") or _store_id
+        tx_time_val = tx.get("transaction_time", "")
+        settlement_time = tx.get("settlement_time", "") or ""
+        batch_id = tx.get("batch_id") or tx.get("payout_id") or ""
+        refund_amt = (tx.get("refund_amount", 0) or 0) / 100.0 if tx.get("refund_amount") else 0.0
+        refund_reason = tx.get("refund_reason", "") or ""
+        promo_orig_amt = (promo.get("promo_original_amount", 0) or 0) / 100.0 if promo.get("promo_original_amount") else 0.0
+
+        items_list = commerce.get("items") or []
+        if items_list:
+            for idx, item in enumerate(items_list, start=1):
+                item_name = item.get("name", "")
+                item_qty = item.get("quantity", 1) or 1
+                item_price = item.get("unit_price", 0) or 0
+                item_total = item_price * item_qty
+                is_first = (idx == 1)
+
+                row = [
+                    status_tx,
+                    outlet_name_display,
+                    store_id_val,
+                    tx.get("service_type", "") or tx.get("channel_type", ""),
+                    order_id_val,
+                    tx.get("id", ""),
+                    tx_time_val,
+                    tx.get("payment_type", ""),
+                    idx,
+                    item_name,
+                    item_qty,
+                    item_price,
+                    item_total,
+                    gross_amt if is_first else 0,
+                    net_amt if is_first else 0,
+                    total_fee if is_first else 0,
+                    gopay_promo if is_first else 0,
+                    promo_code if is_first else "",
+                    promo_code if is_first else "",
+                    merchant_promo_contrib if is_first else 0,
+                    voucher_desc if is_first else "",
+                    gofood_discount if is_first else 0,
+                    voucher_comm if is_first else 0,
+                    vat_val if is_first else 0,
+                    restaurant_tax_val if is_first else 0,
+                    tx.get("service_type", "") if is_first else "",
+                    wht_val if is_first else 0,
+                    settlement_time if is_first else "",
+                    batch_id if is_first else "",
+                    refund_amt if is_first else 0,
+                    refund_reason if is_first else "",
+                    promo_code if is_first else "",
+                    promo_orig_amt if is_first else 0,
+                ]
+                rows_excel.append(row)
+        else:
+            row = [
+                status_tx,
+                outlet_name_display,
+                store_id_val,
+                tx.get("service_type", "") or tx.get("channel_type", ""),
+                order_id_val,
+                tx.get("id", ""),
+                tx_time_val,
+                tx.get("payment_type", ""),
+                1,
+                None,
+                None,
+                None,
+                None,
+                gross_amt,
+                net_amt,
+                total_fee,
+                gopay_promo,
+                promo_code,
+                promo_code,
+                merchant_promo_contrib,
+                voucher_desc,
+                gofood_discount,
+                voucher_comm,
+                vat_val,
+                restaurant_tax_val,
+                tx.get("service_type", ""),
+                wht_val,
+                settlement_time,
+                batch_id,
+                refund_amt,
+                refund_reason,
+                promo_code,
+                promo_orig_amt,
+            ]
+            rows_excel.append(row)
 
         if status_tx == "SETTLEMENT":
             total_omzet += gross_amt
@@ -1267,7 +1461,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         elif "CANCEL" in status_tx.upper() or "REFUND" in status_tx.upper():
             total_order_batal += 1
 
-    # ── Export ke File Excel Detail Per Outlet ──
+    # Export ke File Excel Detail Per Outlet (1 Sheet Tunggal)
     safe_name_str = f"{_outlet}_{_cabang}_{_store_id}" if _cabang and _cabang.lower() != 'tanpa cabang' else f"{_outlet}_{_store_id}"
     safe_outlet = safe_name_str.strip().replace(" ", "_").replace("/", "_").replace("\\", "_")
     if not safe_outlet or safe_outlet == "Tidak_Tersedia":
@@ -1298,11 +1492,12 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         ws_raw.append(headers_excel)
         for r in rows_excel:
             ws_raw.append(r)
+
         wb_raw.save(abs_raw_excel_path)
         wb_raw.close()
-        console.print(f"[success]✅ Berkas Excel 22 Kolom tersimpan di: {abs_raw_excel_path}[/success]")
+        console.print(f"[success]Berkas Excel tersimpan ({len(rows_excel)} baris line-items) di: {abs_raw_excel_path}[/success]")
     except Exception as e:
-        console.print(f"[warning]⚠️ Gagal menyimpan file Excel GoFood V2: {e}[/warning]")
+        console.print(f"[warning]Gagal menyimpan file Excel GoFood V2: {e}[/warning]")
 
     # Table Ringkasan Per Store
     table = Table(title=f"Ringkasan: {_outlet} ({_store_id})", show_header=True, header_style="bold magenta")
@@ -1318,7 +1513,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     console.print("\n", table)
     
     DURATION_STORE = time.time() - START_TIME_STORE
-    console.print(f"[info]⏱️ Waktu proses untuk store ini: [bold]{DURATION_STORE:.2f} detik[/bold][/info]\n")
+    console.print(f"[info]Waktu proses untuk store ini: [bold]{DURATION_STORE:.2f} detik[/bold][/info]\n")
     
     if return_data:
         return {
@@ -1328,6 +1523,9 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
             'avg_order': total_order,
             'total_omzet_bersih': int(total_omzet_bersih),
             'total_order': total_order,
+            'raw_transactions': transactions,
+            'rows_excel': rows_excel,
+            'headers_excel': headers_excel,
         }
 
     return None
@@ -1537,10 +1735,22 @@ if __name__ == "__main__":
                 
             # Cari token yang cocok
             token = token_map.get(phone_norm, '')
+            # Coba cari token via email dari Kolom Y dan Kolom Z
+            if not token:
+                for em_candidate in acc.get('emails', []):
+                    em_norm = normalize_phone(em_candidate)
+                    if em_norm in token_map:
+                        token = token_map[em_norm]
+                        break
+            if not token and acc.get('email'):
+                em_norm = normalize_phone(acc['email'])
+                if em_norm in token_map:
+                    token = token_map[em_norm]
+
             if not token:
                 # Coba partial match (phone dari sheet mungkin punya prefix 62)
                 for k, v in token_map.items():
-                    if k.endswith(phone_norm) or phone_norm.endswith(k):
+                    if phone_norm and (k.endswith(phone_norm) or phone_norm.endswith(k)):
                         token = v
                         break
             
@@ -1588,7 +1798,17 @@ if __name__ == "__main__":
 
     if args_cli.outlet:
         target_outlets = [x.strip().lower() for x in args_cli.outlet.split('|') if x.strip()]
-        resolved_accounts = [a for a in resolved_accounts if any(t in a['nama_outlet'].lower() for t in target_outlets)]
+        resolved_accounts = [
+            a for a in resolved_accounts 
+            if any(
+                t in a['nama_outlet'].lower()
+                or t in a.get('email', '').lower()
+                or any(t in em.lower() for em in a.get('emails', []))
+                or t in a.get('store_id', '').lower()
+                or t in a.get('phone', '').lower()
+                for t in target_outlets
+            )
+        ]
         if args_cli.branch:
             target_branches = [x.strip().lower() for x in args_cli.branch.split('|') if x.strip()]
             resolved_accounts = [a for a in resolved_accounts if any(t in a['cabang'].lower() for t in target_branches)]
@@ -1691,12 +1911,24 @@ if __name__ == "__main__":
                 sanitized_resto_name = re.sub(r'[^a-zA-Z0-9]', '', cabang or nama_outlet)
                 suffix = f"_{phone}_{sanitized_resto_name}"
                 os.environ['BEARER_TOKEN'] = token  # backward compat
+                target_envs = [env_path]
+                if os.path.exists(_parent_env) and _parent_env != env_path:
+                    target_envs.append(_parent_env)
+
                 env_lock = _FileLock(f"{env_path}.lock", timeout=15)
                 with env_lock:
-                    set_key(env_path, f"BEARER_TOKEN{suffix}", token)
-                    set_key(env_path, f"NAMA_OUTLET{suffix}", str(nama_outlet))
-                    set_key(env_path, f"CABANG{suffix}", str(cabang))
-                    set_key(env_path, f"STORE_ID{suffix}", str(store_id))
+                    for t_env in target_envs:
+                        set_key(t_env, f"BEARER_TOKEN{suffix}", token)
+                        set_key(t_env, f"NAMA_OUTLET{suffix}", str(nama_outlet))
+                        set_key(t_env, f"CABANG{suffix}", str(cabang))
+                        set_key(t_env, f"STORE_ID{suffix}", str(store_id))
+                        for em in acc.get('emails', []):
+                            if em and em != phone:
+                                em_suffix = f"_{em.strip().lower()}_{sanitized_resto_name}"
+                                set_key(t_env, f"BEARER_TOKEN{em_suffix}", token)
+                                set_key(t_env, f"NAMA_OUTLET{em_suffix}", str(nama_outlet))
+                                set_key(t_env, f"CABANG{em_suffix}", str(cabang))
+                                set_key(t_env, f"STORE_ID{em_suffix}", str(store_id))
 
                 # Simpan juga ke session JSON cache
                 _save_session_token(session_id, token, meta={
@@ -1705,7 +1937,7 @@ if __name__ == "__main__":
                     'store_id': store_id,
                 })
 
-                console.print(f"[success]✅ Token berhasil ditangkap dan disimpan ke .env + session cache untuk {nama_outlet}.[/success]")
+                console.print(f"[success]Token berhasil ditangkap dan disimpan ke .env + session cache untuk {nama_outlet}.[/success]")
 
                 # Update token untuk akun dengan email/phone yang sama agar tidak login ulang
                 for other_acc in resolved_accounts:
@@ -1723,10 +1955,10 @@ if __name__ == "__main__":
 
                 os.environ['BEARER_TOKEN'] = token
             else:
-                console.print(f"[error]❌ Gagal login untuk {nama_outlet}. Melewati outlet ini.[/error]")
+                console.print(f"[error]Gagal login untuk {nama_outlet}. Melewati outlet ini.[/error]")
                 continue
         else:
-            console.print(f"[success]✅ Sesi valid untuk {nama_outlet}. Melewati login.[/success]")
+            console.print(f"[success]Sesi valid untuk {nama_outlet}. Melewati login.[/success]")
 
         # Set environment untuk iterasi ini
         # Set token ke env hanya untuk backward compat (proses lain tidak terpengaruh
@@ -1861,8 +2093,10 @@ if __name__ == "__main__":
         # File Baseline dihilangkan sesuai permintaan
         # tulis_baseline_excel(all_baseline_results, _start, _end, args_cli.outlet)
 
-    # --- MERGING TO 0Master.xlsx ---
+    # --- MERGING TO 0Master.xlsx VIA IN-MEMORY BUFFER & JSON SNAPSHOT ---
     import glob
+    import json
+    import re
     import pandas as pd
     
     date_folder = f"{custom_start_date.strftime('%Y-%m-%d')}_to_{custom_end_date.strftime('%Y-%m-%d')}" if (custom_start_date and custom_end_date) else f"{_start.strftime('%Y-%m-%d')}_to_{_end.strftime('%Y-%m-%d')}" if 'all_baseline_results' in locals() and all_baseline_results else "unknown_date"
@@ -1871,52 +2105,155 @@ if __name__ == "__main__":
     else:
         report_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'laporan', 'gofood', date_folder)
 
-    if os.path.exists(report_dir):
-        console.print("📊 [PROGRESS] PHASE: Merging all downloaded GoFood files to 0Master.xlsx...")
-        xlsx_files = glob.glob(os.path.join(report_dir, "*.xlsx"))
-        all_data = []
+    os.makedirs(report_dir, exist_ok=True)
+    console.print("[PROGRESS] PHASE: Aggregating GoFood data into JSON and 0Master.xlsx...")
+
+    in_mem_tx = []
+    in_mem_raw = []
+    headers_tx = None
+
+    if 'all_baseline_results' in locals() and all_baseline_results:
+        for item in all_baseline_results:
+            res = item.get('result') or {}
+            tx_rows = res.get('rows_excel', [])
+            raw_txs = res.get('raw_transactions', [])
+            
+            if tx_rows:
+                in_mem_tx.extend(tx_rows)
+            if raw_txs:
+                in_mem_raw.extend(raw_txs)
+            if not headers_tx and res.get('headers_excel'):
+                headers_tx = res.get('headers_excel')
+
+    # 1. Simpan Snapshot Raw JSON (Audit trail & re-parseable tanpa scrape ulang)
+    raw_json_path = os.path.join(report_dir, "raw_gofood_all.json")
+    if in_mem_raw:
+        try:
+            existing_raw = []
+            if os.path.exists(raw_json_path):
+                try:
+                    with open(raw_json_path, "r", encoding="utf-8") as f:
+                        existing_raw = json.load(f)
+                except Exception:
+                    existing_raw = []
+            
+            combined_raw = in_mem_raw
+            if existing_raw:
+                seen_ids = set()
+                deduped = []
+                for entry in in_mem_raw + existing_raw:
+                    eid = entry.get("id") or entry.get("order_id")
+                    if eid and eid not in seen_ids:
+                        seen_ids.add(eid)
+                        deduped.append(entry)
+                    elif not eid:
+                        deduped.append(entry)
+                combined_raw = deduped
+
+            with open(raw_json_path, "w", encoding="utf-8") as f:
+                json.dump(combined_raw, f, ensure_ascii=False, indent=2)
+            console.print(f"[INFO] Raw JSON snapshot tersimpan ({len(combined_raw)} transaksi) di: {raw_json_path}")
+        except Exception as e:
+            console.print(f"[WARNING] Gagal menyimpan raw JSON snapshot: {e}")
+
+    # 2. Bangun DataFrame Transaksi langsung dari In-Memory Buffer
+    master_df = pd.DataFrame()
+
+    if in_mem_tx and headers_tx:
+        master_df = pd.DataFrame(in_mem_tx, columns=headers_tx)
+
+    # Fallback jika in_mem kosong (misal dijalankan dalam mode rerun tanpa scraping)
+    if master_df.empty and os.path.exists(report_dir):
+        xlsx_files = sorted(glob.glob(os.path.join(report_dir, "*.xlsx")))
+        outlet_files = {}
         for fpath in xlsx_files:
             filename = os.path.basename(fpath)
-            if filename.startswith("MASTER") or filename.startswith("0Master"):
+            if filename.startswith("MASTER") or filename.startswith("0Master") or filename.startswith("~$"):
                 continue
-            try:
-                df = pd.read_excel(fpath, dtype=str)
-                if not df.empty:
-                    all_data.append(df)
-            except Exception as e:
-                console.print(f"  [error]❌ Error reading '{filename}': {e}[/error]")
-                
-        if all_data:
-            master_df = pd.concat(all_data, ignore_index=True)
-            
-            # Format numbers safely
-            for col in ['Penjualan Kotor', 'Biaya Komisi', 'Pengeluaran Iklan & Diskon', 'Order Sukses', 'Order Batal']:
-                if col in master_df.columns:
-                    master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0).astype(int)
+            base_name = re.sub(r'_v\d+\.xlsx$', '.xlsx', filename)
+            if base_name not in outlet_files or os.path.getmtime(fpath) > os.path.getmtime(outlet_files[base_name]):
+                outlet_files[base_name] = fpath
 
-            master_filepath = os.path.join(report_dir, "0Master.xlsx")
-            version = 1
-            while os.path.exists(master_filepath):
-                version += 1
-                master_filepath = os.path.join(report_dir, f"0Master-{version:02d}.xlsx")
+        fallback_tx = []
+        for base_name, fpath in outlet_files.items():
+            try:
+                xl = pd.ExcelFile(fpath)
+                if "Transactions" in xl.sheet_names:
+                    df_tx = pd.read_excel(xl, sheet_name="Transactions", dtype=str)
+                    if not df_tx.empty:
+                        fallback_tx.append(df_tx)
+                elif len(xl.sheet_names) > 0:
+                    df_tx = pd.read_excel(xl, sheet_name=0, dtype=str)
+                    if not df_tx.empty:
+                        fallback_tx.append(df_tx)
+            except Exception as e:
+                console.print(f"  [error]Error reading '{os.path.basename(fpath)}': {e}[/error]")
+
+        if fallback_tx:
+            master_df = pd.concat(fallback_tx, ignore_index=True)
+
+    # 3. Deduplikasi dan Format Angka
+    if not master_df.empty:
+        if "Line No" in master_df.columns:
+            master_df = master_df.drop_duplicates(subset=["Order ID", "Line No"], keep="last")
+        elif "Transaction ID" in master_df.columns:
+            master_df = master_df.drop_duplicates(subset=["Transaction ID"], keep="last")
+
+        for col in ['Penjualan Kotor', 'Biaya Komisi', 'Pengeluaran Iklan & Diskon', 'Order Sukses', 'Order Batal', 'Amount', 'Net Amount', 'Total Fee', 'Total Item', 'Price Per Item', 'Quantity']:
+            if col in master_df.columns:
+                master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
+
+        # 4. Simpan Structured Master JSON (Single Source of Truth)
+        structured_json_path = os.path.join(report_dir, "master_gofood_data.json")
+        try:
+            order_count = len(master_df[master_df["Line No"].astype(str) == "1"]) if "Line No" in master_df.columns else len(master_df)
+            item_count = len(master_df[master_df["Item Name"].notna() & (master_df["Item Name"] != "")]) if "Item Name" in master_df.columns else 0
+            with open(structured_json_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "summary": {
+                        "total_orders": order_count,
+                        "total_items": item_count,
+                        "total_rows": len(master_df)
+                    },
+                    "rows": master_df.to_dict(orient="records")
+                }, f, ensure_ascii=False, indent=2)
+            console.print(f"[INFO] Structured JSON master tersimpan di: {structured_json_path}")
+        except Exception as e:
+            console.print(f"[WARNING] Gagal menyimpan structured JSON master: {e}")
+
+        # 5. Tulis langsung ke 0Master.xlsx (1 Sheet Tunggal untuk Tim Finance)
+        master_filepath = os.path.join(report_dir, "0Master.xlsx")
+        master_df.to_excel(master_filepath, sheet_name="Transactions", index=False)
+
+        order_count = len(master_df[master_df["Line No"].astype(str) == "1"]) if "Line No" in master_df.columns else len(master_df)
+        console.print(f"[SUCCESS] Laporan 0Master created: {master_filepath}")
+        console.print(f"   Total order: {order_count}, Total baris line-items: {len(master_df)}")
+
+        # 6. SYNC KE POSTGRESQL
+        if args_cli.db or os.getenv("INGEST_DB") == "true":
+            try:
+                console.print("\n[DB] Syncing raw GoFood transactions and items to PostgreSQL...")
+                from database.layer1_db_manager import DatabaseManager
+                db = DatabaseManager()
                 
-            master_df.to_excel(master_filepath, index=False)
-            console.print(f"🎉 [SUCCESS] Laporan 0Master created: {master_filepath}")
-            console.print(f"   Total baris: {len(master_df)}")
-            
-            # 🐘 SYNC KE POSTGRESQL (NEW)
-            if args_cli.db or os.getenv("INGEST_DB") == "true":
-                try:
-                    console.print("\n🐘 Syncing raw GoFood transactions to PostgreSQL...")
-                    from database.layer1_db_manager import DatabaseManager
-                    db = DatabaseManager()
-                    db.ingest_gofood(master_df)
-                    console.print("✅ [DB] Successfully ingested raw GoFood transactions.")
-                except Exception as e:
-                    console.print(f"⏭️ [SKIP] PostgreSQL sync skipped: {e}")
-        else:
-            console.print("⚠️ Tidak ada data untuk digabungkan ke 0Master.")
+                # Primary transaction row (Line No == 1) for layer1_raw.raw_go
+                if "Line No" in master_df.columns:
+                    tx_df = master_df[master_df["Line No"].astype(str) == "1"].copy()
+                else:
+                    tx_df = master_df.drop_duplicates(subset=["Transaction ID"], keep="first").copy()
+                db.ingest_gofood(tx_df)
+
+                # Line items for layer1_raw.raw_go_items
+                if "Item Name" in master_df.columns:
+                    items_df = master_df[master_df["Item Name"].notna() & (master_df["Item Name"] != "")].copy()
+                    if not items_df.empty:
+                        db.ingest_gofood_items(items_df)
+                console.print("[DB] Successfully ingested raw GoFood transactions and items.")
+            except Exception as e:
+                console.print(f"[SKIP] PostgreSQL sync skipped: {e}")
+    else:
+        console.print("[WARNING] Tidak ada data untuk digabungkan ke 0Master.")
 
     console.print("\n[bold]" + "="*50 + "[/bold]")
-    console.print("[success]✅ Semua proses selesai![/success]")
+    console.print("[success]Semua proses selesai![/success]")
     console.print("[bold]" + "="*50 + "[/bold]")

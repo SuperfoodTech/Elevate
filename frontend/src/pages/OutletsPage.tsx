@@ -16,7 +16,7 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
-import { MOCK_OUTLETS, type OutletRecord, type OutletStatus } from '../data/outlets';
+import { type OutletRecord, type OutletStatus } from '../data/outlets';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
 
@@ -690,10 +690,10 @@ export const OutletsPage: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/60">
-                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap">Outlet Cabang</th>
-                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap">Brand / Owner</th>
-                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap">Alamat</th>
-                    <th className="py-2 px-3 text-center border-x border-[#EBEBEF]" colSpan={3}>
+                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[200px]">Outlet</th>
+                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[160px]">Brand / Owner</th>
+                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[320px]">Alamat</th>
+                    <th className="py-2 px-3 text-center border-x border-[#EBEBEF] min-w-[120px]" colSpan={3}>
                       <div className="text-[10px] text-[#9C9CA6] font-semibold mb-1">Outlet Listing (by Platform)</div>
                       <div className="grid grid-cols-3 gap-2 font-bold text-[11px]">
                         <span className="text-[#DC2626]">GO</span>
@@ -701,9 +701,9 @@ export const OutletsPage: React.FC = () => {
                         <span className="text-[#EA580C]">S</span>
                       </div>
                     </th>
-                    <th className="text-right px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap">Avg Orders / Hari</th>
-                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap">Status Outlet</th>
-                    <th className="text-center px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap">Aksi</th>
+                    <th className="text-right px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[140px]">Avg Orders / Hari</th>
+                    <th className="text-left px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[130px]">Status Outlet</th>
+                    <th className="text-center px-4 py-3.5 font-semibold text-gray-600 whitespace-nowrap min-w-[80px]">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -732,19 +732,18 @@ export const OutletsPage: React.FC = () => {
                           idx % 2 === 0 ? '' : 'bg-gray-50/30'
                         }`}
                       >
-                        {/* Outlet Cabang */}
-                        <td className="px-4 py-3.5">
+                        {/* Outlet */}
+                        <td className="px-4 py-3.5 min-w-[200px]">
                           <Link
                             to={`/outlets/${outlet.id}`}
                             className="font-medium text-gray-900 hover:text-[#2563EB] transition-colors focus:outline-none focus-visible:underline block"
                           >
                             {outlet.name}
                           </Link>
-                          <p className="font-mono text-xs text-gray-400 mt-0.5">{outlet.id}</p>
                         </td>
 
                         {/* Brand / Owner */}
-                        <td className="px-4 py-3.5 whitespace-nowrap">
+                        <td className="px-4 py-3.5 whitespace-nowrap min-w-[160px]">
                           <div className="flex items-center gap-1.5">
                             <Building2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                             <span className="font-semibold text-gray-800 text-xs">{outlet.brand}</span>
@@ -760,9 +759,9 @@ export const OutletsPage: React.FC = () => {
                         </td>
 
                         {/* Alamat */}
-                        <td className="px-4 py-3.5">
-                          <p className="text-sm text-gray-800 leading-snug">{outlet.address}</p>
-                          <span className="inline-block text-[11px] text-gray-500 font-medium mt-0.5">
+                        <td className="px-4 py-3.5 min-w-[320px] max-w-[440px]">
+                          <p className="text-sm text-gray-800 leading-normal" title={outlet.address}>{outlet.address}</p>
+                          <span className="inline-block text-[11px] text-gray-500 font-medium mt-1">
                             {outlet.city}
                           </span>
                         </td>

@@ -195,7 +195,13 @@ export const TransactionExplorerPage: React.FC = () => {
       if (filterOwner !== 'all' && t.owner !== filterOwner) return false;
       if (filterOutlet !== 'all' && t.physicalOutlet !== filterOutlet) return false;
       if (filterListing !== 'all' && t.platformListing !== filterListing) return false;
-      if (filterStatus !== 'all' && t.status !== filterStatus) return false;
+      if (filterStatus !== 'all') {
+        if (filterStatus === 'akuisisi_to_live') {
+          if (t.orderStage !== 'akuisisi_to_live') return false;
+        } else if (t.status !== filterStatus) {
+          return false;
+        }
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         if (
@@ -213,11 +219,13 @@ export const TransactionExplorerPage: React.FC = () => {
   const agencyKpi = useMemo(() => {
     const sukses = filteredAgency.filter((t) => t.status === 'Sukses');
     const batal = filteredAgency.filter((t) => t.status === 'Batal');
-    const lostRevenue = batal.reduce((sum, t) => sum + t.orderValue, 0);
-    const lostAgencyFee = batal.reduce((sum, t) => sum + t.agencyFee, 0);
+    const preLive = filteredAgency.filter((t) => t.orderStage === 'akuisisi_to_live');
+    const lostRevenue = preLive.reduce((sum, t) => sum + t.orderValue, 0);
+    const lostAgencyFee = preLive.reduce((sum, t) => sum + t.agencyFee, 0);
     return {
       suksesCount: sukses.length,
       batalCount: batal.length,
+      preLiveCount: preLive.length,
       total: filteredAgency.length,
       suksesRate: filteredAgency.length > 0 ? ((sukses.length / filteredAgency.length) * 100).toFixed(1) : '0.0',
       batalRate: filteredAgency.length > 0 ? ((batal.length / filteredAgency.length) * 100).toFixed(1) : '0.0',
@@ -554,7 +562,7 @@ export const TransactionExplorerPage: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Potential Lost Revenue</p>
                     <p className="text-xl font-bold text-[#2563EB]">{formatRupiah(agencyKpi.lostRevenue)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">dari order batal</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{agencyKpi.preLiveCount} order masa akuisisi s/d live</p>
                   </div>
                 </div>
 
@@ -565,7 +573,7 @@ export const TransactionExplorerPage: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-500 font-medium mb-1">Potential Lost Agency Fee</p>
                     <p className="text-xl font-bold text-[#7C3AED]">{formatRupiah(agencyKpi.lostAgencyFee)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">dari order batal</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{agencyKpi.preLiveCount} order masa akuisisi s/d live</p>
                   </div>
                 </div>
               </div>
@@ -614,6 +622,7 @@ export const TransactionExplorerPage: React.FC = () => {
                         { value: 'all', label: 'Semua Status' },
                         { value: 'Sukses', label: 'Sukses' },
                         { value: 'Batal', label: 'Batal' },
+                        { value: 'akuisisi_to_live', label: 'Masa Akuisisi s/d Live' },
                       ]}
                       label="Filter Status"
                     />
@@ -684,8 +693,13 @@ export const TransactionExplorerPage: React.FC = () => {
                               <span className="text-gray-800 block text-xs">{t.platformListing}</span>
                               <span className="text-xs text-[#2563EB] font-mono">{t.sid}</span>
                             </td>
-                            <td className="px-4 py-3.5">
+                            <td className="px-4 py-3.5 whitespace-nowrap">
                               <StatusBadge status={t.status} />
+                              {t.orderStage === 'akuisisi_to_live' && (
+                                <span className="block text-[10px] font-semibold text-amber-600 mt-1">
+                                  Akuisisi s/d Live
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3.5 text-right font-medium text-gray-800 whitespace-nowrap">
                               {formatRupiah(t.orderValue)}

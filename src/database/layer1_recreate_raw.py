@@ -30,8 +30,26 @@ def recreate_tables():
             "Value Added Tax" TEXT,
             "Restaurant Tax" TEXT,
             "Service" TEXT,
-            "Withholding Tax" TEXT
+            "Withholding Tax" TEXT,
+            "Settlement Time" TEXT,
+            "Batch ID" TEXT,
+            "Refund Amount" TEXT,
+            "Refund Reason" TEXT,
+            "Promo Code" TEXT,
+            "Promo Original Amount" TEXT
         );
+
+        DROP TABLE IF EXISTS layer1_raw.raw_go_items CASCADE;
+        CREATE TABLE layer1_raw.raw_go_items (
+            "Order ID" TEXT,
+            "Merchant ID" TEXT,
+            "Item Name" TEXT,
+            "Quantity" TEXT,
+            "Price Per Item" TEXT,
+            "Total Item" TEXT,
+            "Transaction Time" TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_raw_go_items_order_id ON layer1_raw.raw_go_items ("Order ID");
         """,
         
         # 2. raw_shopee

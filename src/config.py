@@ -1,6 +1,13 @@
 import os
 import json
+import socket
 from pathlib import Path
+
+try:
+    import urllib3.util.connection as urllib3_cn
+    urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
+except Exception:
+    pass
 
 # Load config.json
 config_path = Path(__file__).resolve().parent / "config.json"

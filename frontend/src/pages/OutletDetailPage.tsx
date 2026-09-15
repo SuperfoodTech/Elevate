@@ -274,7 +274,7 @@ export const OutletDetailPage: React.FC = () => {
     return [];
   });
 
-  const [cachedOwners, setCachedOwners] = useState<any[]>(() => {
+  const [cachedOwners] = useState<any[]>(() => {
     const cached = localStorage.getItem('elevate_owners_real_data');
     if (cached) {
       try {
@@ -1195,7 +1195,7 @@ export const OutletDetailPage: React.FC = () => {
                       <th className="py-3 px-3 whitespace-nowrap text-center">Link</th>
                       <th className="py-3 px-3 whitespace-nowrap">Store ID</th>
                       <th className="py-3 px-3 whitespace-nowrap text-center">Status Listing</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Alamat</th>
+                      <th className="py-3 px-4 whitespace-nowrap min-w-[320px]">Alamat</th>
                       <th className="py-3 px-3 whitespace-nowrap">Nama Bank</th>
                       <th className="py-3 px-4 whitespace-nowrap">Nama Pemilik Rekening</th>
                       <th className="py-3 px-4 whitespace-nowrap">Nomor Rekening</th>
@@ -1305,7 +1305,7 @@ export const OutletDetailPage: React.FC = () => {
                         </td>
 
                         {/* 9. Alamat */}
-                        <td className="py-3.5 px-4 min-w-[220px] max-w-[280px]">
+                        <td className="py-3.5 px-4 min-w-[320px] max-w-[440px]">
                           <div className="text-xs text-[#475569] line-clamp-2 leading-relaxed" title={item.alamat}>
                             {item.alamat}
                           </div>
@@ -1630,7 +1630,7 @@ export const OutletDetailPage: React.FC = () => {
 
               {/* Table Footer */}
               <div className="pt-2 text-[11px] text-[#64748B]">
-                Menampilkan {filteredTransactions.length} dari {OUTLET_TRANSACTIONS.length} total transaksi pada seluruh listing outlet ini.
+                Menampilkan {filteredTransactions.length} total transaksi pada seluruh listing outlet ini.
               </div>
             </div>
           </div>

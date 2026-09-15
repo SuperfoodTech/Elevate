@@ -651,7 +651,7 @@ export const OwnersPage: React.FC = () => {
         // ignore parse error
       }
     }
-    return [];
+    return INITIAL_OWNERS;
   });
 
   const [isFetching, setIsFetching] = useState(false);

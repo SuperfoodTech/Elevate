@@ -132,11 +132,16 @@ def _insert_idempotent_single_key(engine, table: str, df: pd.DataFrame, key_colu
 def _insert_idempotent_gofood(engine, df: pd.DataFrame):
     """GoFood uses Transaction ID, falling back to Order ID when needed."""
     work = df.copy()
+    if "Line No" in work.columns:
+        work = work[work["Line No"].astype(str) == "1"].copy()
     tx = work["Transaction ID"].fillna("").astype(str).str.strip()
     order = work["Order ID"].fillna("").astype(str).str.strip()
     work["_dedupe_key"] = tx.where((tx != "") & (tx.str.lower() != "nan"), "ORDER:" + order)
     work = work[(work["_dedupe_key"] != "") & (work["_dedupe_key"].str.lower() != "nan")]
-    work = work.drop_duplicates(subset=["_dedupe_key"], keep="last")
+    if "Amount" in work.columns:
+        work["_amt_sort"] = pd.to_numeric(work["Amount"], errors="coerce").fillna(0)
+        work = work.sort_values(by=["_amt_sort"], ascending=False).drop(columns=["_amt_sort"])
+    work = work.drop_duplicates(subset=["_dedupe_key"], keep="first")
     total_rows = len(df)
 
     with engine.begin() as conn:
@@ -380,6 +385,15 @@ def ingest_gofood_to_db(output_dir: str) -> bool:
         "Restaurant Tax": "Restaurant Tax",
         "Service": "Service",
         "Withholding Tax": "Withholding Tax",
+        "Order Number": "Order Number",
+        "Nomor Pesanan": "Order Number",
+        "Settlement Time": "Settlement Time",
+        "Waktu Settlement": "Settlement Time",
+        "Batch ID": "Batch ID",
+        "Refund Amount": "Refund Amount",
+        "Refund Reason": "Refund Reason",
+        "Promo Code": "Promo Code",
+        "Promo Original Amount": "Promo Original Amount",
     }
 
     resolved_mapping = {}
@@ -410,6 +424,12 @@ def ingest_gofood_to_db(output_dir: str) -> bool:
         "Restaurant Tax",
         "Service",
         "Withholding Tax",
+        "Settlement Time",
+        "Batch ID",
+        "Refund Amount",
+        "Refund Reason",
+        "Promo Code",
+        "Promo Original Amount",
     ]
 
     df_mapped = df[list(resolved_mapping.keys())].rename(columns=resolved_mapping).copy()
@@ -430,14 +450,85 @@ def ingest_gofood_to_db(output_dir: str) -> bool:
 
         if new_count == 0:
             print(f"  {CYAN}ℹ [DUPLICATE CHECK] Semua {total_rows} baris sudah ada di database (0 baris baru di-insert).{RESET}")
-            return True
+        else:
+            print(f"  {GREEN}✅ [SUCCESS] Ingest GoFood V2 ke layer1_raw.raw_go selesai:{RESET}")
+            print(f"     • Total baris dalam file : {total_rows}")
+            print(f"     • Baris baru ter-insert  : {new_count}")
+            print(f"     • Baris di-skip (duplikat): {skipped_count}")
 
-        print(f"  {GREEN}✅ [SUCCESS] Ingest GoFood V2 ke layer1_raw.raw_go selesai:{RESET}")
-        print(f"     • Total baris dalam file : {total_rows}")
-        print(f"     • Baris baru ter-insert  : {new_count}")
-        print(f"     • Baris di-skip (duplikat): {skipped_count}")
+        # Ingest items sheet jika tersedia
+        ingest_gofood_v2_items_to_layer1(output_dir)
         return True
 
     except Exception as e:
         print(f"  {RED}❌ [DB ERROR] Gagal ingest GoFood ke DB: {e}{RESET}")
         return False
+
+
+def ingest_gofood_v2_items_to_layer1(output_dir: str) -> bool:
+    """
+    Ingests GoFood line items from 'Items' sheet into layer1_raw.raw_go_items.
+    """
+    if not os.path.exists(output_dir):
+        return False
+
+    all_excels = glob.glob(os.path.join(output_dir, "*.xlsx"))
+    valid_excels = [f for f in all_excels if not os.path.basename(f).startswith("~$")]
+    if not valid_excels:
+        return False
+
+    items_dfs = []
+    for f in valid_excels:
+        try:
+            excel_file = pd.ExcelFile(f)
+            if "Items" in excel_file.sheet_names:
+                df_item = pd.read_excel(f, sheet_name="Items")
+                if not df_item.empty:
+                    items_dfs.append(df_item)
+            elif "Transactions" in excel_file.sheet_names:
+                df_sheet = pd.read_excel(f, sheet_name="Transactions")
+                if "Item Name" in df_sheet.columns:
+                    df_item = df_sheet[df_sheet["Item Name"].notna() & (df_sheet["Item Name"].astype(str).str.strip() != "")]
+                    if not df_item.empty:
+                        items_dfs.append(df_item)
+            elif len(excel_file.sheet_names) > 0:
+                df_sheet = pd.read_excel(f, sheet_name=0)
+                if "Item Name" in df_sheet.columns:
+                    df_item = df_sheet[df_sheet["Item Name"].notna() & (df_sheet["Item Name"].astype(str).str.strip() != "")]
+                    if not df_item.empty:
+                        items_dfs.append(df_item)
+        except Exception:
+            pass
+
+    if not items_dfs:
+        return False
+
+    combined_items = pd.concat(items_dfs, ignore_index=True)
+    item_cols = ["Order ID", "Merchant ID", "Item Name", "Quantity", "Price Per Item", "Total Item", "Transaction Time"]
+    for col in item_cols:
+        if col not in combined_items.columns:
+            combined_items[col] = None
+
+    df_stg = combined_items[item_cols].copy()
+    for col in item_cols:
+        df_stg[col] = df_stg[col].apply(raw_string_format)
+
+    order_ids = df_stg["Order ID"].dropna().unique().tolist()
+    if not order_ids:
+        return False
+
+    engine = get_db_engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"), {"lock_name": "ingest:gofood_items"})
+            conn.execute(
+                text('DELETE FROM layer1_raw.raw_go_items WHERE "Order ID" = ANY(:ids)'),
+                {"ids": order_ids}
+            )
+            df_stg.to_sql("raw_go_items", conn, schema="layer1_raw", if_exists="append", index=False)
+        print(f"  {GREEN}✅ [SUCCESS] Ingest GoFood Items ke layer1_raw.raw_go_items selesai: {len(df_stg)} items.{RESET}")
+        return True
+    except Exception as e:
+        print(f"  {RED}❌ [DB ERROR] Gagal ingest GoFood items: {e}{RESET}")
+        return False
+
