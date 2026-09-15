@@ -1121,7 +1121,6 @@ export const OwnersPage: React.FC = () => {
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-[#6B7280] font-normal">{owner.email}</div>
                         </td>
 
                         {/* Business Model */}
