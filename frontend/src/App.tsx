@@ -46,8 +46,22 @@ export const App: React.FC = () => {
         <Route path="/vb/settlement" element={<PlaceholderPage />} />
         <Route path="/vb/overview" element={<PlaceholderPage />} />
 
-        {/* OPERATIONS Routes */}
+        {/* MERCHANT Routes */}
+        <Route path="/brands" element={<PlaceholderPage />} />
+        <Route path="/listings" element={<PlaceholderPage />} />
 
+        {/* FINANCE Routes */}
+        <Route path="/finance/:moduleName" element={<PlaceholderPage />} />
+
+        {/* REPORT Routes */}
+        <Route path="/reports/weekly" element={<LaporanPerformaPage />} />
+        <Route path="/reports/monthly" element={<PlaceholderPage />} />
+
+        {/* TOOLS & DOCUMENTS Routes */}
+        <Route path="/tools/:moduleName" element={<PlaceholderPage />} />
+        <Route path="/documents/:moduleName" element={<PlaceholderPage />} />
+
+        {/* OPERATIONS Routes */}
         <Route path="/operations/:moduleName" element={<PlaceholderPage />} />
 
         {/* SYSTEM Routes */}
