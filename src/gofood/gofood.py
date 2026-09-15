@@ -1286,7 +1286,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     transactions = fetch_gofood_v2_transactions(_token, _store_id, start_date, end_date)
     console.print(f"[success]✅ Berhasil mengambil {len(transactions)} transaksi dari V2 API.[/success]")
 
-    # ── 29 Kolom Header Excel Detail ──
+    # 33 Kolom Header Excel Flat Line-Items (Rencana 1)
     headers_excel = [
         "Order Status",
         "Outlet Name",
@@ -1294,10 +1294,16 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         "Feature",
         "Order ID",
         "Transaction ID",
-        "Amount",
-        "Net Amount",
         "Transaction Time",
         "Payment Type",
+        "Line No",
+        "Item Name",
+        "Quantity",
+        "Price Per Item",
+        "Total Item",
+        "Amount",
+        "Net Amount",
+        "Total Fee",
         "GoPay Promo",
         "Promo Type",
         "Promo Name",
@@ -1305,7 +1311,6 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         "Voucher Description",
         "GoFood Discount",
         "Voucher Commission",
-        "Total Fee",
         "Value Added Tax",
         "Restaurant Tax",
         "Service",
@@ -1318,18 +1323,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         "Promo Original Amount",
     ]
 
-    headers_items = [
-        "Order ID",
-        "Merchant ID",
-        "Item Name",
-        "Quantity",
-        "Price Per Item",
-        "Total Item",
-        "Transaction Time",
-    ]
-
     rows_excel = []
-    rows_items = []
     total_omzet = 0.0
     total_omzet_bersih = 0.0
     total_komisi = 0.0
@@ -1367,62 +1361,97 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         voucher_desc = json.dumps(promo) if promo and (promo.get("promo_code") or promo.get("promo_original_amount")) else ""
 
         order_num = commerce.get("order_number", "") or tx.get("order_id", "")
+        order_id_val = tx.get("order_id", "") or order_num
+        store_id_val = tx.get("merchant_id", "") or _store_id
+        tx_time_val = tx.get("transaction_time", "")
         settlement_time = tx.get("settlement_time", "") or ""
         batch_id = tx.get("batch_id") or tx.get("payout_id") or ""
         refund_amt = (tx.get("refund_amount", 0) or 0) / 100.0 if tx.get("refund_amount") else 0.0
         refund_reason = tx.get("refund_reason", "") or ""
         promo_orig_amt = (promo.get("promo_original_amount", 0) or 0) / 100.0 if promo.get("promo_original_amount") else 0.0
 
-        row = [
-            status_tx,
-            outlet_name_display,
-            tx.get("merchant_id", "") or _store_id,
-            tx.get("service_type", "") or tx.get("channel_type", ""),
-            tx.get("order_id", "") or order_num,
-            tx.get("id", ""),
-            gross_amt,
-            net_amt,
-            tx.get("transaction_time", ""),
-            tx.get("payment_type", ""),
-            gopay_promo,
-            promo_code,
-            promo_code,
-            merchant_promo_contrib,
-            voucher_desc,
-            gofood_discount,
-            voucher_comm,
-            total_fee,
-            vat_val,
-            restaurant_tax_val,
-            tx.get("service_type", ""),
-            wht_val,
-            settlement_time,
-            batch_id,
-            refund_amt,
-            refund_reason,
-            promo_code,
-            promo_orig_amt,
-        ]
-        rows_excel.append(row)
+        items_list = commerce.get("items") or []
+        if items_list:
+            for idx, item in enumerate(items_list, start=1):
+                item_name = item.get("name", "")
+                item_qty = item.get("quantity", 1) or 1
+                item_price = item.get("unit_price", 0) or 0
+                item_total = item_price * item_qty
+                is_first = (idx == 1)
 
-        # Parse Order Items
-        order_id_val = tx.get("order_id", "") or order_num
-        store_id_val = tx.get("merchant_id", "") or _store_id
-        tx_time_val = tx.get("transaction_time", "")
-        for item in commerce.get("items", []):
-            item_name = item.get("name", "")
-            item_qty = item.get("quantity", 1) or 1
-            item_price = item.get("unit_price", 0) or 0
-            item_total = item_price * item_qty
-            rows_items.append([
-                order_id_val,
+                row = [
+                    status_tx,
+                    outlet_name_display,
+                    store_id_val,
+                    tx.get("service_type", "") or tx.get("channel_type", ""),
+                    order_id_val,
+                    tx.get("id", ""),
+                    tx_time_val,
+                    tx.get("payment_type", ""),
+                    idx,
+                    item_name,
+                    item_qty,
+                    item_price,
+                    item_total,
+                    gross_amt if is_first else 0,
+                    net_amt if is_first else 0,
+                    total_fee if is_first else 0,
+                    gopay_promo if is_first else 0,
+                    promo_code if is_first else "",
+                    promo_code if is_first else "",
+                    merchant_promo_contrib if is_first else 0,
+                    voucher_desc if is_first else "",
+                    gofood_discount if is_first else 0,
+                    voucher_comm if is_first else 0,
+                    vat_val if is_first else 0,
+                    restaurant_tax_val if is_first else 0,
+                    tx.get("service_type", "") if is_first else "",
+                    wht_val if is_first else 0,
+                    settlement_time if is_first else "",
+                    batch_id if is_first else "",
+                    refund_amt if is_first else 0,
+                    refund_reason if is_first else "",
+                    promo_code if is_first else "",
+                    promo_orig_amt if is_first else 0,
+                ]
+                rows_excel.append(row)
+        else:
+            row = [
+                status_tx,
+                outlet_name_display,
                 store_id_val,
-                item_name,
-                item_qty,
-                item_price,
-                item_total,
+                tx.get("service_type", "") or tx.get("channel_type", ""),
+                order_id_val,
+                tx.get("id", ""),
                 tx_time_val,
-            ])
+                tx.get("payment_type", ""),
+                1,
+                None,
+                None,
+                None,
+                None,
+                gross_amt,
+                net_amt,
+                total_fee,
+                gopay_promo,
+                promo_code,
+                promo_code,
+                merchant_promo_contrib,
+                voucher_desc,
+                gofood_discount,
+                voucher_comm,
+                vat_val,
+                restaurant_tax_val,
+                tx.get("service_type", ""),
+                wht_val,
+                settlement_time,
+                batch_id,
+                refund_amt,
+                refund_reason,
+                promo_code,
+                promo_orig_amt,
+            ]
+            rows_excel.append(row)
 
         if status_tx == "SETTLEMENT":
             total_omzet += gross_amt
@@ -1432,7 +1461,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         elif "CANCEL" in status_tx.upper() or "REFUND" in status_tx.upper():
             total_order_batal += 1
 
-    # ── Export ke File Excel Detail Per Outlet ──
+    # Export ke File Excel Detail Per Outlet (1 Sheet Tunggal)
     safe_name_str = f"{_outlet}_{_cabang}_{_store_id}" if _cabang and _cabang.lower() != 'tanpa cabang' else f"{_outlet}_{_store_id}"
     safe_outlet = safe_name_str.strip().replace(" ", "_").replace("/", "_").replace("\\", "_")
     if not safe_outlet or safe_outlet == "Tidak_Tersedia":
@@ -1464,17 +1493,11 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
         for r in rows_excel:
             ws_raw.append(r)
 
-        if rows_items:
-            ws_items = wb_raw.create_sheet(title="Items")
-            ws_items.append(headers_items)
-            for it in rows_items:
-                ws_items.append(it)
-
         wb_raw.save(abs_raw_excel_path)
         wb_raw.close()
-        console.print(f"[success]✅ Berkas Excel tersimpan ({len(rows_excel)} transaksi, {len(rows_items)} items) di: {abs_raw_excel_path}[/success]")
+        console.print(f"[success]Berkas Excel tersimpan ({len(rows_excel)} baris line-items) di: {abs_raw_excel_path}[/success]")
     except Exception as e:
-        console.print(f"[warning]⚠️ Gagal menyimpan file Excel GoFood V2: {e}[/warning]")
+        console.print(f"[warning]Gagal menyimpan file Excel GoFood V2: {e}[/warning]")
 
     # Table Ringkasan Per Store
     table = Table(title=f"Ringkasan: {_outlet} ({_store_id})", show_header=True, header_style="bold magenta")
@@ -1490,7 +1513,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     console.print("\n", table)
     
     DURATION_STORE = time.time() - START_TIME_STORE
-    console.print(f"[info]⏱️ Waktu proses untuk store ini: [bold]{DURATION_STORE:.2f} detik[/bold][/info]\n")
+    console.print(f"[info]Waktu proses untuk store ini: [bold]{DURATION_STORE:.2f} detik[/bold][/info]\n")
     
     if return_data:
         return {
@@ -1502,9 +1525,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
             'total_order': total_order,
             'raw_transactions': transactions,
             'rows_excel': rows_excel,
-            'rows_items': rows_items,
             'headers_excel': headers_excel,
-            'headers_items': headers_items,
         }
 
     return None
@@ -2088,28 +2109,21 @@ if __name__ == "__main__":
     console.print("[PROGRESS] PHASE: Aggregating GoFood data into JSON and 0Master.xlsx...")
 
     in_mem_tx = []
-    in_mem_items = []
     in_mem_raw = []
     headers_tx = None
-    headers_it = None
 
     if 'all_baseline_results' in locals() and all_baseline_results:
         for item in all_baseline_results:
             res = item.get('result') or {}
             tx_rows = res.get('rows_excel', [])
-            it_rows = res.get('rows_items', [])
             raw_txs = res.get('raw_transactions', [])
             
             if tx_rows:
                 in_mem_tx.extend(tx_rows)
-            if it_rows:
-                in_mem_items.extend(it_rows)
             if raw_txs:
                 in_mem_raw.extend(raw_txs)
             if not headers_tx and res.get('headers_excel'):
                 headers_tx = res.get('headers_excel')
-            if not headers_it and res.get('headers_items'):
-                headers_it = res.get('headers_items')
 
     # 1. Simpan Snapshot Raw JSON (Audit trail & re-parseable tanpa scrape ulang)
     raw_json_path = os.path.join(report_dir, "raw_gofood_all.json")
@@ -2142,14 +2156,11 @@ if __name__ == "__main__":
         except Exception as e:
             console.print(f"[WARNING] Gagal menyimpan raw JSON snapshot: {e}")
 
-    # 2. Bangun DataFrame Transaksi & Items langsung dari In-Memory Buffer
+    # 2. Bangun DataFrame Transaksi langsung dari In-Memory Buffer
     master_df = pd.DataFrame()
-    master_items_df = pd.DataFrame()
 
     if in_mem_tx and headers_tx:
         master_df = pd.DataFrame(in_mem_tx, columns=headers_tx)
-        if in_mem_items and headers_it:
-            master_items_df = pd.DataFrame(in_mem_items, columns=headers_it)
 
     # Fallback jika in_mem kosong (misal dijalankan dalam mode rerun tanpa scraping)
     if master_df.empty and os.path.exists(report_dir):
@@ -2164,7 +2175,6 @@ if __name__ == "__main__":
                 outlet_files[base_name] = fpath
 
         fallback_tx = []
-        fallback_it = []
         for base_name, fpath in outlet_files.items():
             try:
                 xl = pd.ExcelFile(fpath)
@@ -2176,58 +2186,48 @@ if __name__ == "__main__":
                     df_tx = pd.read_excel(xl, sheet_name=0, dtype=str)
                     if not df_tx.empty:
                         fallback_tx.append(df_tx)
-
-                if "Items" in xl.sheet_names:
-                    df_it = pd.read_excel(xl, sheet_name="Items", dtype=str)
-                    if not df_it.empty:
-                        fallback_it.append(df_it)
             except Exception as e:
                 console.print(f"  [error]Error reading '{os.path.basename(fpath)}': {e}[/error]")
 
         if fallback_tx:
             master_df = pd.concat(fallback_tx, ignore_index=True)
-        if fallback_it:
-            master_items_df = pd.concat(fallback_it, ignore_index=True)
 
     # 3. Deduplikasi dan Format Angka
     if not master_df.empty:
-        if "Transaction ID" in master_df.columns:
+        if "Line No" in master_df.columns:
+            master_df = master_df.drop_duplicates(subset=["Order ID", "Line No"], keep="last")
+        elif "Transaction ID" in master_df.columns:
             master_df = master_df.drop_duplicates(subset=["Transaction ID"], keep="last")
 
-        for col in ['Penjualan Kotor', 'Biaya Komisi', 'Pengeluaran Iklan & Diskon', 'Order Sukses', 'Order Batal', 'Amount', 'Net Amount', 'Total Fee']:
+        for col in ['Penjualan Kotor', 'Biaya Komisi', 'Pengeluaran Iklan & Diskon', 'Order Sukses', 'Order Batal', 'Amount', 'Net Amount', 'Total Fee', 'Total Item', 'Price Per Item', 'Quantity']:
             if col in master_df.columns:
                 master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
-
-        if not master_items_df.empty:
-            item_dedup_cols = [c for c in ["Order ID", "Item Name", "Quantity", "Price Per Item"] if c in master_items_df.columns]
-            if item_dedup_cols:
-                master_items_df = master_items_df.drop_duplicates(subset=item_dedup_cols, keep="last")
 
         # 4. Simpan Structured Master JSON (Single Source of Truth)
         structured_json_path = os.path.join(report_dir, "master_gofood_data.json")
         try:
+            order_count = len(master_df[master_df["Line No"].astype(str) == "1"]) if "Line No" in master_df.columns else len(master_df)
+            item_count = len(master_df[master_df["Item Name"].notna() & (master_df["Item Name"] != "")]) if "Item Name" in master_df.columns else 0
             with open(structured_json_path, "w", encoding="utf-8") as f:
                 json.dump({
                     "summary": {
-                        "total_transactions": len(master_df),
-                        "total_items": len(master_items_df)
+                        "total_orders": order_count,
+                        "total_items": item_count,
+                        "total_rows": len(master_df)
                     },
-                    "transactions": master_df.to_dict(orient="records"),
-                    "items": master_items_df.to_dict(orient="records") if not master_items_df.empty else []
+                    "rows": master_df.to_dict(orient="records")
                 }, f, ensure_ascii=False, indent=2)
             console.print(f"[INFO] Structured JSON master tersimpan di: {structured_json_path}")
         except Exception as e:
             console.print(f"[WARNING] Gagal menyimpan structured JSON master: {e}")
 
-        # 5. Tulis langsung ke 0Master.xlsx (Presentation Layer)
+        # 5. Tulis langsung ke 0Master.xlsx (1 Sheet Tunggal untuk Tim Finance)
         master_filepath = os.path.join(report_dir, "0Master.xlsx")
-        with pd.ExcelWriter(master_filepath, engine="openpyxl") as writer:
-            master_df.to_excel(writer, sheet_name="Transactions", index=False)
-            if not master_items_df.empty:
-                master_items_df.to_excel(writer, sheet_name="Items", index=False)
+        master_df.to_excel(master_filepath, sheet_name="Transactions", index=False)
 
+        order_count = len(master_df[master_df["Line No"].astype(str) == "1"]) if "Line No" in master_df.columns else len(master_df)
         console.print(f"[SUCCESS] Laporan 0Master created: {master_filepath}")
-        console.print(f"   Total transaksi: {len(master_df)}, Total items: {len(master_items_df)}")
+        console.print(f"   Total order: {order_count}, Total baris line-items: {len(master_df)}")
 
         # 6. SYNC KE POSTGRESQL
         if args_cli.db or os.getenv("INGEST_DB") == "true":
@@ -2235,9 +2235,19 @@ if __name__ == "__main__":
                 console.print("\n[DB] Syncing raw GoFood transactions and items to PostgreSQL...")
                 from database.layer1_db_manager import DatabaseManager
                 db = DatabaseManager()
-                db.ingest_gofood(master_df)
-                if not master_items_df.empty:
-                    db.ingest_gofood_items(master_items_df)
+                
+                # Primary transaction row (Line No == 1) for layer1_raw.raw_go
+                if "Line No" in master_df.columns:
+                    tx_df = master_df[master_df["Line No"].astype(str) == "1"].copy()
+                else:
+                    tx_df = master_df.drop_duplicates(subset=["Transaction ID"], keep="first").copy()
+                db.ingest_gofood(tx_df)
+
+                # Line items for layer1_raw.raw_go_items
+                if "Item Name" in master_df.columns:
+                    items_df = master_df[master_df["Item Name"].notna() & (master_df["Item Name"] != "")].copy()
+                    if not items_df.empty:
+                        db.ingest_gofood_items(items_df)
                 console.print("[DB] Successfully ingested raw GoFood transactions and items.")
             except Exception as e:
                 console.print(f"[SKIP] PostgreSQL sync skipped: {e}")

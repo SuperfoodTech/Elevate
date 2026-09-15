@@ -132,11 +132,16 @@ def _insert_idempotent_single_key(engine, table: str, df: pd.DataFrame, key_colu
 def _insert_idempotent_gofood(engine, df: pd.DataFrame):
     """GoFood uses Transaction ID, falling back to Order ID when needed."""
     work = df.copy()
+    if "Line No" in work.columns:
+        work = work[work["Line No"].astype(str) == "1"].copy()
     tx = work["Transaction ID"].fillna("").astype(str).str.strip()
     order = work["Order ID"].fillna("").astype(str).str.strip()
     work["_dedupe_key"] = tx.where((tx != "") & (tx.str.lower() != "nan"), "ORDER:" + order)
     work = work[(work["_dedupe_key"] != "") & (work["_dedupe_key"].str.lower() != "nan")]
-    work = work.drop_duplicates(subset=["_dedupe_key"], keep="last")
+    if "Amount" in work.columns:
+        work["_amt_sort"] = pd.to_numeric(work["Amount"], errors="coerce").fillna(0)
+        work = work.sort_values(by=["_amt_sort"], ascending=False).drop(columns=["_amt_sort"])
+    work = work.drop_duplicates(subset=["_dedupe_key"], keep="first")
     total_rows = len(df)
 
     with engine.begin() as conn:
@@ -480,6 +485,18 @@ def ingest_gofood_v2_items_to_layer1(output_dir: str) -> bool:
                 df_item = pd.read_excel(f, sheet_name="Items")
                 if not df_item.empty:
                     items_dfs.append(df_item)
+            elif "Transactions" in excel_file.sheet_names:
+                df_sheet = pd.read_excel(f, sheet_name="Transactions")
+                if "Item Name" in df_sheet.columns:
+                    df_item = df_sheet[df_sheet["Item Name"].notna() & (df_sheet["Item Name"].astype(str).str.strip() != "")]
+                    if not df_item.empty:
+                        items_dfs.append(df_item)
+            elif len(excel_file.sheet_names) > 0:
+                df_sheet = pd.read_excel(f, sheet_name=0)
+                if "Item Name" in df_sheet.columns:
+                    df_item = df_sheet[df_sheet["Item Name"].notna() & (df_sheet["Item Name"].astype(str).str.strip() != "")]
+                    if not df_item.empty:
+                        items_dfs.append(df_item)
         except Exception:
             pass
 

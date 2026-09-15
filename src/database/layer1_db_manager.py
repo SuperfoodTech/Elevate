@@ -282,7 +282,10 @@ class DatabaseManager:
         fallback = df_stg["Order ID"].fillna("").astype(str).str.strip()
         df_stg.loc[(df_stg["_dedupe_key"] == "") | (df_stg["_dedupe_key"].str.lower() == "nan"), "_dedupe_key"] = "ORDER:" + fallback
         df_stg = df_stg[(df_stg["_dedupe_key"] != "") & (df_stg["_dedupe_key"].str.lower() != "nan")]
-        df_stg = df_stg.drop_duplicates(subset=["_dedupe_key"], keep="last").drop(columns=["_dedupe_key"])
+        if "Amount" in df_stg.columns:
+            df_stg["_amt_sort"] = pd.to_numeric(df_stg["Amount"], errors="coerce").fillna(0)
+            df_stg = df_stg.sort_values(by=["_amt_sort"], ascending=False).drop(columns=["_amt_sort"])
+        df_stg = df_stg.drop_duplicates(subset=["_dedupe_key"], keep="first").drop(columns=["_dedupe_key"])
         transaction_ids = df_stg["Transaction ID"].dropna().unique().tolist()
         fallback_order_ids = df_stg.loc[
             df_stg["Transaction ID"].isna() | (df_stg["Transaction ID"].str.strip() == ""), "Order ID"
