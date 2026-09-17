@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
   ArrowLeft,
   Pencil,
   MoreHorizontal,
+  Building2,
   Store,
   TrendingUp,
   Trophy,
-  MapPin,
   Check,
   Minus,
   Hourglass,
@@ -70,6 +70,7 @@ interface OwnerListingItem {
   namaPemilikRekening: string;
   nomorRekening: string;
   outlet: string;
+  _searchIndex?: string;
 }
 
 function parseCSV(text: string): string[][] {
@@ -324,6 +325,20 @@ interface PhysicalOutletItem {
   issuesCount: number;
 }
 
+interface OwnerBrandItem {
+  id: string;
+  name: string;
+  model: 'Agency' | 'Hybrid' | 'Virtual Brand';
+  outletsCount: number;
+  outletNames: string[];
+  gofoodCount: number;
+  grabfoodCount: number;
+  shopeefoodCount: number;
+  totalListings: number;
+  status: 'Active' | 'Attention' | 'Inactive';
+  issuesCount: number;
+}
+
 interface MonthlyAchievement {
   month: string;
   achieved: boolean;
@@ -336,6 +351,7 @@ interface OwnerDetailData {
   businessModel: 'Agency' | 'Hybrid' | 'Virtual Brand';
   status: 'Active' | 'Attention' | 'Inactive';
   isVip?: boolean;
+  brandsCount: number;
   physicalOutletsCount: number;
   areasCount: number;
   gofoodListings: number;
@@ -356,6 +372,7 @@ interface OwnerDetailData {
     dueDate: string;
     daysLeft: number;
   };
+  brandsList: OwnerBrandItem[];
   outletsList: PhysicalOutletItem[];
   listings: OwnerListingItem[];
   needAttentionItems: Array<{
@@ -373,6 +390,7 @@ const defaultOwnerData: OwnerDetailData = {
   businessModel: 'Agency',
   status: 'Active',
   isVip: true,
+  brandsCount: 1,
   physicalOutletsCount: 4,
   areasCount: 4,
   gofoodListings: 16,
@@ -400,6 +418,26 @@ const defaultOwnerData: OwnerDetailData = {
     dueDate: '4 Sep 2026',
     daysLeft: 3
   },
+  brandsList: [
+    {
+      id: btoa('Salero Minang Raya:::Salero Minang Raya').replace(/=/g, ''),
+      name: 'Salero Minang Raya',
+      model: 'Agency',
+      outletsCount: 4,
+      outletNames: [
+        'Salero Minang Raya – Manyar',
+        'Salero Minang Raya – Gubeng',
+        'Salero Minang Raya – Rungkut',
+        'Salero Minang Raya – Wiyung'
+      ],
+      gofoodCount: 8,
+      grabfoodCount: 8,
+      shopeefoodCount: 6,
+      totalListings: 22,
+      status: 'Active',
+      issuesCount: 1
+    }
+  ],
   outletsList: [
     {
       id: 'OUT-00123',
@@ -541,6 +579,21 @@ function buildOwnerDetailFromDBR(
     }
   >();
 
+  const brandMap = new Map<
+    string,
+    {
+      name: string;
+      model: 'Agency' | 'Hybrid' | 'Virtual Brand';
+      outlets: Set<string>;
+      gofoodCount: number;
+      grabfoodCount: number;
+      shopeefoodCount: number;
+      issuesCount: number;
+      hasActive: boolean;
+      hasInactive: boolean;
+    }
+  >();
+
   const listings: OwnerListingItem[] = [];
   let gofoodListings = 0;
   let grabfoodListings = 0;
@@ -572,7 +625,37 @@ function buildOwnerDetailFromDBR(
       });
     }
 
+    const brandName = r.namaBrand.trim() || r.namaPemilik.trim() || 'Brand Utama';
+    if (!brandMap.has(brandName)) {
+      let bModel: 'Agency' | 'Hybrid' | 'Virtual Brand' = ownerRecord.businessModel;
+      const lowerModel = (r.model || r.tipe || '').toLowerCase();
+      if (lowerModel.includes('vb') || lowerModel.includes('virtual')) {
+        bModel = 'Virtual Brand';
+      } else if (lowerModel.includes('hybrid')) {
+        bModel = 'Hybrid';
+      } else if (lowerModel.includes('agency')) {
+        bModel = 'Agency';
+      }
+
+      brandMap.set(brandName, {
+        name: brandName,
+        model: bModel,
+        outlets: new Set(),
+        gofoodCount: 0,
+        grabfoodCount: 0,
+        shopeefoodCount: 0,
+        issuesCount: 0,
+        hasActive: false,
+        hasInactive: false
+      });
+    }
+
     const outEntry = outletMap.get(outletName)!;
+    const bEntry = brandMap.get(brandName)!;
+    if (r.outlet.trim()) {
+      bEntry.outlets.add(r.outlet.trim());
+    }
+
     const app = r.aplikator.toLowerCase();
 
     let aplikatorType: 'GoFood' | 'GrabFood' | 'ShopeeFood' = 'GoFood';
@@ -580,13 +663,16 @@ function buildOwnerDetailFromDBR(
       aplikatorType = 'GrabFood';
       grabfoodListings++;
       outEntry.grabfoodCount++;
+      bEntry.grabfoodCount++;
     } else if (app.includes('shopee')) {
       aplikatorType = 'ShopeeFood';
       shopeefoodListings++;
       outEntry.shopeefoodCount++;
+      bEntry.shopeefoodCount++;
     } else {
       gofoodListings++;
       outEntry.gofoodCount++;
+      bEntry.gofoodCount++;
     }
 
     const statusListingLower = r.statusListing.toLowerCase();
@@ -596,6 +682,7 @@ function buildOwnerDetailFromDBR(
     if (statusListingLower.includes('inactive') || statusListingLower.includes('tutup')) {
       statusListingEnum = 'Inactive';
       outEntry.issuesCount++;
+      bEntry.hasInactive = true;
     } else if (
       statusListingLower.includes('unregistered') ||
       statusListingLower.includes('review') ||
@@ -603,7 +690,13 @@ function buildOwnerDetailFromDBR(
     ) {
       statusListingEnum = 'Need Review';
       outEntry.issuesCount++;
+      bEntry.issuesCount++;
+    } else {
+      bEntry.hasActive = true;
     }
+
+    const listingName = r.namaListing || r.namaBrand || outletName;
+    const searchCorpus = `${listingName} ${r.namaBrand} ${outletName} ${r.storeId} ${r.alamat || ''} ${aplikatorType}`.toLowerCase();
 
     listings.push({
       id: `LST-DBR-${idx + 1}`,
@@ -611,7 +704,7 @@ function buildOwnerDetailFromDBR(
       namaBrand: r.namaBrand,
       aplikator: aplikatorType,
       groupId: r.groupId || '-',
-      namaListing: r.namaListing || r.namaBrand || outletName,
+      namaListing: listingName,
       link: r.link || '#',
       storeId: r.storeId || '-',
       statusListing: statusListingEnum,
@@ -619,7 +712,8 @@ function buildOwnerDetailFromDBR(
       namaBank: r.namaBank || '-',
       namaPemilikRekening: r.namaPemilikRekening || '-',
       nomorRekening: r.nomorRekening || '-',
-      outlet: outletName
+      outlet: outletName,
+      _searchIndex: searchCorpus
     });
   });
 
@@ -684,6 +778,29 @@ function buildOwnerDetailFromDBR(
   const gradeLetter: 'A' | 'B' | 'C' =
     ownerRecord.grade === 'A' ? 'A' : ownerRecord.grade === 'B' ? 'B' : 'C';
 
+  const brandsList: OwnerBrandItem[] = Array.from(brandMap.entries()).map(([name, b]) => {
+    const totalListings = b.gofoodCount + b.grabfoodCount + b.shopeefoodCount;
+    let status: 'Active' | 'Attention' | 'Inactive' = 'Active';
+    if (b.issuesCount > 0) status = 'Attention';
+    else if (b.hasInactive && !b.hasActive) status = 'Inactive';
+
+    return {
+      id: btoa(`${name}:::${ownerRecord.name}`).replace(/=/g, ''),
+      name,
+      model: b.model,
+      outletsCount: Math.max(1, b.outlets.size),
+      outletNames: Array.from(b.outlets),
+      gofoodCount: b.gofoodCount,
+      grabfoodCount: b.grabfoodCount,
+      shopeefoodCount: b.shopeefoodCount,
+      totalListings,
+      status,
+      issuesCount: b.issuesCount
+    };
+  });
+
+  const brandsCount = brandsList.length > 0 ? brandsList.length : 1;
+
   return {
     id: ownerRecord.id,
     name: ownerRecord.name,
@@ -691,6 +808,7 @@ function buildOwnerDetailFromDBR(
     businessModel: ownerRecord.businessModel,
     status: (ownerRecord.status === 'Active' ? 'Active' : 'Attention'),
     isVip: !!ownerRecord.isVip,
+    brandsCount,
     physicalOutletsCount,
     areasCount: Math.max(1, areasSet.size),
     gofoodListings: goCount,
@@ -718,6 +836,7 @@ function buildOwnerDetailFromDBR(
       dueDate: '4 Sep 2026',
       daysLeft: settlementStatusStr === 'Overdue' ? 0 : 3
     },
+    brandsList: brandsList.length > 0 ? brandsList : defaultOwnerData.brandsList,
     outletsList: outletsList.length > 0 ? outletsList : defaultOwnerData.outletsList,
     listings,
     needAttentionItems
@@ -736,7 +855,7 @@ export const OwnerDetailPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<
-    'Overview' | 'Outlets' | 'Listings' | 'Transactions' | 'Settlement' | 'Reports' | 'Activity'
+    'Overview' | 'Brands' | 'Listings' | 'Transactions' | 'Settlement' | 'Reports' | 'Activity'
   >('Overview');
 
   const [isFetching, setIsFetching] = useState(false);
@@ -873,24 +992,27 @@ export const OwnerDetailPage: React.FC = () => {
 
   // State for listings filter inside detail page
   const [listingSearch, setListingSearch] = useState('');
+  const deferredListingSearch = useDeferredValue(listingSearch);
   const [listingAplikator, setListingAplikator] = useState<string>('all');
   const [listingStatus, setListingStatus] = useState<string>('all');
 
   const filteredListings = useMemo(() => {
+    const q = deferredListingSearch.trim().toLowerCase();
+    const tokens = q.split(/\s+/).filter(Boolean);
+
     return data.listings.filter(l => {
       if (listingAplikator !== 'all' && l.aplikator !== listingAplikator) return false;
       if (listingStatus !== 'all' && l.statusListing !== listingStatus) return false;
-      if (listingSearch.trim()) {
-        const q = listingSearch.toLowerCase();
-        const matchName = l.namaListing.toLowerCase().includes(q);
-        const matchBrand = l.namaBrand.toLowerCase().includes(q);
-        const matchOutlet = l.outlet.toLowerCase().includes(q);
-        const matchStoreId = l.storeId.toLowerCase().includes(q);
-        if (!matchName && !matchBrand && !matchOutlet && !matchStoreId) return false;
+      if (tokens.length > 0) {
+        const corpus =
+          l._searchIndex ||
+          `${l.namaListing} ${l.namaBrand} ${l.outlet} ${l.storeId} ${l.alamat} ${l.aplikator}`.toLowerCase();
+
+        if (!tokens.every(t => corpus.includes(t))) return false;
       }
       return true;
     });
-  }, [data.listings, listingSearch, listingAplikator, listingStatus]);
+  }, [data.listings, deferredListingSearch, listingAplikator, listingStatus]);
 
   const topBarActions = (
     <div className="flex items-center gap-2.5">
@@ -985,7 +1107,7 @@ export const OwnerDetailPage: React.FC = () => {
 
           {/* Sub Navigation Tabs */}
           <div className="mt-8 border-b border-[#E2E8F0] flex gap-8 text-[13px] overflow-x-auto">
-            {(['Overview', 'Outlets', 'Listings', 'Transactions', 'Settlement', 'Reports', 'Activity'] as const).map(tab => {
+            {(['Overview', 'Brands', 'Listings', 'Transactions', 'Settlement', 'Reports', 'Activity'] as const).map(tab => {
               const isActive = activeTab === tab;
               return (
                 <button
@@ -1013,20 +1135,20 @@ export const OwnerDetailPage: React.FC = () => {
           <div className="space-y-6">
             {/* 4 Summary KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Card 1: Physical Outlets */}
+              {/* Card 1: Brands Owned */}
               <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-sm flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-[#ECFDF5] text-[#059669] flex items-center justify-center shrink-0">
-                  <Store className="w-6 h-6 stroke-[2]" />
+                <div className="w-12 h-12 rounded-full bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center shrink-0">
+                  <Building2 className="w-6 h-6 stroke-[2]" />
                 </div>
                 <div>
                   <div className="text-3xl font-bold text-[#0F172A] leading-tight">
-                    {data.physicalOutletsCount}
+                    {data.brandsCount}
                   </div>
                   <div className="text-[13px] font-semibold text-[#0F172A]">
-                    Physical Outlets
+                    Brands Owned
                   </div>
                   <div className="text-xs text-[#64748B]">
-                    Across {data.areasCount} areas
+                    Across {data.physicalOutletsCount} outlets
                   </div>
                 </div>
               </div>
@@ -1107,25 +1229,25 @@ export const OwnerDetailPage: React.FC = () => {
 
             {/* 2 Columns Body Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column (7 cols): Outlets & Listings + Performance Overview */}
+              {/* Left Column (7 cols): Brands & Portfolio + Performance Overview */}
               <div className="lg:col-span-7 xl:col-span-7 space-y-6">
-                {/* Outlets & Listings Card */}
+                {/* Brands & Portfolio Card */}
                 <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <h2 className="text-base font-bold text-[#0F172A]">
-                        Outlets & Listings
+                        Brands & Portfolio
                       </h2>
                       <p className="text-xs text-[#64748B]">
-                        Physical outlets and their listings on each platform.
+                        Brand apa saja yang dimiliki oleh owner ini beserta rincian channel platform.
                       </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setActiveTab('Outlets')}
+                      onClick={() => setActiveTab('Brands')}
                       className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] hover:border-[#BFDBFE] transition-colors shadow-sm"
                     >
-                      View All Outlets
+                      View All Brands
                     </button>
                   </div>
 
@@ -1134,61 +1256,83 @@ export const OwnerDetailPage: React.FC = () => {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[#64748B] font-semibold">
-                          <th className="py-3 px-4">Physical Outlet</th>
-                          <th className="py-3 px-3 text-center">GO (GoFood)</th>
-                          <th className="py-3 px-3 text-center">GR (GrabFood)</th>
-                          <th className="py-3 px-3 text-center">S (ShopeeFood)</th>
-                          <th className="py-3 px-3 text-center">Mapping Status</th>
-                          <th className="py-3 px-4 text-center">Issues</th>
+                          <th className="py-3 px-4">Brand</th>
+                          <th className="py-3 px-3">Model</th>
+                          <th className="py-3 px-3 text-center">Cabang Outlet</th>
+                          <th className="py-3 px-3 text-center">GO</th>
+                          <th className="py-3 px-3 text-center">GR</th>
+                          <th className="py-3 px-3 text-center">S</th>
+                          <th className="py-3 px-3 text-center">Status</th>
+                          <th className="py-3 px-4 text-center">Aksi</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#F1F5F9]">
-                        {data.outletsList.map(outlet => (
-                          <tr key={outlet.id} className="hover:bg-[#F8FAFC] transition-colors">
+                        {data.brandsList.map(brand => (
+                          <tr key={brand.id} className="hover:bg-[#F8FAFC] transition-colors">
                             <td className="py-3.5 px-4">
                               <div className="flex items-start gap-2.5">
-                                <MapPin className="w-3.5 h-3.5 text-[#94A3B8] shrink-0 mt-0.5" />
+                                <Building2 className="w-3.5 h-3.5 text-[#94A3B8] shrink-0 mt-0.5" />
                                 <div>
                                   <Link
-                                    to={`/outlets/${outlet.id}`}
+                                    to={`/brands/${brand.id}`}
                                     className="font-semibold text-[#0F172A] hover:text-[#2563EB] hover:underline transition-colors block"
                                   >
-                                    {outlet.name}
+                                    {brand.name}
                                   </Link>
                                   <div className="text-[11px] text-[#64748B]">
-                                    {outlet.area}
+                                    {brand.totalListings} listings terdaftar
                                   </div>
                                 </div>
                               </div>
                             </td>
-                            <td className="py-3.5 px-3 text-center font-bold text-[#EF4444]">
-                              {outlet.gofoodCount}
-                            </td>
-                            <td className="py-3.5 px-3 text-center font-bold text-[#10B981]">
-                              {outlet.grabfoodCount}
-                            </td>
-                            <td className="py-3.5 px-3 text-center font-bold text-[#F97316]">
-                              {outlet.shopeefoodCount}
+                            <td className="py-3.5 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                brand.model === 'Virtual Brand'
+                                  ? 'bg-[#FAF5FF] text-[#7C3AED] border border-[#E9D5FF]'
+                                  : brand.model === 'Hybrid'
+                                  ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                                  : 'bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]'
+                              }`}>
+                                {brand.model}
+                              </span>
                             </td>
                             <td className="py-3.5 px-3 text-center">
-                              {outlet.mappingStatus === 'Complete' ? (
+                              <span className="font-semibold text-[#0F172A] bg-gray-100 px-2 py-0.5 rounded-md text-[11px]">
+                                {brand.outletsCount} Cabang
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-3 text-center font-bold text-[#EF4444]">
+                              {brand.gofoodCount}
+                            </td>
+                            <td className="py-3.5 px-3 text-center font-bold text-[#10B981]">
+                              {brand.grabfoodCount}
+                            </td>
+                            <td className="py-3.5 px-3 text-center font-bold text-[#F97316]">
+                              {brand.shopeefoodCount}
+                            </td>
+                            <td className="py-3.5 px-3 text-center">
+                              {brand.status === 'Active' ? (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#ECFDF5] text-[#059669]">
-                                  Complete
+                                  Active
+                                </span>
+                              ) : brand.status === 'Attention' ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#FEF3C7] text-[#D97706]">
+                                  Attention
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-[#FEF3C7] text-[#D97706]">
-                                  Need Review
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-gray-100 text-gray-600">
+                                  Inactive
                                 </span>
                               )}
                             </td>
                             <td className="py-3.5 px-4 text-center">
-                              {outlet.issuesCount > 0 ? (
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#FEF2F2] text-[#DC2626] font-bold text-[11px]">
-                                  {outlet.issuesCount}
-                                </span>
-                              ) : (
-                                <span className="text-[#94A3B8] font-medium">-</span>
-                              )}
+                              <Link
+                                to={`/brands/${brand.id}`}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] border border-[#BFDBFE] transition-colors"
+                              >
+                                <span>Detail Brand</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </Link>
                             </td>
                           </tr>
                         ))}
@@ -1427,22 +1571,22 @@ export const OwnerDetailPage: React.FC = () => {
           </div>
         )}
 
-        {/* Outlets Sub-tab */}
-        {activeTab === 'Outlets' && (
+        {/* Brands Sub-tab */}
+        {activeTab === 'Brands' && (
           <div className="space-y-4">
             <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-[#F1F5F9]">
                 <div>
                   <div className="flex items-center gap-2.5">
                     <h2 className="text-base font-bold text-[#0F172A]">
-                      Daftar Physical Outlet
+                      Daftar Brand Portofolio
                     </h2>
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
-                      {data.outletsList.length} Outlet
+                      {data.brandsList.length} Brand
                     </span>
                   </div>
                   <p className="text-xs text-[#64748B] mt-1">
-                    Daftar seluruh physical outlet milik {data.name} beserta rincian channel listing aplikator.
+                    Daftar seluruh brand yang dimiliki oleh {data.name} beserta model bisnis dan cabang outlet fisik.
                   </p>
                 </div>
               </div>
@@ -1451,77 +1595,92 @@ export const OwnerDetailPage: React.FC = () => {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B] font-semibold">
-                      <th className="py-3.5 px-4">Nama Physical Outlet</th>
-                      <th className="py-3.5 px-4">Area / Wilayah</th>
+                      <th className="py-3.5 px-4">Nama Brand</th>
+                      <th className="py-3.5 px-3">Model Bisnis</th>
+                      <th className="py-3.5 px-4 text-center">Cabang Outlet</th>
                       <th className="py-3.5 px-3 text-center">GO (GoFood)</th>
                       <th className="py-3.5 px-3 text-center">GR (GrabFood)</th>
                       <th className="py-3.5 px-3 text-center">S (ShopeeFood)</th>
                       <th className="py-3.5 px-3 text-center">Total Listing</th>
-                      <th className="py-3.5 px-3 text-center">Status Mapping</th>
+                      <th className="py-3.5 px-3 text-center">Status Brand</th>
                       <th className="py-3.5 px-4 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F1F5F9]">
-                    {data.outletsList.map(outlet => {
-                      const totalListings = outlet.gofoodCount + outlet.grabfoodCount + outlet.shopeefoodCount;
-                      return (
-                        <tr key={outlet.id} className="hover:bg-[#F8FAFC] transition-colors">
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-lg bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center shrink-0">
-                                <Store className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <Link
-                                  to={`/outlets/${outlet.id}`}
-                                  className="font-semibold text-[#0F172A] hover:text-[#2563EB] hover:underline transition-colors block"
-                                >
-                                  {outlet.name}
-                                </Link>
-                                <div className="text-[11px] text-[#64748B]">
-                                  Outlet ID: <span className="font-mono">{outlet.id}</span>
-                                </div>
+                    {data.brandsList.map(brand => (
+                      <tr key={brand.id} className="hover:bg-[#F8FAFC] transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center shrink-0">
+                              <Building2 className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <Link
+                                to={`/brands/${brand.id}`}
+                                className="font-semibold text-[#0F172A] hover:text-[#2563EB] hover:underline transition-colors block"
+                              >
+                                {brand.name}
+                              </Link>
+                              <div className="text-[11px] text-[#64748B]">
+                                {brand.totalListings} listings terdaftar
                               </div>
                             </div>
-                          </td>
-                          <td className="py-3.5 px-4 font-medium text-[#334155]">
-                            {outlet.area}
-                          </td>
-                          <td className="py-3.5 px-3 text-center font-bold text-[#EF4444]">
-                            {outlet.gofoodCount}
-                          </td>
-                          <td className="py-3.5 px-3 text-center font-bold text-[#10B981]">
-                            {outlet.grabfoodCount}
-                          </td>
-                          <td className="py-3.5 px-3 text-center font-bold text-[#F97316]">
-                            {outlet.shopeefoodCount}
-                          </td>
-                          <td className="py-3.5 px-3 text-center font-bold text-[#0F172A]">
-                            {totalListings}
-                          </td>
-                          <td className="py-3.5 px-3 text-center">
-                            {outlet.mappingStatus === 'Complete' ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#ECFDF5] text-[#059669] border border-[#BBF7D0]">
-                                Complete
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
-                                Need Review ({outlet.issuesCount})
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3.5 px-4 text-center">
-                            <Link
-                              to={`/outlets/${outlet.id}`}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] border border-[#BFDBFE] transition-colors"
-                            >
-                              <span>Detail Outlet</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            brand.model === 'Virtual Brand'
+                              ? 'bg-[#FAF5FF] text-[#7C3AED] border border-[#E9D5FF]'
+                              : brand.model === 'Hybrid'
+                              ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                              : 'bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]'
+                          }`}>
+                            {brand.model}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="font-semibold text-[#0F172A] bg-gray-100 px-2.5 py-1 rounded-md text-xs">
+                            {brand.outletsCount} Cabang
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3 text-center font-bold text-[#EF4444]">
+                          {brand.gofoodCount}
+                        </td>
+                        <td className="py-3.5 px-3 text-center font-bold text-[#10B981]">
+                          {brand.grabfoodCount}
+                        </td>
+                        <td className="py-3.5 px-3 text-center font-bold text-[#F97316]">
+                          {brand.shopeefoodCount}
+                        </td>
+                        <td className="py-3.5 px-3 text-center font-bold text-[#0F172A]">
+                          {brand.totalListings}
+                        </td>
+                        <td className="py-3.5 px-3 text-center">
+                          {brand.status === 'Active' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#ECFDF5] text-[#059669] border border-[#BBF7D0]">
+                              Active
+                            </span>
+                          ) : brand.status === 'Attention' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]">
+                              Attention
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <Link
+                            to={`/brands/${brand.id}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] border border-[#BFDBFE] transition-colors"
+                          >
+                            <span>Detail Brand</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

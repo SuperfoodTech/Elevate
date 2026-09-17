@@ -1286,41 +1286,31 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     transactions = fetch_gofood_v2_transactions(_token, _store_id, start_date, end_date)
     console.print(f"[success]✅ Berhasil mengambil {len(transactions)} transaksi dari V2 API.[/success]")
 
-    # 33 Kolom Header Excel Flat Line-Items (Rencana 1)
+    # 20 Kolom Header Excel Bersih (Identitas, Line-Items, dan Finansial)
     headers_excel = [
+        # Identitas Transaksi (6 Kolom)
         "Order Status",
         "Outlet Name",
         "Merchant ID",
-        "Feature",
         "Order ID",
         "Transaction ID",
         "Transaction Time",
-        "Payment Type",
+        # Detail Menu Line-Items (5 Kolom)
         "Line No",
         "Item Name",
         "Quantity",
         "Price Per Item",
         "Total Item",
+        # Finansial & Rekonsiliasi Kas (9 Kolom)
         "Amount",
-        "Net Amount",
+        "Diskon Promo",
         "Total Fee",
-        "GoPay Promo",
-        "Promo Type",
-        "Promo Name",
-        "Merchant Promo Contribution",
-        "Voucher Description",
-        "GoFood Discount",
-        "Voucher Commission",
+        "Restaurant Tax (PB1)",
         "Value Added Tax",
-        "Restaurant Tax",
-        "Service",
-        "Withholding Tax",
+        "Net Amount",
         "Settlement Time",
-        "Batch ID",
         "Refund Amount",
         "Refund Reason",
-        "Promo Code",
-        "Promo Original Amount",
     ]
 
     rows_excel = []
@@ -1377,42 +1367,27 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
                 item_qty = item.get("quantity", 1) or 1
                 item_price = item.get("unit_price", 0) or 0
                 item_total = item_price * item_qty
-                is_first = (idx == 1)
-
                 row = [
                     status_tx,
                     outlet_name_display,
                     store_id_val,
-                    tx.get("service_type", "") or tx.get("channel_type", ""),
                     order_id_val,
                     tx.get("id", ""),
                     tx_time_val,
-                    tx.get("payment_type", ""),
                     idx,
                     item_name,
                     item_qty,
                     item_price,
                     item_total,
-                    gross_amt if is_first else 0,
-                    net_amt if is_first else 0,
-                    total_fee if is_first else 0,
-                    gopay_promo if is_first else 0,
-                    promo_code if is_first else "",
-                    promo_code if is_first else "",
-                    merchant_promo_contrib if is_first else 0,
-                    voucher_desc if is_first else "",
-                    gofood_discount if is_first else 0,
-                    voucher_comm if is_first else 0,
-                    vat_val if is_first else 0,
-                    restaurant_tax_val if is_first else 0,
-                    tx.get("service_type", "") if is_first else "",
-                    wht_val if is_first else 0,
-                    settlement_time if is_first else "",
-                    batch_id if is_first else "",
-                    refund_amt if is_first else 0,
-                    refund_reason if is_first else "",
-                    promo_code if is_first else "",
-                    promo_orig_amt if is_first else 0,
+                    gross_amt,
+                    gofood_discount,
+                    total_fee,
+                    restaurant_tax_val,
+                    vat_val,
+                    net_amt,
+                    settlement_time,
+                    refund_amt,
+                    refund_reason,
                 ]
                 rows_excel.append(row)
         else:
@@ -1420,36 +1395,23 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
                 status_tx,
                 outlet_name_display,
                 store_id_val,
-                tx.get("service_type", "") or tx.get("channel_type", ""),
                 order_id_val,
                 tx.get("id", ""),
                 tx_time_val,
-                tx.get("payment_type", ""),
                 1,
                 None,
                 None,
                 None,
                 None,
                 gross_amt,
-                net_amt,
-                total_fee,
-                gopay_promo,
-                promo_code,
-                promo_code,
-                merchant_promo_contrib,
-                voucher_desc,
                 gofood_discount,
-                voucher_comm,
-                vat_val,
+                total_fee,
                 restaurant_tax_val,
-                tx.get("service_type", ""),
-                wht_val,
+                vat_val,
+                net_amt,
                 settlement_time,
-                batch_id,
                 refund_amt,
                 refund_reason,
-                promo_code,
-                promo_orig_amt,
             ]
             rows_excel.append(row)
 
@@ -2199,7 +2161,7 @@ if __name__ == "__main__":
         elif "Transaction ID" in master_df.columns:
             master_df = master_df.drop_duplicates(subset=["Transaction ID"], keep="last")
 
-        for col in ['Penjualan Kotor', 'Biaya Komisi', 'Pengeluaran Iklan & Diskon', 'Order Sukses', 'Order Batal', 'Amount', 'Net Amount', 'Total Fee', 'Total Item', 'Price Per Item', 'Quantity']:
+        for col in ['Penjualan Kotor', 'Biaya Komisi', 'Pengeluaran Iklan & Diskon', 'Order Sukses', 'Order Batal', 'Amount', 'Net Amount', 'Total Fee', 'Total Item', 'Price Per Item', 'Quantity', 'Diskon Promo', 'Restaurant Tax (PB1)', 'Value Added Tax', 'Refund Amount']:
             if col in master_df.columns:
                 master_df[col] = pd.to_numeric(master_df[col], errors='coerce').fillna(0)
 

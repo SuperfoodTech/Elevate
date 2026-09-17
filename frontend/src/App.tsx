@@ -10,8 +10,12 @@ import { OrderStatusPage } from './pages/OrderStatusPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { OwnersPage } from './pages/OwnersPage';
 import { OwnerDetailPage } from './pages/OwnerDetailPage';
+import { BrandsPage } from './pages/BrandsPage';
+import { BrandDetailPage } from './pages/BrandDetailPage';
 import { OutletsPage } from './pages/OutletsPage';
 import { OutletDetailPage } from './pages/OutletDetailPage';
+import { ListingsPage } from './pages/ListingsPage';
+import { ListingDetailPage } from './pages/ListingDetailPage';
 import { TransactionExplorerPage } from './pages/TransactionExplorerPage';
 import { TransactionDetailPage } from './pages/TransactionDetailPage';
 import { VBTransactionDetailPage } from './pages/VBTransactionDetailPage';
@@ -29,10 +33,15 @@ export const App: React.FC = () => {
         <Route path="/owners" element={<OwnersPage />} />
         <Route path="/owners/:id" element={<OwnerDetailPage />} />
         <Route path="/modules/owner" element={<OwnersPage />} />
+        <Route path="/brands" element={<BrandsPage />} />
+        <Route path="/brands/:id" element={<BrandDetailPage />} />
+        <Route path="/modules/brand" element={<BrandsPage />} />
         <Route path="/outlets" element={<OutletsPage />} />
         <Route path="/outlets/:id" element={<OutletDetailPage />} />
         <Route path="/modules/outlet" element={<OutletsPage />} />
         <Route path="/transactions" element={<TransactionExplorerPage />} />
+        <Route path="/transactions/agency" element={<Navigate to="/transactions?tab=agency" replace />} />
+        <Route path="/transactions/vb" element={<Navigate to="/transactions?tab=vb" replace />} />
         <Route path="/transactions/:orderId" element={<TransactionDetailPage />} />
         <Route path="/transactions/vb/:orderId" element={<VBTransactionDetailPage />} />
         <Route path="/settlement" element={<PerformaComparisonPage />} />
@@ -46,8 +55,23 @@ export const App: React.FC = () => {
         <Route path="/vb/settlement" element={<PlaceholderPage />} />
         <Route path="/vb/overview" element={<PlaceholderPage />} />
 
-        {/* OPERATIONS Routes */}
+        {/* MERCHANT Routes */}
+        <Route path="/listings" element={<ListingsPage />} />
+        <Route path="/listings/:id" element={<ListingDetailPage />} />
+        <Route path="/modules/listing" element={<ListingsPage />} />
 
+        {/* FINANCE Routes */}
+        <Route path="/finance/:moduleName" element={<PlaceholderPage />} />
+
+        {/* REPORT Routes */}
+        <Route path="/reports/weekly" element={<LaporanPerformaPage />} />
+        <Route path="/reports/monthly" element={<PlaceholderPage />} />
+
+        {/* TOOLS & DOCUMENTS Routes */}
+        <Route path="/tools/:moduleName" element={<PlaceholderPage />} />
+        <Route path="/documents/:moduleName" element={<PlaceholderPage />} />
+
+        {/* OPERATIONS Routes */}
         <Route path="/operations/:moduleName" element={<PlaceholderPage />} />
 
         {/* SYSTEM Routes */}

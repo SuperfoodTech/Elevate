@@ -3,21 +3,24 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home,
   Users,
+  Building2,
   Store,
+  Layers,
   SlidersHorizontal,
   CircleDollarSign,
-  FileBarChart,
-  CreditCard,
+  Receipt,
+  ArrowUpRight,
+  Scale,
+  ArrowDownLeft,
+  Calendar,
+  CalendarRange,
   Bot,
   LayoutGrid,
   BadgePercent,
   FileCheck,
   PenTool,
-  KeyRound,
-  UserCheck,
-  FileText,
-  History,
   Settings,
+  Activity,
   ChevronDown,
   ChevronRight,
   ChevronLeft
@@ -28,6 +31,12 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
 }
 
+interface SubNavItemConfig {
+  name: string;
+  path: string;
+  aliases?: string[];
+}
+
 interface NavItemConfig {
   name: string;
   path: string;
@@ -35,78 +44,173 @@ interface NavItemConfig {
   icon: React.ComponentType<{ className?: string }>;
   isExternal?: boolean;
   target?: string;
+  hasSubmenu?: boolean;
+  subItems?: SubNavItemConfig[];
 }
 
-const coreNavItems: NavItemConfig[] = [
-  { name: 'Home', path: '/dashboard', aliases: ['/'], icon: Home },
-  { name: 'Owners', path: '/owners', aliases: ['/modules/owner'], icon: Users },
-  { name: 'Outlets', path: '/outlets', aliases: ['/modules/outlet'], icon: Store },
+interface NavSectionConfig {
+  title: string;
+  items: NavItemConfig[];
+}
+
+const homeNavItem: NavItemConfig = {
+  name: 'Home',
+  path: '/dashboard',
+  aliases: ['/'],
+  icon: Home
+};
+
+const navSections: NavSectionConfig[] = [
   {
-    name: 'Transactions',
-    path: '/transactions',
-    aliases: [
-      '/order-sukses-vs-batal',
-      '/laporan-jam-ramai',
-      '/modules/transaction',
-      '/vb/transactions',
-      '/vb'
-    ],
-    icon: SlidersHorizontal
+    title: 'MERCHANT',
+    items: [
+      { name: 'Owner', path: '/owners', aliases: ['/modules/owner'], icon: Users },
+      { name: 'Brand', path: '/brands', aliases: ['/modules/brand'], icon: Building2 },
+      { name: 'Outlet', path: '/outlets', aliases: ['/modules/outlet'], icon: Store },
+      { name: 'Listing', path: '/listings', aliases: ['/modules/listing'], icon: Layers }
+    ]
   },
   {
-    name: 'Settlement',
-    path: '/settlement',
-    aliases: ['/performa-comparison', '/modules/settlement', '/vb/settlement'],
-    icon: CircleDollarSign
+    title: 'OPERATIONS',
+    items: [
+      {
+        name: 'Transaction',
+        path: '/transactions',
+        aliases: [
+          '/order-sukses-vs-batal',
+          '/laporan-jam-ramai',
+          '/modules/transaction',
+          '/vb/transactions',
+          '/vb'
+        ],
+        icon: SlidersHorizontal,
+        hasSubmenu: true,
+        subItems: [
+          {
+            name: 'Agency',
+            path: '/transactions?tab=agency',
+            aliases: ['/transactions']
+          },
+          {
+            name: 'Virtual Brand',
+            path: '/transactions?tab=vb',
+            aliases: ['/vb', '/vb/transactions']
+          }
+        ]
+      },
+      {
+        name: 'Settlement',
+        path: '/settlement',
+        aliases: ['/performa-comparison', '/modules/settlement', '/vb/settlement'],
+        icon: CircleDollarSign
+      }
+    ]
   },
   {
-    name: 'Reports',
-    path: '/reports',
-    aliases: ['/rangkuman', '/laporan-performa', '/modules/report'],
-    icon: FileBarChart
+    title: 'FINANCE',
+    items: [
+      {
+        name: 'Billing',
+        path: '/payments',
+        aliases: ['/rekap-tagihan-billing', '/finance/billing', '/modules/billing'],
+        icon: Receipt
+      },
+      {
+        name: 'Disbursement',
+        path: '/finance/disbursement',
+        aliases: ['/modules/disbursement'],
+        icon: ArrowUpRight
+      },
+      {
+        name: 'Reconciliation',
+        path: '/finance/reconciliation',
+        aliases: ['/modules/reconciliation'],
+        icon: Scale
+      },
+      {
+        name: 'Account Receivable',
+        path: '/finance/account-receivable',
+        aliases: ['/modules/account-receivable'],
+        icon: ArrowDownLeft
+      }
+    ]
   },
   {
-    name: 'Payments',
-    path: '/payments',
-    aliases: [
-      '/rekap-tagihan-billing',
-      '/modules/billing',
-      '/modules/disbursement',
-      '/modules/reconciliation',
-      '/modules/account-receivable'
-    ],
-    icon: CreditCard
+    title: 'REPORT',
+    items: [
+      {
+        name: 'Weekly Report',
+        path: '/reports',
+        aliases: ['/reports/weekly', '/laporan-performa', '/rangkuman', '/modules/report'],
+        icon: Calendar
+      },
+      {
+        name: 'Monthly Report',
+        path: '/reports/monthly',
+        aliases: ['/modules/monthly-report'],
+        icon: CalendarRange
+      }
+    ]
+  },
+  {
+    title: 'TOOLS',
+    items: [
+      {
+        name: 'Bot',
+        path: 'https://bot.byfoodmaster.com',
+        aliases: ['/tools/bot', '/operations/bot', '/modules/bot'],
+        icon: Bot,
+        isExternal: true
+      },
+      {
+        name: 'Menu',
+        path: 'https://menu.byfoodmaster.com',
+        aliases: ['/tools/menu', '/operations/menu', '/modules/menu'],
+        icon: LayoutGrid,
+        isExternal: true
+      },
+      {
+        name: 'Promo',
+        path: '/operations/promo',
+        aliases: ['/tools/promo', '/modules/promo'],
+        icon: BadgePercent
+      }
+    ]
+  },
+  {
+    title: 'DOCUMENTS',
+    items: [
+      {
+        name: 'KKS',
+        path: '/operations/kks',
+        aliases: ['/documents/kks', '/modules/kks'],
+        icon: FileCheck
+      },
+      {
+        name: 'Proposal',
+        path: '/operations/esign-proposal',
+        aliases: ['/documents/proposal', '/modules/proposal'],
+        icon: PenTool
+      }
+    ]
+  },
+  {
+    title: 'SYSTEM',
+    items: [
+      {
+        name: 'Settings',
+        path: '/system/settings',
+        aliases: ['/modules/settings'],
+        icon: Settings
+      },
+      {
+        name: 'System Health',
+        path: '/system/system-health',
+        aliases: ['/modules/system-health', '/system/health'],
+        icon: Activity
+      }
+    ]
   }
-];
-
-
-
-const operationsNavItems: NavItemConfig[] = [
-  {
-    name: 'Bot Operations',
-    path: 'https://bot.byfoodmaster.com',
-    aliases: ['/operations/bot', '/modules/bot'],
-    icon: Bot,
-    isExternal: true
-  },
-  {
-    name: 'Menu',
-    path: 'https://menu.byfoodmaster.com',
-    aliases: ['/operations/menu', '/modules/menu'],
-    icon: LayoutGrid,
-    isExternal: true
-  },
-  { name: 'Promo', path: '/operations/promo', aliases: ['/modules/promo'], icon: BadgePercent },
-  { name: 'KKS', path: '/operations/kks', aliases: ['/modules/kks'], icon: FileCheck },
-  { name: 'E-Sign & Proposal', path: '/operations/esign-proposal', aliases: ['/modules/proposal'], icon: PenTool }
-];
-
-const systemNavItems: NavItemConfig[] = [
-  { name: 'Credentials', path: '/system/credentials', aliases: ['/modules/credentials'], icon: KeyRound },
-  { name: 'Users & Roles', path: '/system/users-roles', aliases: ['/modules/users-roles'], icon: UserCheck },
-  { name: 'Documents', path: '/system/documents', aliases: ['/modules/documents'], icon: FileText },
-  { name: 'Activity Log', path: '/system/activity-log', aliases: ['/modules/activity-log'], icon: History },
-  { name: 'System Settings', path: '/system/settings', aliases: ['/modules/settings', '/modules/system-health'], icon: Settings }
 ];
 
 export const AppSidebar: React.FC<SidebarProps> = ({
@@ -115,6 +219,43 @@ export const AppSidebar: React.FC<SidebarProps> = ({
 }) => {
   const location = useLocation();
 
+  const [expandedMenus, setExpandedMenus] = React.useState<Record<string, boolean>>(() => {
+    const isTx = location.pathname === '/transactions' || location.pathname.startsWith('/vb');
+    return {
+      Transaction: isTx
+    };
+  });
+
+  React.useEffect(() => {
+    if (location.pathname === '/transactions' || location.pathname.startsWith('/vb')) {
+      setExpandedMenus((prev) => ({ ...prev, Transaction: true }));
+    }
+  }, [location.pathname]);
+
+  const toggleSubmenu = (name: string) => {
+    setExpandedMenus((prev) => ({
+      ...prev,
+      [name]: !prev[name]
+    }));
+  };
+
+  const isSubItemActive = (subItem: SubNavItemConfig) => {
+    const currentTab = new URLSearchParams(location.search).get('tab');
+    if (subItem.path.includes('tab=vb')) {
+      return (
+        (location.pathname === '/transactions' && currentTab === 'vb') ||
+        location.pathname.startsWith('/vb')
+      );
+    }
+    if (subItem.path.includes('tab=agency')) {
+      return (
+        location.pathname === '/transactions' &&
+        (currentTab === 'agency' || !currentTab)
+      );
+    }
+    return false;
+  };
+
   const isItemActive = (item: NavItemConfig) => {
     if (location.pathname === item.path) return true;
     if (item.path !== '/' && item.path !== '/dashboard' && location.pathname.startsWith(item.path + '/')) return true;
@@ -122,215 +263,229 @@ export const AppSidebar: React.FC<SidebarProps> = ({
     return false;
   };
 
-  const getItemClassName = (isActive: boolean) => {
+  const getItemClassName = (isActive: boolean, isHome: boolean = false) => {
     const base =
-      'flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[13px] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]';
-    const state = isActive
-      ? 'bg-[#EFF6FF] text-[#2563EB] font-semibold'
-      : 'text-[#4B5565] hover:bg-[#F8FAFC] hover:text-[#0F172A] font-medium';
+      'group flex items-center justify-between px-3 py-2 rounded-lg text-[13px] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6E56CF]';
+    
+    let state = '';
+    if (isActive) {
+      if (isHome) {
+        state = 'bg-[#F4EFFE] text-[#6E56CF] font-semibold';
+      } else {
+        state = 'bg-[#F4EFFE] text-[#6E56CF] font-semibold';
+      }
+    } else {
+      state = 'text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0F172A] font-medium';
+    }
+
     const collapseAlign = collapsed ? 'justify-center px-0' : '';
     return `${base} ${state} ${collapseAlign}`;
   };
 
   const getIconClassName = (isActive: boolean) => {
     return `w-4 h-4 flex-shrink-0 stroke-[1.8] ${
-      isActive ? 'text-[#2563EB]' : 'text-[#64748B]'
+      isActive ? 'text-[#6E56CF]' : 'text-[#64748B] group-hover:text-[#0F172A]'
     }`;
   };
 
   return (
     <aside
       className={`bg-white border-r border-[#EBEBEF] h-screen sticky top-0 flex flex-col justify-between transition-all duration-200 ease-in-out select-none z-30 ${
-        collapsed ? 'w-[72px]' : 'w-64'
+        collapsed ? 'w-[72px]' : 'w-60'
       }`}
       aria-label="Sidebar Navigasi"
     >
       <div className="flex flex-col flex-1 min-h-0">
         {/* Brand Header */}
         <div
-          className={`h-16 flex items-center px-5 border-b border-[#F1F5F9] ${
-            collapsed ? 'justify-center px-0' : 'gap-3'
+          className={`h-16 flex items-center px-4 border-b border-[#F1F5F9] ${
+            collapsed ? 'justify-center px-0' : 'gap-2.5'
           }`}
         >
-          <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 32 32" className="w-7 h-7" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M6 10C6 7.79086 7.79086 6 10 6H17C21.4183 6 25 9.58172 25 14C25 18.4183 21.4183 22 17 22H12V26H6V10Z"
-                fill="#2563EB"
-              />
-              <path
-                d="M12 11H16.5C18.433 11 20 12.567 20 14.5C20 16.433 18.433 18 16.5 18H12V11Z"
-                fill="white"
-              />
-              <circle cx="23" cy="23" r="3.5" fill="#60A5FA" />
+          {/* Logo Mark */}
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#4F46E5] via-[#6366F1] to-[#38BDF8] flex items-center justify-center text-white shadow-sm shrink-0">
+            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+              <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2H4V6zm0 5h16v2H4v-2zm0 5h16a2 2 0 01-2 2H6a2 2 0 01-2-2v-0z" />
             </svg>
           </div>
 
           {!collapsed && (
-            <div className="flex flex-col min-w-0">
-              <span className="text-[17px] font-bold text-[#0F172A] tracking-tight leading-tight">
-                Elevate
-              </span>
-              <span className="text-[11px] text-[#64748B] font-normal leading-tight">
-                by FoodMaster
+            <div className="flex items-center min-w-0">
+              <span className="text-[17px] font-bold text-[#0F172A] tracking-wider uppercase">
+                ELEVATE
               </span>
             </div>
           )}
         </div>
 
         {/* Scrollable Navigation Area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-4">
-          {/* Core Navigation Items (Flat list) */}
-          <div className="space-y-0.5">
-            {coreNavItems.map(item => {
-              const Icon = item.icon;
-              const active = isItemActive(item);
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  title={collapsed ? item.name : undefined}
-                  className={getItemClassName(active)}
-                >
-                  <Icon className={getIconClassName(active)} />
-                  {!collapsed && <span>{item.name}</span>}
-                </NavLink>
-              );
-            })}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3 space-y-3 scrollbar-thin">
+          {/* Top Level: Home */}
+          <div>
+            <NavLink
+              to={homeNavItem.path}
+              title={collapsed ? homeNavItem.name : undefined}
+              className={getItemClassName(isItemActive(homeNavItem), true)}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Home className={getIconClassName(isItemActive(homeNavItem))} />
+                {!collapsed && <span className="truncate">{homeNavItem.name}</span>}
+              </div>
+            </NavLink>
           </div>
 
-          {/* OPERATIONS Section */}
+          {/* Categorized Sections */}
+          {navSections.map(section => (
+            <div key={section.title} className="pt-1">
+              {!collapsed ? (
+                <div className="px-3 pb-1 text-[11px] font-bold text-[#94A3B8] tracking-wider uppercase">
+                  {section.title}
+                </div>
+              ) : (
+                <div className="w-6 h-[1px] bg-[#E2E8F0] mx-auto my-1.5" />
+              )}
 
+              <div className="space-y-0.5">
+                {section.items.map(item => {
+                  const Icon = item.icon;
+                  const active = isItemActive(item);
 
-          <div className="pt-2">
-            {!collapsed ? (
-              <div className="px-3.5 pb-1.5 text-[11px] font-semibold text-[#94A3B8] tracking-wider uppercase">
-                OPERATIONS
-              </div>
-            ) : (
-              <div className="w-8 h-[1px] bg-[#E2E8F0] mx-auto my-2" />
-            )}
-            <div className="space-y-0.5">
-              {operationsNavItems.map(item => {
-                const Icon = item.icon;
-                const active = isItemActive(item);
+                  if (item.isExternal) {
+                    return (
+                      <a
+                        key={item.path}
+                        href={item.path}
+                        target={item.target || '_blank'}
+                        rel="noopener noreferrer"
+                        title={collapsed ? item.name : undefined}
+                        className={getItemClassName(active)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Icon className={getIconClassName(active)} />
+                          {!collapsed && <span className="truncate">{item.name}</span>}
+                        </div>
+                      </a>
+                    );
+                  }
 
-                if (item.isExternal) {
+                  if (item.subItems) {
+                    const isExpanded = !collapsed && !!expandedMenus[item.name];
+                    return (
+                      <div key={item.path} className="space-y-0.5">
+                        <div className="flex items-center">
+                          <NavLink
+                            to={item.path}
+                            title={collapsed ? item.name : undefined}
+                            onClick={() => {
+                              if (!isExpanded) {
+                                setExpandedMenus((prev) => ({ ...prev, [item.name]: true }));
+                              }
+                            }}
+                            className={`${getItemClassName(active)} flex-1`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Icon className={getIconClassName(active)} />
+                              {!collapsed && <span className="truncate">{item.name}</span>}
+                            </div>
+                          </NavLink>
+
+                          {!collapsed && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleSubmenu(item.name);
+                              }}
+                              className="p-1.5 mr-1 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-md transition-colors"
+                              title={isExpanded ? `Tutup sub menu ${item.name}` : `Buka sub menu ${item.name}`}
+                              aria-label={isExpanded ? `Tutup sub menu ${item.name}` : `Buka sub menu ${item.name}`}
+                            >
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                  isExpanded ? 'transform rotate-0' : 'transform -rotate-90'
+                                } ${active ? 'text-[#6E56CF]' : 'text-[#94A3B8]'}`}
+                              />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Sub Menu Items */}
+                        {!collapsed && isExpanded && (
+                          <div className="ml-5 pl-2.5 border-l border-[#E2E8F0] space-y-0.5 my-1">
+                            {item.subItems.map((subItem) => {
+                              const subActive = isSubItemActive(subItem);
+                              return (
+                                <NavLink
+                                  key={subItem.path}
+                                  to={subItem.path}
+                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6E56CF] ${
+                                    subActive
+                                      ? 'bg-[#F4EFFE] text-[#6E56CF] font-semibold'
+                                      : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A] font-medium'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                                      subActive ? 'bg-[#6E56CF]' : 'bg-[#CBD5E1]'
+                                    }`}
+                                  />
+                                  <span className="truncate">{subItem.name}</span>
+                                </NavLink>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
                   return (
-                    <a
+                    <NavLink
                       key={item.path}
-                      href={item.path}
-                      target={item.target || '_blank'}
-                      rel="noopener noreferrer"
+                      to={item.path}
                       title={collapsed ? item.name : undefined}
                       className={getItemClassName(active)}
                     >
-                      <Icon className={getIconClassName(active)} />
-                      {!collapsed && <span>{item.name}</span>}
-                    </a>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon className={getIconClassName(active)} />
+                        {!collapsed && <span className="truncate">{item.name}</span>}
+                      </div>
+
+                      {!collapsed && item.hasSubmenu && (
+                        <ChevronRight className={`w-3.5 h-3.5 ${active ? 'text-[#6E56CF]' : 'text-[#94A3B8]'}`} />
+                      )}
+                    </NavLink>
                   );
-                }
-
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    title={collapsed ? item.name : undefined}
-                    className={getItemClassName(active)}
-                  >
-                    <Icon className={getIconClassName(active)} />
-                    {!collapsed && <span>{item.name}</span>}
-                  </NavLink>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* SYSTEM Section */}
-          <div className="pt-2">
-            {!collapsed ? (
-              <div className="px-3.5 pb-1.5 text-[11px] font-semibold text-[#94A3B8] tracking-wider uppercase">
-                SYSTEM
+                })}
               </div>
-            ) : (
-              <div className="w-8 h-[1px] bg-[#E2E8F0] mx-auto my-2" />
-            )}
-            <div className="space-y-0.5">
-              {systemNavItems.map(item => {
-                const Icon = item.icon;
-                const active = isItemActive(item);
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    title={collapsed ? item.name : undefined}
-                    className={getItemClassName(active)}
-                  >
-                    <Icon className={getIconClassName(active)} />
-                    {!collapsed && <span>{item.name}</span>}
-                  </NavLink>
-                );
-              })}
             </div>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* Operator Profile Card Footer */}
-      <div className="p-3 border-t border-[#F1F5F9] bg-white sticky bottom-0">
-        <div
-          className={`flex items-center justify-between p-2 rounded-xl hover:bg-[#F8FAFC] transition-colors group ${
-            collapsed ? 'justify-center p-1' : ''
-          }`}
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="w-9 h-9 rounded-full bg-[#0F172A] text-white flex items-center justify-center font-bold text-xs shrink-0 tracking-wider shadow-sm"
-              title={collapsed ? 'Operations PIC (PIC)' : undefined}
-            >
-              OP
-            </div>
-            {!collapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="text-[13px] font-semibold text-[#0F172A] leading-tight truncate">
-                  Operations PIC
-                </span>
-                <span className="text-[11px] text-[#64748B] font-medium leading-tight">
-                  PIC
-                </span>
-              </div>
+      {/* Footer Collapse Button */}
+      <div className="p-2 border-t border-[#F1F5F9] bg-white">
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className={`flex items-center gap-2 p-2 rounded-lg text-xs font-semibold text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC] transition-colors w-full ${
+              collapsed ? 'justify-center' : ''
+            }`}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <ChevronRight className="w-4 h-4 text-[#64748B]" />
+            ) : (
+              <>
+                <ChevronLeft className="w-4 h-4 text-[#64748B]" />
+                <span>Collapse</span>
+              </>
             )}
-          </div>
-
-          {!collapsed && (
-            <div className="flex items-center gap-1">
-              {onToggleCollapse && (
-                <button
-                  type="button"
-                  onClick={onToggleCollapse}
-                  title="Collapse sidebar"
-                  className="p-1 text-[#94A3B8] hover:text-[#0F172A] rounded transition-colors"
-                  aria-label="Collapse sidebar"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              )}
-              <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
-            </div>
-          )}
-
-          {collapsed && onToggleCollapse && (
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              title="Expand sidebar"
-              className="hidden group-hover:flex absolute right-1 p-1 bg-white border border-gray-200 rounded shadow-sm"
-              aria-label="Expand sidebar"
-            >
-              <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
-            </button>
-          )}
-        </div>
+          </button>
+        )}
       </div>
     </aside>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useDeferredValue } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -111,7 +111,7 @@ function SelectDropdown({
 }
 
 export const TransactionExplorerPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') === 'vb' ? 'vb' : 'agency';
 
   // Export dropdown state
@@ -135,6 +135,7 @@ export const TransactionExplorerPage: React.FC = () => {
   const [filterListing, setFilterListing] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [agencyPage, setAgencyPage] = useState(1);
   const [agencyRowsPerPage, setAgencyRowsPerPage] = useState(10);
 
@@ -145,6 +146,7 @@ export const TransactionExplorerPage: React.FC = () => {
   const [vbFilterListing, setVbFilterListing] = useState('all');
   const [vbFilterStatus, setVbFilterStatus] = useState('all');
   const [vbSearchQuery, setVbSearchQuery] = useState('');
+  const deferredVbSearchQuery = useDeferredValue(vbSearchQuery);
   const [vbPage, setVbPage] = useState(1);
   const [vbRowsPerPage, setVbRowsPerPage] = useState(25);
 
@@ -190,6 +192,9 @@ export const TransactionExplorerPage: React.FC = () => {
 
   // Agency filtered & pagination
   const filteredAgency = useMemo(() => {
+    const q = deferredSearchQuery.trim().toLowerCase();
+    const tokens = q.split(/\s+/).filter(Boolean);
+
     return MOCK_TRANSACTIONS.filter((t) => {
       if (filterPlatform !== 'all' && t.platform !== filterPlatform) return false;
       if (filterOwner !== 'all' && t.owner !== filterOwner) return false;
@@ -202,19 +207,15 @@ export const TransactionExplorerPage: React.FC = () => {
           return false;
         }
       }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        if (
-          !t.orderId.toLowerCase().includes(q) &&
-          !t.sid.toLowerCase().includes(q) &&
-          !t.physicalOutlet.toLowerCase().includes(q)
-        ) {
+      if (tokens.length > 0) {
+        const corpus = `${t.orderId} ${t.sid} ${t.physicalOutlet} ${t.owner} ${t.platformListing}`.toLowerCase();
+        if (!tokens.every((tok) => corpus.includes(tok))) {
           return false;
         }
       }
       return true;
     });
-  }, [filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, searchQuery]);
+  }, [filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
 
   const agencyKpi = useMemo(() => {
     const sukses = filteredAgency.filter((t) => t.status === 'Sukses');
@@ -260,25 +261,24 @@ export const TransactionExplorerPage: React.FC = () => {
 
   // VB filtered & pagination (symmetrical with Agency)
   const filteredVB = useMemo(() => {
+    const q = deferredVbSearchQuery.trim().toLowerCase();
+    const tokens = q.split(/\s+/).filter(Boolean);
+
     return MOCK_VB_TRANSACTIONS.filter((t) => {
       if (vbFilterPlatform !== 'all' && t.platform !== (vbFilterPlatform as VBPlatform)) return false;
       if (vbFilterBrand !== 'all' && t.vb !== vbFilterBrand) return false;
       if (vbFilterOutlet !== 'all' && t.physicalOutlet !== vbFilterOutlet) return false;
       if (vbFilterListing !== 'all' && t.platformListing !== vbFilterListing) return false;
       if (vbFilterStatus !== 'all' && t.status !== (vbFilterStatus as VBOrderStatus)) return false;
-      if (vbSearchQuery.trim()) {
-        const q = vbSearchQuery.toLowerCase();
-        if (
-          !t.orderId.toLowerCase().includes(q) &&
-          !t.physicalOutlet.toLowerCase().includes(q) &&
-          !t.mid.toLowerCase().includes(q)
-        ) {
+      if (tokens.length > 0) {
+        const corpus = `${t.orderId} ${t.physicalOutlet} ${t.mid} ${t.vb} ${t.platformListing}`.toLowerCase();
+        if (!tokens.every((tok) => corpus.includes(tok))) {
           return false;
         }
       }
       return true;
     });
-  }, [vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, vbSearchQuery]);
+  }, [vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, deferredVbSearchQuery]);
 
   const vbKpi = useMemo(() => {
     const total = filteredVB.length;
@@ -502,30 +502,6 @@ export const TransactionExplorerPage: React.FC = () => {
               </button>
 
             </div>
-          </div>
-
-          {/* Sub-tabs */}
-          <div className="flex items-center gap-0 border-b border-gray-200 mb-6">
-            <button
-              onClick={() => setSearchParams({ tab: 'agency' })}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] ${
-                currentTab === 'agency'
-                  ? 'border-[#E53935] text-[#E53935] font-semibold'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Agency Transactions
-            </button>
-            <button
-              onClick={() => setSearchParams({ tab: 'vb' })}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] ${
-                currentTab === 'vb'
-                  ? 'border-[#16A34A] text-[#16A34A] font-semibold'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              VB Transactions
-            </button>
           </div>
 
           {/* TAB 1: AGENCY TRANSACTIONS */}
