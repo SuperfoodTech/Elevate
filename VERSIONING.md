@@ -124,3 +124,4 @@ Sebelum merilis resmi, pastikan nomor versi disinkronkan di:
    git tag -a v1.3.0 -m "Release v1.3.0: Navigasi Baru, GoFood Schema, dan Filter Dinamis"
    git push origin v1.3.0
    ```
+
