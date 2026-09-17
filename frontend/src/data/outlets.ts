@@ -21,6 +21,7 @@ export interface OutletRecord {
   isVip?: boolean;
   botActive: boolean;
   needReviewCount: number;
+  _searchIndex?: string;
 }
 
 export const MOCK_OUTLETS: OutletRecord[] = [
