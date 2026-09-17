@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import { getWeeksForMonth, getAvailableMonths } from '../utils/periodHelper';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -85,11 +86,54 @@ const formatOrderAxis = (val: number): string => {
 
 export const DashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('13 - 19 Mei 2024 (Minggu 3)');
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>('2024-05');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('13 - 19 Mei 2024 (Minggu 2)');
   const [selectedOwner, setSelectedOwner] = useState<string>('All Owner');
   const [selectedBusiness, setSelectedBusiness] = useState<string>('All');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+
+  // Available months grouped by year (e.g. 2024 to 2026)
+  const availableMonthsData = useMemo(() => getAvailableMonths(2024, 2026), []);
+
+  // Compute year and monthIndex from selectedMonthKey
+  const [selectedYear, selectedMonthIndex] = useMemo(() => {
+    const [y, m] = selectedMonthKey.split('-').map((v) => parseInt(v, 10));
+    return [y, m - 1];
+  }, [selectedMonthKey]);
+
+  // Compute weeks dynamically based on the first Monday rule
+  const availableWeeks = useMemo(() => {
+    return getWeeksForMonth(selectedYear, selectedMonthIndex);
+  }, [selectedYear, selectedMonthIndex]);
+
+  // Extract current and previous week labels based on business rule:
+  // Week 1 starts on the first Monday of the month, not day 1.
+  const currentWeekLabel = useMemo(() => {
+    const match = selectedPeriod.match(/\(([^)]+)\)/);
+    return match ? match[1] : 'Minggu 2';
+  }, [selectedPeriod]);
+
+  const prevWeekLabel = useMemo(() => {
+    const match = currentWeekLabel.match(/\d+/);
+    if (match) {
+      const num = parseInt(match[0], 10);
+      return num > 1 ? `Minggu ${num - 1}` : 'Minggu Lalu';
+    }
+    return 'Minggu Lalu';
+  }, [currentWeekLabel]);
+
+  const handleMonthChange = (newMonthKey: string) => {
+    setSelectedMonthKey(newMonthKey);
+    const [y, m] = newMonthKey.split('-').map((v) => parseInt(v, 10));
+    const weeks = getWeeksForMonth(y, m - 1);
+    if (weeks.length > 0) {
+      const currentWeekNumMatch = currentWeekLabel.match(/\d+/);
+      const currentWeekNum = currentWeekNumMatch ? parseInt(currentWeekNumMatch[0], 10) : 1;
+      const matchedWeek = weeks.find((w) => w.weekNumber === currentWeekNum) || weeks[0];
+      setSelectedPeriod(matchedWeek.label);
+    }
+  };
 
   // View modes for Brand Performance cards
   const [merchantViewMode, setMerchantViewMode] = useState<'financial' | 'orders'>('financial');
@@ -222,20 +266,44 @@ export const DashboardPage: React.FC = () => {
         {/* ── Filters Bar ── */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-[#EBEBEF]">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Period Filter */}
+            {/* Bulan & Tahun Filter */}
             <div className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-slate-500">Period</span>
+              <span className="text-[11px] font-medium text-slate-500">Bulan & Tahun</span>
               <div className="relative flex items-center">
                 <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
                 <select
-                  value={selectedPeriod}
-                  onChange={(e) => setSelectedPeriod(e.target.value)}
+                  value={selectedMonthKey}
+                  onChange={(e) => handleMonthChange(e.target.value)}
                   className="appearance-none border border-slate-200 rounded-lg pl-8 pr-8 py-1.5 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
-                  <option value="13 - 19 Mei 2024 (Minggu 3)">13 - 19 Mei 2024 (Minggu 3)</option>
-                  <option value="06 - 12 Mei 2024 (Minggu 2)">06 - 12 Mei 2024 (Minggu 2)</option>
-                  <option value="01 - 05 Mei 2024 (Minggu 1)">01 - 05 Mei 2024 (Minggu 1)</option>
-                  <option value="22 - 28 Apr 2024 (Minggu 4)">22 - 28 Apr 2024 (Minggu 4)</option>
+                  {availableMonthsData.years.map((year) => (
+                    <optgroup key={year} label={`Tahun ${year}`}>
+                      {availableMonthsData.monthsByYear[year].map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Minggu Filter */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-slate-500">Minggu</span>
+              <div className="relative flex items-center">
+                <select
+                  value={selectedPeriod}
+                  onChange={(e) => setSelectedPeriod(e.target.value)}
+                  className="appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 min-w-[220px]"
+                >
+                  {availableWeeks.map((w) => (
+                    <option key={w.label} value={w.label}>
+                      {w.label}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
               </div>
@@ -554,9 +622,9 @@ export const DashboardPage: React.FC = () => {
               {/* Quick Summary Pill Bar */}
               <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50/70 rounded-lg border border-slate-100 text-xs">
                 <div>
-                  <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Order Minggu 3</div>
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Order {currentWeekLabel}</div>
                   <div className="text-base font-bold text-slate-900 tabular-nums">224,770</div>
-                  <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">&#9650; 13.8% vs Minggu 2</div>
+                  <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">&#9650; 13.8% vs {prevWeekLabel}</div>
                 </div>
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase font-semibold">Order Tertinggi</div>
@@ -1484,7 +1552,7 @@ export const DashboardPage: React.FC = () => {
                         Brand Terlaris
                       </h3>
                     </div>
-                    <span className="text-[11px] font-semibold text-slate-500">Kontribusi Minggu 3</span>
+                    <span className="text-[11px] font-semibold text-slate-500">Kontribusi {currentWeekLabel}</span>
                   </div>
 
                   {/* Brand ranking horizontal bars */}
@@ -1578,7 +1646,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Perputaran Dana</div>
                     <div className="text-base font-bold text-slate-900 tabular-nums">Rp 3,12 Miliar</div>
-                    <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">&#9650; 8.4% vs Minggu 2</div>
+                    <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">&#9650; 8.4% vs {prevWeekLabel}</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Pencairan Tertinggi</div>
@@ -1588,7 +1656,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Posisi Kas Bersih</div>
                     <div className="text-base font-bold text-rose-600 tabular-nums">-Rp 631 Juta</div>
-                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">Net Settlement Minggu 3</div>
+                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">Net Settlement {currentWeekLabel}</div>
                   </div>
                 </div>
 
