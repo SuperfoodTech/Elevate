@@ -419,17 +419,6 @@ export const OutletsPage: React.FC = () => {
     }
   }, []);
 
-  const handleResetToMock = () => {
-    setOutlets([]);
-    setIsRealData(false);
-    setLastFetched(null);
-    setFetchError(null);
-    localStorage.removeItem('elevate_dbr_raw_csv');
-    localStorage.removeItem('elevate_owners_real_data');
-    localStorage.removeItem('elevate_owners_last_fetched');
-    setPage(1);
-  };
-
   useEffect(() => {
     const cachedCsv = localStorage.getItem('elevate_dbr_raw_csv');
     if (!cachedCsv) {
@@ -515,20 +504,10 @@ export const OutletsPage: React.FC = () => {
         </span>
       )}
       {isRealData && (
-        <div className="hidden sm:inline-flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
-            Live DBR ({outlets.length} Outlets) &bull; {lastFetched}
-          </span>
-          <button
-            type="button"
-            onClick={handleResetToMock}
-            className="text-xs font-semibold text-[#64748B] hover:text-[#0F172A] px-2 py-1 rounded hover:bg-[#F1F5F9] transition-colors"
-            title="Kembalikan ke data mock default"
-          >
-            Reset Mock
-          </button>
-        </div>
+        <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+          Live DBR ({outlets.length} Outlets) &bull; {lastFetched}
+        </span>
       )}
       <button
         type="button"

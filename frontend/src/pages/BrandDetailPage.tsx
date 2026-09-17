@@ -267,8 +267,13 @@ export const BrandDetailPage: React.FC = () => {
       const ownerName = first.namaPemilik.trim();
 
       let model: BusinessModel = 'Agency';
-      const lowerModel = (first.model || first.tipe || '').toLowerCase();
-      if (lowerModel.includes('vb') || lowerModel.includes('virtual')) {
+      const hasVb = matchingRows.some(r => (r.tipe || '').toLowerCase().includes('vb') || (r.tipe || '').toLowerCase().includes('virtual'));
+      const hasAgency = matchingRows.some(r => (r.tipe || '').toLowerCase().includes('agency'));
+      const lowerModel = (first.tipe || first.model || '').toLowerCase();
+
+      if (hasVb && hasAgency) {
+        model = 'Hybrid';
+      } else if (hasVb || lowerModel.includes('vb') || lowerModel.includes('virtual')) {
         model = 'Virtual Brand';
       } else if (lowerModel.includes('hybrid')) {
         model = 'Hybrid';

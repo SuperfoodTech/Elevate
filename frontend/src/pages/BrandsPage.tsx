@@ -28,6 +28,7 @@ interface DBRRow {
   namaPemilik: string;
   namaBrand: string;
   model: string;
+  tipe: string;
   outlet: string;
   aplikator: string;
   groupId: string;
@@ -113,6 +114,7 @@ function parseDBRRows(csvText: string): DBRRow[] {
       namaPemilik,
       namaBrand: getCol('Nama Brand'),
       model: getCol('Model'),
+      tipe: getCol('Tipe'),
       outlet: getCol('Outlet'),
       aplikator: getCol('Aplikator'),
       groupId: getCol('Group ID'),
@@ -148,6 +150,8 @@ function transformDBRToBrands(rawRows: DBRRow[], cachedOwners: any[]): BrandReco
       name: string;
       ownerName: string;
       modelRaw: string;
+      tipeRaw: string;
+      tipes: Set<string>;
       outlets: Set<string>;
       addresses: Set<string>;
       listings: Set<string>;
@@ -170,6 +174,8 @@ function transformDBRToBrands(rawRows: DBRRow[], cachedOwners: any[]): BrandReco
         name: brandName,
         ownerName,
         modelRaw: r.model.trim(),
+        tipeRaw: r.tipe.trim(),
+        tipes: new Set<string>(),
         outlets: new Set<string>(),
         addresses: new Set<string>(),
         listings: new Set<string>(),
@@ -191,6 +197,12 @@ function transformDBRToBrands(rawRows: DBRRow[], cachedOwners: any[]): BrandReco
     }
     if (r.namaListing.trim()) {
       group.listings.add(r.namaListing.trim());
+    }
+    if (r.tipe.trim()) {
+      group.tipes.add(r.tipe.trim().toLowerCase());
+      if (!group.tipeRaw) {
+        group.tipeRaw = r.tipe.trim();
+      }
     }
     if (!group.modelRaw && r.model.trim()) {
       group.modelRaw = r.model.trim();
@@ -234,10 +246,15 @@ function transformDBRToBrands(rawRows: DBRRow[], cachedOwners: any[]): BrandReco
     const ownerId = ownerLookup ? ownerLookup.ownerId : `OWN-${String(index).padStart(3, '0')}`;
 
     let model: BusinessModel = 'Agency';
-    const lowerModel = group.modelRaw.toLowerCase();
-    if (lowerModel.includes('vb') || lowerModel.includes('virtual')) {
+    const hasVb = Array.from(group.tipes).some(t => t.includes('vb') || t.includes('virtual'));
+    const hasAgency = Array.from(group.tipes).some(t => t.includes('agency'));
+    const lowerFallback = (group.tipeRaw || group.modelRaw || '').toLowerCase();
+
+    if (hasVb && hasAgency) {
+      model = 'Hybrid';
+    } else if (hasVb || lowerFallback.includes('vb') || lowerFallback.includes('virtual')) {
       model = 'Virtual Brand';
-    } else if (lowerModel.includes('hybrid')) {
+    } else if (lowerFallback.includes('hybrid')) {
       model = 'Hybrid';
     } else {
       model = 'Agency';

@@ -628,7 +628,7 @@ function buildOwnerDetailFromDBR(
     const brandName = r.namaBrand.trim() || r.namaPemilik.trim() || 'Brand Utama';
     if (!brandMap.has(brandName)) {
       let bModel: 'Agency' | 'Hybrid' | 'Virtual Brand' = ownerRecord.businessModel;
-      const lowerModel = (r.model || r.tipe || '').toLowerCase();
+      const lowerModel = (r.tipe || r.model || '').toLowerCase();
       if (lowerModel.includes('vb') || lowerModel.includes('virtual')) {
         bModel = 'Virtual Brand';
       } else if (lowerModel.includes('hybrid')) {
@@ -1931,64 +1931,75 @@ export const OwnerDetailPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F1F5F9]">
-                    {MOCK_TRANSACTIONS.filter(
-                      t =>
-                        t.owner.toLowerCase().includes(data.name.toLowerCase()) ||
-                        t.physicalOutlet.toLowerCase().includes(data.name.toLowerCase()) ||
-                        data.name.toLowerCase().includes('salero')
-                    ).map(tx => (
-                      <tr key={tx.id} className="hover:bg-[#F8FAFC] transition-colors">
-                        <td className="py-3.5 px-4 text-[#64748B] whitespace-nowrap">
-                          {tx.dateTime}
-                        </td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-[#2563EB] whitespace-nowrap">
-                          {tx.orderId}
-                        </td>
-                        <td className="py-3.5 px-3 whitespace-nowrap">
-                          {tx.platform === 'gofood' && (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-medium">
-                              GoFood
-                            </span>
-                          )}
-                          {tx.platform === 'grabfood' && (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">
-                              GrabFood
-                            </span>
-                          )}
-                          {tx.platform === 'shopeefood' && (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium">
-                              ShopeeFood
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 font-medium text-[#0F172A] whitespace-nowrap">
-                          {tx.physicalOutlet}
-                        </td>
-                        <td className="py-3.5 px-4 text-[#334155] whitespace-nowrap">
-                          {tx.platformListing}
-                        </td>
-                        <td className="py-3.5 px-3 font-mono text-[#475569] whitespace-nowrap">
-                          {tx.sid}
-                        </td>
-                        <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                          {tx.status === 'Sukses' ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#166534]">
-                              Sukses
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FEF2F2] text-[#DC2626]">
-                              Batal
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] whitespace-nowrap">
-                          {formatRupiah(tx.orderValue)}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-medium text-[#059669] whitespace-nowrap">
-                          {formatRupiah(tx.agencyFee)}
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const filtered = MOCK_TRANSACTIONS.filter(
+                        t =>
+                          t.owner.toLowerCase().includes(data.name.toLowerCase()) ||
+                          t.physicalOutlet.toLowerCase().includes(data.name.toLowerCase())
+                      );
+                      if (filtered.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={9} className="py-12 text-center text-xs text-[#64748B]">
+                              Belum ada data transaksi tercatat untuk pemilik ini.
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return filtered.map(tx => (
+                        <tr key={tx.id} className="hover:bg-[#F8FAFC] transition-colors">
+                          <td className="py-3.5 px-4 text-[#64748B] whitespace-nowrap">
+                            {tx.dateTime}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono font-bold text-[#2563EB] whitespace-nowrap">
+                            {tx.orderId}
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            {tx.platform === 'gofood' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-medium">
+                                GoFood
+                              </span>
+                            )}
+                            {tx.platform === 'grabfood' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium">
+                                GrabFood
+                              </span>
+                            )}
+                            {tx.platform === 'shopeefood' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium">
+                                ShopeeFood
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 font-medium text-[#0F172A] whitespace-nowrap">
+                            {tx.physicalOutlet}
+                          </td>
+                          <td className="py-3.5 px-4 text-[#334155] whitespace-nowrap">
+                            {tx.platformListing}
+                          </td>
+                          <td className="py-3.5 px-3 font-mono text-[#475569] whitespace-nowrap">
+                            {tx.sid}
+                          </td>
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                            {tx.status === 'Sukses' ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#166534]">
+                                Sukses
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#FEF2F2] text-[#DC2626]">
+                                Batal
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-semibold text-[#0F172A] whitespace-nowrap">
+                            {formatRupiah(tx.orderValue)}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-medium text-[#059669] whitespace-nowrap">
+                            {formatRupiah(tx.agencyFee)}
+                          </td>
+                        </tr>
+                      ));
+                    })()}
                   </tbody>
                 </table>
               </div>
