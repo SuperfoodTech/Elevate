@@ -21,6 +21,7 @@ import {
   PenTool,
   Settings,
   Activity,
+  ChevronDown,
   ChevronRight,
   ChevronLeft
 } from 'lucide-react';
@@ -28,6 +29,12 @@ import {
 interface SidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+}
+
+interface SubNavItemConfig {
+  name: string;
+  path: string;
+  aliases?: string[];
 }
 
 interface NavItemConfig {
@@ -38,6 +45,7 @@ interface NavItemConfig {
   isExternal?: boolean;
   target?: string;
   hasSubmenu?: boolean;
+  subItems?: SubNavItemConfig[];
 }
 
 interface NavSectionConfig {
@@ -76,7 +84,19 @@ const navSections: NavSectionConfig[] = [
           '/vb'
         ],
         icon: SlidersHorizontal,
-        hasSubmenu: true
+        hasSubmenu: true,
+        subItems: [
+          {
+            name: 'Agency',
+            path: '/transactions?tab=agency',
+            aliases: ['/transactions']
+          },
+          {
+            name: 'Virtual Brand',
+            path: '/transactions?tab=vb',
+            aliases: ['/vb', '/vb/transactions']
+          }
+        ]
       },
       {
         name: 'Settlement',
@@ -199,6 +219,43 @@ export const AppSidebar: React.FC<SidebarProps> = ({
 }) => {
   const location = useLocation();
 
+  const [expandedMenus, setExpandedMenus] = React.useState<Record<string, boolean>>(() => {
+    const isTx = location.pathname === '/transactions' || location.pathname.startsWith('/vb');
+    return {
+      Transaction: isTx
+    };
+  });
+
+  React.useEffect(() => {
+    if (location.pathname === '/transactions' || location.pathname.startsWith('/vb')) {
+      setExpandedMenus((prev) => ({ ...prev, Transaction: true }));
+    }
+  }, [location.pathname]);
+
+  const toggleSubmenu = (name: string) => {
+    setExpandedMenus((prev) => ({
+      ...prev,
+      [name]: !prev[name]
+    }));
+  };
+
+  const isSubItemActive = (subItem: SubNavItemConfig) => {
+    const currentTab = new URLSearchParams(location.search).get('tab');
+    if (subItem.path.includes('tab=vb')) {
+      return (
+        (location.pathname === '/transactions' && currentTab === 'vb') ||
+        location.pathname.startsWith('/vb')
+      );
+    }
+    if (subItem.path.includes('tab=agency')) {
+      return (
+        location.pathname === '/transactions' &&
+        (currentTab === 'agency' || !currentTab)
+      );
+    }
+    return false;
+  };
+
   const isItemActive = (item: NavItemConfig) => {
     if (location.pathname === item.path) return true;
     if (item.path !== '/' && item.path !== '/dashboard' && location.pathname.startsWith(item.path + '/')) return true;
@@ -308,6 +365,78 @@ export const AppSidebar: React.FC<SidebarProps> = ({
                           {!collapsed && <span className="truncate">{item.name}</span>}
                         </div>
                       </a>
+                    );
+                  }
+
+                  if (item.subItems) {
+                    const isExpanded = !collapsed && !!expandedMenus[item.name];
+                    return (
+                      <div key={item.path} className="space-y-0.5">
+                        <div className="flex items-center">
+                          <NavLink
+                            to={item.path}
+                            title={collapsed ? item.name : undefined}
+                            onClick={() => {
+                              if (!isExpanded) {
+                                setExpandedMenus((prev) => ({ ...prev, [item.name]: true }));
+                              }
+                            }}
+                            className={`${getItemClassName(active)} flex-1`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Icon className={getIconClassName(active)} />
+                              {!collapsed && <span className="truncate">{item.name}</span>}
+                            </div>
+                          </NavLink>
+
+                          {!collapsed && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleSubmenu(item.name);
+                              }}
+                              className="p-1.5 mr-1 text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] rounded-md transition-colors"
+                              title={isExpanded ? `Tutup sub menu ${item.name}` : `Buka sub menu ${item.name}`}
+                              aria-label={isExpanded ? `Tutup sub menu ${item.name}` : `Buka sub menu ${item.name}`}
+                            >
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                  isExpanded ? 'transform rotate-0' : 'transform -rotate-90'
+                                } ${active ? 'text-[#6E56CF]' : 'text-[#94A3B8]'}`}
+                              />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Sub Menu Items */}
+                        {!collapsed && isExpanded && (
+                          <div className="ml-5 pl-2.5 border-l border-[#E2E8F0] space-y-0.5 my-1">
+                            {item.subItems.map((subItem) => {
+                              const subActive = isSubItemActive(subItem);
+                              return (
+                                <NavLink
+                                  key={subItem.path}
+                                  to={subItem.path}
+                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6E56CF] ${
+                                    subActive
+                                      ? 'bg-[#F4EFFE] text-[#6E56CF] font-semibold'
+                                      : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A] font-medium'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                                      subActive ? 'bg-[#6E56CF]' : 'bg-[#CBD5E1]'
+                                    }`}
+                                  />
+                                  <span className="truncate">{subItem.name}</span>
+                                </NavLink>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   }
 
