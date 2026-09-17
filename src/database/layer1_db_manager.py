@@ -229,13 +229,11 @@ class DatabaseManager:
             "Merchant Promo Contribution": "Merchant Promo Contribution",
             "Voucher Description": "Voucher Description",
             "GoFood Discount": "GoFood Discount",
-            "Diskon Promo": "GoFood Discount",
             "Voucher Commission": "Voucher Commission",
             "Total Fee": "Total Fee",
             "Biaya Komisi": "Total Fee",
             "Value Added Tax": "Value Added Tax",
             "Restaurant Tax": "Restaurant Tax",
-            "Restaurant Tax (PB1)": "Restaurant Tax",
             "Service": "Service",
             "Withholding Tax": "Withholding Tax",
             "Order Number": "Order Number",
@@ -264,11 +262,7 @@ class DatabaseManager:
             "Refund Reason", "Promo Code", "Promo Original Amount"
         ]
         
-        df_work = df.copy()
-        if "Line No" in df_work.columns:
-            df_work = df_work[df_work["Line No"].astype(str) == "1"].copy()
-        
-        df_mapped = df_work[list(resolved_mapping.keys())].rename(columns=resolved_mapping).copy()
+        df_mapped = df[list(resolved_mapping.keys())].rename(columns=resolved_mapping).copy()
         df_mapped = df_mapped.loc[:, ~df_mapped.columns.duplicated()]
         
         for col in target_cols:

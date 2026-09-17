@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { Search } from 'lucide-react';
 
@@ -31,7 +31,6 @@ export const RekapBillingPage: React.FC = () => {
   const [owners, setOwners] = useState<string[]>([]);
   const [selectedOwner, setSelectedOwner] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [data, setData] = useState<BillingRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -116,22 +115,15 @@ export const RekapBillingPage: React.FC = () => {
     }
   };
 
-  const filteredRows = useMemo(() => {
-    const q = deferredSearchQuery.trim().toLowerCase();
-    const tokens = q.split(/\s+/).filter(Boolean);
+  const filteredRows = data.filter(r =>
+    !searchQuery || r.owner_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.nama_resto_final?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-    if (tokens.length === 0) return data;
-
-    return data.filter(r => {
-      const corpus = `${r.owner_name || ''} ${r.nama_resto_final || ''} ${r.outlet_name || ''} ${r.store_id || ''}`.toLowerCase();
-      return tokens.every(tok => corpus.includes(tok));
-    });
-  }, [data, deferredSearchQuery]);
-
-  const totalOrders = useMemo(() => filteredRows.reduce((s, r) => s + Number(r.jumlah_order_sukses || 0), 0), [filteredRows]);
-  const totalSubtotal = useMemo(() => filteredRows.reduce((s, r) => s + Number(r.subtotal_tagihan || 0), 0), [filteredRows]);
-  const totalPenyesuaian = useMemo(() => filteredRows.reduce((s, r) => s + Number(r.penyesuaian || 0), 0), [filteredRows]);
-  const totalTagihan = useMemo(() => filteredRows.reduce((s, r) => s + Number(r.total_tagihan || 0), 0), [filteredRows]);
+  const totalOrders = filteredRows.reduce((s, r) => s + Number(r.jumlah_order_sukses || 0), 0);
+  const totalSubtotal = filteredRows.reduce((s, r) => s + Number(r.subtotal_tagihan || 0), 0);
+  const totalPenyesuaian = filteredRows.reduce((s, r) => s + Number(r.penyesuaian || 0), 0);
+  const totalTagihan = filteredRows.reduce((s, r) => s + Number(r.total_tagihan || 0), 0);
 
   const statusColor = (status: string | null) => {
     if (!status) return 'bg-[#F1F1F5] text-[#6B6B76] border-[#E3E3E8]';

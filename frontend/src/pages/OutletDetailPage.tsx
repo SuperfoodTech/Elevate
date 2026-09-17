@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -523,7 +523,6 @@ export const OutletDetailPage: React.FC = () => {
 
   // Transaction tab filter states
   const [txSearch, setTxSearch] = useState('');
-  const deferredTxSearch = useDeferredValue(txSearch);
   const [txPlatform, setTxPlatform] = useState<'all' | 'gofood' | 'grabfood' | 'shopeefood'>('all');
   const [txListing, setTxListing] = useState<string>('all');
   const [txStatus, setTxStatus] = useState<'all' | 'Sukses' | 'Batal'>('all');
@@ -531,20 +530,20 @@ export const OutletDetailPage: React.FC = () => {
   const filteredTransactions = useMemo(() => {
     // ponytail: no mock tx data — show empty until live tx source is wired
     const source: OutletTransactionItem[] = [];
-    const q = deferredTxSearch.trim().toLowerCase();
-    const tokens = q.split(/\s+/).filter(Boolean);
-
     return source.filter((t) => {
       if (txPlatform !== 'all' && t.platform !== txPlatform) return false;
       if (txStatus !== 'all' && t.status !== txStatus) return false;
       if (txListing !== 'all' && t.sid !== txListing) return false;
-      if (tokens.length > 0) {
-        const searchCorpus = `${t.orderId} ${t.platformListing} ${t.sid}`.toLowerCase();
-        if (!tokens.every((tok) => searchCorpus.includes(tok))) return false;
+      if (txSearch.trim()) {
+        const q = txSearch.toLowerCase();
+        const matchOrderId = t.orderId.toLowerCase().includes(q);
+        const matchListing = t.platformListing.toLowerCase().includes(q);
+        const matchSid = t.sid.toLowerCase().includes(q);
+        if (!matchOrderId && !matchListing && !matchSid) return false;
       }
       return true;
     });
-  }, [txPlatform, txStatus, txListing, deferredTxSearch]);
+  }, [txPlatform, txStatus, txListing, txSearch]);
 
   const txKpi = useMemo(() => {
     const total = filteredTransactions.length;

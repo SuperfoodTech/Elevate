@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -44,7 +44,6 @@ export interface OwnerRecord {
   kksStartDate: string;
   agencyFeePerOrder?: number;
   isVip?: boolean;
-  _searchIndex?: string;
 }
 
 const INITIAL_OWNERS: OwnerRecord[] = [
@@ -614,15 +613,11 @@ function transformCSVToOwners(csvText: string): OwnerRecord[] {
 
     const isVip = outletsCount >= 3 || totalListings >= 14 || grade === 'A';
 
-    const id = `OWN-${String(idx + 1).padStart(3, '0')}`;
-    const phoneStr = phone || '+62 812-0000-0000';
-    const searchCorpus = `${name} ${email} ${phoneStr} ${id} ${businessModel} ${grade} ${status}`.toLowerCase();
-
     return {
-      id,
+      id: `OWN-${String(idx + 1).padStart(3, '0')}`,
       name,
       email,
-      phone: phoneStr,
+      phone: phone || '+62 812-0000-0000',
       businessModel,
       outletsCount,
       listings: {
@@ -638,8 +633,7 @@ function transformCSVToOwners(csvText: string): OwnerRecord[] {
       status,
       kksStartDate: o.liveDate || '2026-01-01',
       agencyFeePerOrder: o.tarif || 1500,
-      isVip,
-      _searchIndex: searchCorpus
+      isVip
     };
   });
 
@@ -710,7 +704,6 @@ export const OwnersPage: React.FC = () => {
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [selectedModel, setSelectedModel] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedGrade, setSelectedGrade] = useState<string>('All');
@@ -729,29 +722,19 @@ export const OwnersPage: React.FC = () => {
 
   // Filtered dataset
   const filteredOwners = useMemo(() => {
-    const cleanSearch = deferredSearchTerm.trim().toLowerCase();
-    const searchTokens = cleanSearch.split(/\s+/).filter(Boolean);
-
     return owners.filter(owner => {
+      const matchSearch =
+        owner.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        owner.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        owner.id.toLowerCase().includes(searchTerm.toLowerCase());
+
       const matchModel = selectedModel === 'All' || owner.businessModel === selectedModel;
       const matchStatus = selectedStatus === 'All' || owner.status === selectedStatus;
       const matchGrade = selectedGrade === 'All' || owner.grade === selectedGrade;
 
-      if (!matchModel || !matchStatus || !matchGrade) return false;
-
-      if (searchTokens.length > 0) {
-        const corpus =
-          owner._searchIndex ||
-          `${owner.name} ${owner.email} ${owner.phone} ${owner.id} ${owner.businessModel} ${owner.grade} ${owner.status}`.toLowerCase();
-
-        if (!searchTokens.every(token => corpus.includes(token))) {
-          return false;
-        }
-      }
-
-      return true;
+      return matchSearch && matchModel && matchStatus && matchGrade;
     });
-  }, [owners, deferredSearchTerm, selectedModel, selectedStatus, selectedGrade]);
+  }, [owners, searchTerm, selectedModel, selectedStatus, selectedGrade]);
 
   // Aggregate KPI Calculations
   const totalOwnersCount = owners.length;
@@ -1138,6 +1121,7 @@ export const OwnersPage: React.FC = () => {
                               </span>
                             )}
                           </div>
+                          <div className="text-[11px] text-[#6B7280] font-normal">{owner.email}</div>
                         </td>
 
                         {/* Business Model */}

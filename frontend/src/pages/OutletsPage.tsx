@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useDeferredValue } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -249,19 +249,15 @@ function transformDBRToOutlets(rawRows: DBRRow[], cachedOwners: any[]): OutletRe
     const avgDailyOrders = Math.max(18, Math.round(totalListings * 24 + 15));
     const weeklyOrders = avgDailyOrders * 7;
 
-    const id = btoa(`${group.name}:::${group.ownerName}`).replace(/=/g, '');
-    const address = group.alamat || 'Alamat cabang belum terdata di DBR';
-    const searchCorpus = `${group.name} ${group.brand} ${group.ownerName} ${ownerId} ${area} ${city} ${address} ${id}`.toLowerCase();
-
     outlets.push({
-      id,
+      id: btoa(`${group.name}:::${group.ownerName}`).replace(/=/g, ''),
       name: group.name,
       brand: group.brand,
       ownerId,
       ownerName: group.ownerName,
       area,
       city,
-      address,
+      address: group.alamat || 'Alamat cabang belum terdata di DBR',
       platforms: {
         gofood: group.gofood,
         grabfood: group.grabfood,
@@ -273,8 +269,7 @@ function transformDBRToOutlets(rawRows: DBRRow[], cachedOwners: any[]): OutletRe
       avgDailyOrders,
       isVip,
       botActive: group.needReviewCount === 0,
-      needReviewCount: group.needReviewCount,
-      _searchIndex: searchCorpus
+      needReviewCount: group.needReviewCount
     });
   }
 
@@ -338,7 +333,6 @@ function SelectDropdown({
 
 export const OutletsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [filterBrand, setFilterBrand] = useState('all');
   const [filterArea, setFilterArea] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -455,27 +449,24 @@ export const OutletsPage: React.FC = () => {
   ];
 
   const filteredOutlets = useMemo(() => {
-    const cleanSearch = deferredSearchQuery.trim().toLowerCase();
-    const searchTokens = cleanSearch.split(/\s+/).filter(Boolean);
-
     return outlets.filter((o) => {
       if (filterBrand !== 'all' && o.brand !== filterBrand) return false;
       if (filterArea !== 'all' && o.area !== filterArea) return false;
       if (filterStatus !== 'all' && o.status !== filterStatus) return false;
-
-      if (searchTokens.length > 0) {
-        const corpus =
-          o._searchIndex ||
-          `${o.name} ${o.brand} ${o.ownerName} ${o.ownerId} ${o.area} ${o.city} ${o.address} ${o.id}`.toLowerCase();
-
-        if (!searchTokens.every((token) => corpus.includes(token))) {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = o.name.toLowerCase().includes(q);
+        const matchBrand = o.brand.toLowerCase().includes(q);
+        const matchOwner = o.ownerName.toLowerCase().includes(q);
+        const matchAddress = o.address.toLowerCase().includes(q);
+        const matchId = o.id.toLowerCase().includes(q);
+        if (!matchName && !matchBrand && !matchOwner && !matchAddress && !matchId) {
           return false;
         }
       }
-
       return true;
     });
-  }, [outlets, filterBrand, filterArea, filterStatus, deferredSearchQuery]);
+  }, [outlets, filterBrand, filterArea, filterStatus, searchQuery]);
 
   const summaryKpi = useMemo(() => {
     const total = outlets.length;

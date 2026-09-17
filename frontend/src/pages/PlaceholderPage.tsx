@@ -4,63 +4,16 @@ import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { Construction, ArrowLeft, Clock } from 'lucide-react';
 
 const moduleMetadata: Record<string, { title: string; category: string; description: string }> = {
-  // Merchant
-  brands: {
-    title: 'Brand Portfolio Management',
-    category: 'MERCHANT',
-    description: 'Katalogisasi brand mitra kuliner, standarisasi identitas merk, dan segmentasi pasar portofolio.'
-  },
-  brand: {
-    title: 'Brand Portfolio Management',
-    category: 'MERCHANT',
-    description: 'Katalogisasi brand mitra kuliner, standarisasi identitas merk, dan segmentasi pasar portofolio.'
-  },
-  listings: {
-    title: 'Platform Listing Directory',
-    category: 'MERCHANT',
-    description: 'Inventarisasi seluruh listing resto di GoFood, GrabFood, dan ShopeeFood beserta status live-nya.'
-  },
-  listing: {
-    title: 'Platform Listing Directory',
-    category: 'MERCHANT',
-    description: 'Inventarisasi seluruh listing resto di GoFood, GrabFood, dan ShopeeFood beserta status live-nya.'
-  },
+  // Core
   outlets: {
     title: 'Outlets Directory',
-    category: 'MERCHANT',
+    category: 'CORE',
     description: 'Pemantauan status operasional, jam buka, dan rincian lokasi fisik seluruh outlet mitra.'
   },
   outlet: {
     title: 'Outlets Directory',
-    category: 'MERCHANT',
+    category: 'CORE',
     description: 'Pemantauan status operasional, jam buka, dan rincian lokasi fisik seluruh outlet mitra.'
-  },
-  // Finance
-  disbursement: {
-    title: 'Disbursement Tracking',
-    category: 'FINANCE',
-    description: 'Monitoring pencairan dana hasil penjualan merchant, jadwal transfer batch, dan status kliring bank.'
-  },
-  reconciliation: {
-    title: 'Automated Reconciliation',
-    category: 'FINANCE',
-    description: 'Pencocokan otomatis antara mutasi rekening koran, settlement platform delivery, dan pembukuan internal.'
-  },
-  'account-receivable': {
-    title: 'Account Receivable (AR) Ledger',
-    category: 'FINANCE',
-    description: 'Buku besar piutang usaha, pelacakan invoice tertunda, dan pemantauan batas kredit mitra.'
-  },
-  // Report
-  monthly: {
-    title: 'Monthly Executive Report',
-    category: 'REPORT',
-    description: 'Ringkasan komprehensif performa bulanan, tren pertumbuhan omzet, dan laporan laba rugi konsolidasian.'
-  },
-  'monthly-report': {
-    title: 'Monthly Executive Report',
-    category: 'REPORT',
-    description: 'Ringkasan komprehensif performa bulanan, tren pertumbuhan omzet, dan laporan laba rugi konsolidasian.'
   },
   // Operations
   bot: {
@@ -123,16 +76,6 @@ const moduleMetadata: Record<string, { title: string; category: string; descript
     title: 'System Settings',
     category: 'SYSTEM',
     description: 'Konfigurasi global platform Elevate, pengaturan ambang batas peringatan anomali, dan preferensi akun.'
-  },
-  'system-health': {
-    title: 'System Health & Infrastructure Monitor',
-    category: 'SYSTEM',
-    description: 'Pemantauan real-time ketersediaan server, latensi scraping GoFood/GrabFood/Shopee, dan status uptime database.'
-  },
-  health: {
-    title: 'System Health & Infrastructure Monitor',
-    category: 'SYSTEM',
-    description: 'Pemantauan real-time ketersediaan server, latensi scraping GoFood/GrabFood/Shopee, dan status uptime database.'
   }
 };
 
