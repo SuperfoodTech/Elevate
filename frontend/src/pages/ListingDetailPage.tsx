@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -107,7 +107,7 @@ export const ListingDetailPage: React.FC = () => {
     return [];
   });
 
-  const handleFetchRealData = async () => {
+  const handleFetchRealData = useCallback(async () => {
     setIsFetching(true);
     setFetchError(null);
     try {
@@ -124,13 +124,13 @@ export const ListingDetailPage: React.FC = () => {
     } finally {
       setIsFetching(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!rawDBRText) {
       handleFetchRealData();
     }
-  }, []);
+  }, [handleFetchRealData, rawDBRText]);
 
   const allListings = useMemo(() => {
     if (!rawDBRText) return [];

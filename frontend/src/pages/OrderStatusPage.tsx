@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { api, type OrderStatusRow } from '../services/api';
@@ -19,15 +19,7 @@ export const OrderStatusPage: React.FC = () => {
   const [data, setData] = useState<OrderStatusRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    loadFilters();
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [selectedOutlet, selectedBrand, startDate, endDate]);
-
-  const loadFilters = async () => {
+  const loadFilters = useCallback(async () => {
     try {
       const res = await api.getFilters();
       if (res.outlets) setOutlets(res.outlets);
@@ -35,9 +27,9 @@ export const OrderStatusPage: React.FC = () => {
     } catch (err) {
       console.error('Error loading filters:', err);
     }
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const params = { outlet: selectedOutlet, brand: selectedBrand, start_date: startDate, end_date: endDate };
@@ -48,7 +40,15 @@ export const OrderStatusPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedOutlet, selectedBrand, startDate, endDate]);
+
+  useEffect(() => {
+    loadFilters();
+  }, [loadFilters]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const COLORS = ['#14804A', '#DF1B41'];
 

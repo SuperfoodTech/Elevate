@@ -437,7 +437,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-2xl font-bold text-slate-900 tabular-nums">152</div>
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>&#9650; 8 vs last week</span>
+                      <span>▲ 8 vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -468,7 +468,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-2xl font-bold text-slate-900 tabular-nums">1,285</div>
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>&#9650; 45 vs last week</span>
+                      <span>▲ 45 vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -499,7 +499,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-2xl font-bold text-slate-900 tabular-nums">3,620</div>
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>&#9650; 112 vs last week</span>
+                      <span>▲ 112 vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -532,7 +532,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-2xl font-bold text-slate-900 tabular-nums">128,230</div>
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>&#9650; 12.5% vs last week</span>
+                      <span>▲ 12.5% vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -565,7 +565,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-2xl font-bold text-slate-900 tabular-nums">96,540</div>
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>&#9650; 15.3% vs last week</span>
+                      <span>▲ 15.3% vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -624,7 +624,7 @@ export const DashboardPage: React.FC = () => {
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Order {currentWeekLabel}</div>
                   <div className="text-base font-bold text-slate-900 tabular-nums">224,770</div>
-                  <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">&#9650; 13.8% vs {prevWeekLabel}</div>
+                  <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">▲ 13.8% vs {prevWeekLabel}</div>
                 </div>
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase font-semibold">Order Tertinggi</div>
@@ -1015,7 +1015,7 @@ export const DashboardPage: React.FC = () => {
                   Rp 3,210,560,000
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
-                  <span>&#9650; 12.6%</span>
+                  <span>▲ 12.6%</span>
                 </div>
               </div>
 
@@ -1025,7 +1025,7 @@ export const DashboardPage: React.FC = () => {
                   Rp 321,056,000
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
-                  <span>&#9650; 11.8%</span>
+                  <span>▲ 11.8%</span>
                 </div>
               </div>
 
@@ -1035,7 +1035,7 @@ export const DashboardPage: React.FC = () => {
                   Rp 289,876,000
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
-                  <span>&#9650; 10.3%</span>
+                  <span>▲ 10.3%</span>
                 </div>
               </div>
 
@@ -1045,7 +1045,7 @@ export const DashboardPage: React.FC = () => {
                   128,230
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
-                  <span>&#9650; 12.5%</span>
+                  <span>▲ 12.5%</span>
                 </div>
               </div>
 
@@ -1055,7 +1055,7 @@ export const DashboardPage: React.FC = () => {
                   7,230
                 </div>
                 <div className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-0.5">
-                  <span>&#9660; -4.2%</span>
+                  <span>▼ -4.2%</span>
                 </div>
               </div>
             </div>
@@ -1267,7 +1267,7 @@ export const DashboardPage: React.FC = () => {
                     Rp 2,124,450,000
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
-                    &#9650; 14.2%
+                    ▲ 14.2%
                   </div>
                 </div>
 
@@ -1277,7 +1277,7 @@ export const DashboardPage: React.FC = () => {
                     Rp 212,445,000
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
-                    &#9650; 13.1%
+                    ▲ 13.1%
                   </div>
                 </div>
 
@@ -1287,7 +1287,7 @@ export const DashboardPage: React.FC = () => {
                     Rp 403,980,000
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
-                    &#9650; 16.7%
+                    ▲ 16.7%
                   </div>
                 </div>
 
@@ -1297,7 +1297,7 @@ export const DashboardPage: React.FC = () => {
                     Rp 1,478,430,000
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
-                    &#9650; 13.9%
+                    ▲ 13.9%
                   </div>
                 </div>
 
@@ -1307,7 +1307,7 @@ export const DashboardPage: React.FC = () => {
                     Rp 646,020,000 (30.4%)
                   </div>
                   <div className="text-[11px] font-semibold text-purple-700 mt-1">
-                    &#9650; 18.6%
+                    ▲ 18.6%
                   </div>
                 </div>
 
@@ -1317,7 +1317,7 @@ export const DashboardPage: React.FC = () => {
                     96,540
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
-                    &#9650; 15.3%
+                    ▲ 15.3%
                   </div>
                 </div>
 
@@ -1327,7 +1327,7 @@ export const DashboardPage: React.FC = () => {
                     5,230
                   </div>
                   <div className="text-[11px] font-semibold text-rose-600 mt-1">
-                    &#9660; -2.1%
+                    ▼ -2.1%
                   </div>
                 </div>
               </div>
@@ -1646,7 +1646,7 @@ export const DashboardPage: React.FC = () => {
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Perputaran Dana</div>
                     <div className="text-base font-bold text-slate-900 tabular-nums">Rp 3,12 Miliar</div>
-                    <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">&#9650; 8.4% vs {prevWeekLabel}</div>
+                    <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">▲ 8.4% vs {prevWeekLabel}</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Pencairan Tertinggi</div>

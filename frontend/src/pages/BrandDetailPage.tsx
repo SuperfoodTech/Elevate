@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -192,7 +192,7 @@ export const BrandDetailPage: React.FC = () => {
     return [];
   });
 
-  const handleFetchRealData = async () => {
+  const handleFetchRealData = useCallback(async () => {
     setIsFetching(true);
     setFetchError(null);
     try {
@@ -218,14 +218,14 @@ export const BrandDetailPage: React.FC = () => {
     } finally {
       setIsFetching(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const cachedCsv = localStorage.getItem('elevate_dbr_raw_csv');
-    if (!cachedCsv && rawDBRRows.length === 0) {
+    if (!cachedCsv) {
       handleFetchRealData();
     }
-  }, []);
+  }, [handleFetchRealData]);
 
   // Decode target brand from id
   const targetId = id || '';

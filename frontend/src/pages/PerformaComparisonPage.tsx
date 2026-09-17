@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { api, type ComparisonChartRow } from '../services/api';
@@ -28,15 +28,7 @@ export const PerformaComparisonPage: React.FC = () => {
     return `Rp ${val.toLocaleString('id-ID')}`;
   };
 
-  useEffect(() => {
-    loadFilters();
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [selectedOutlet, selectedBrand, selectedChannel, startDate, endDate]);
-
-  const loadFilters = async () => {
+  const loadFilters = useCallback(async () => {
     try {
       const res = await api.getFilters();
       if (res.outlets) setOutlets(res.outlets);
@@ -44,9 +36,9 @@ export const PerformaComparisonPage: React.FC = () => {
     } catch (err) {
       console.error('Error loading filters:', err);
     }
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const params = {
         outlet: selectedOutlet,
@@ -60,7 +52,15 @@ export const PerformaComparisonPage: React.FC = () => {
     } catch (err) {
       console.error('Error loading comparison charts:', err);
     }
-  };
+  }, [selectedOutlet, selectedBrand, selectedChannel, startDate, endDate]);
+
+  useEffect(() => {
+    loadFilters();
+  }, [loadFilters]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   return (
     <DashboardLayout

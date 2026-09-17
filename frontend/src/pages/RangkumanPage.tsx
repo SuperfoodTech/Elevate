@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { api, type RangkumanChannelRow, type MonthlyBreakdownRow } from '../services/api';
@@ -22,15 +22,7 @@ export const RangkumanPage: React.FC = () => {
 
   const formatIDR = (val: number) => `Rp ${Math.round(Number(val || 0)).toLocaleString('id-ID')}`;
 
-  useEffect(() => {
-    loadFilters();
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [selectedOutlet, selectedBrand, startDate, endDate]);
-
-  const loadFilters = async () => {
+  const loadFilters = useCallback(async () => {
     try {
       const res = await api.getFilters();
       if (res.outlets) setOutlets(res.outlets);
@@ -38,9 +30,9 @@ export const RangkumanPage: React.FC = () => {
     } catch (err) {
       console.error('Error loading filters:', err);
     }
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const params = { outlet: selectedOutlet, brand: selectedBrand, start_date: startDate, end_date: endDate };
@@ -54,7 +46,15 @@ export const RangkumanPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedOutlet, selectedBrand, startDate, endDate]);
+
+  useEffect(() => {
+    loadFilters();
+  }, [loadFilters]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const grandTotal = summaryData.find(r => r.channel === 'Grand Total') || {
     pendapatan_kotor: 0, potongan_ojol: 0, pendapatan_bersih: 0, order_sukses: 0

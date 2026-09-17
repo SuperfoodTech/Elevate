@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { api } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -14,15 +14,7 @@ export const LaporanJamRamaiPage: React.FC = () => {
   const [hourlyData, setHourlyData] = useState<Array<{ jam_label: string; total_order: number }>>([]);
   const [matrixData, setMatrixData] = useState<Record<string, Record<number, number>>>({});
 
-  useEffect(() => {
-    loadFilters();
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [selectedOutlet, selectedBrand, startDate, endDate]);
-
-  const loadFilters = async () => {
+  const loadFilters = useCallback(async () => {
     try {
       const res = await api.getFilters();
       if (res.outlets) setOutlets(res.outlets);
@@ -30,9 +22,9 @@ export const LaporanJamRamaiPage: React.FC = () => {
     } catch (err) {
       console.error('Error loading filters:', err);
     }
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const params = { outlet: selectedOutlet, brand: selectedBrand, start_date: startDate, end_date: endDate };
       const resSum = await api.getJamRamaiSummary(params);
@@ -48,7 +40,15 @@ export const LaporanJamRamaiPage: React.FC = () => {
     } catch (err) {
       console.error('Error loading jam ramai data:', err);
     }
-  };
+  }, [selectedOutlet, selectedBrand, startDate, endDate]);
+
+  useEffect(() => {
+    loadFilters();
+  }, [loadFilters]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
   

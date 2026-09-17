@@ -412,7 +412,7 @@ export const BrandsPage: React.FC = () => {
 
   const isRealData = brands.length > 0;
 
-  const handleFetchRealData = async () => {
+  const handleFetchRealData = useCallback(async () => {
     setIsFetching(true);
     setFetchError(null);
     try {
@@ -454,7 +454,7 @@ export const BrandsPage: React.FC = () => {
     } finally {
       setIsFetching(false);
     }
-  };
+  }, []);
 
   const handleResetData = () => {
     setBrands([]);
@@ -468,10 +468,10 @@ export const BrandsPage: React.FC = () => {
 
   useEffect(() => {
     const cachedCsv = localStorage.getItem('elevate_dbr_raw_csv');
-    if (!cachedCsv && brands.length === 0) {
+    if (!cachedCsv) {
       handleFetchRealData();
     }
-  }, []);
+  }, [handleFetchRealData]);
 
   const modelOptions = [
     { value: 'all', label: 'Semua Model' },

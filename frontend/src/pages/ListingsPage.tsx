@@ -151,7 +151,7 @@ export const ListingsPage: React.FC = () => {
 
   const isRealData = listings.length > 0;
 
-  const handleFetchRealData = async () => {
+  const handleFetchRealData = useCallback(async () => {
     setIsFetching(true);
     setFetchError(null);
     try {
@@ -188,7 +188,7 @@ export const ListingsPage: React.FC = () => {
     } finally {
       setIsFetching(false);
     }
-  };
+  }, []);
 
   const handleResetData = () => {
     setListings([]);
@@ -202,10 +202,10 @@ export const ListingsPage: React.FC = () => {
 
   useEffect(() => {
     const cachedCsv = localStorage.getItem('elevate_dbr_raw_csv');
-    if (!cachedCsv && listings.length === 0) {
+    if (!cachedCsv) {
       handleFetchRealData();
     }
-  }, []);
+  }, [handleFetchRealData]);
 
   const brandsOptions = useMemo(() => {
     const set = new Set(listings.map((l) => l.namaBrand).filter(Boolean));

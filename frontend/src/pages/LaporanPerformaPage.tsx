@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { api, type PerformaDataRow } from '../services/api';
@@ -49,12 +49,18 @@ export const LaporanPerformaPage: React.FC = () => {
     return `Rp ${val.toLocaleString('id-ID')}`;
   };
 
-  useEffect(() => {
-    loadFilters();
-    loadAnalytics();
+  const loadFilters = useCallback(async () => {
+    try {
+      const res = await api.getFilters();
+      if (res.owners) setOwners(res.owners);
+      if (res.outlets) setOutlets(res.outlets);
+      if (res.brands) setBrands(res.brands);
+    } catch (err) {
+      console.error('Error loading filters:', err);
+    }
   }, []);
 
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     setIsLoadingAnalytics(true);
     try {
       const [rankRes, wowRes, baseRes] = await Promise.all([
@@ -70,24 +76,9 @@ export const LaporanPerformaPage: React.FC = () => {
     } finally {
       setIsLoadingAnalytics(false);
     }
-  };
+  }, [startDate, endDate]);
 
-  useEffect(() => {
-    loadData();
-  }, [tipeLaporan, selectedOwner, selectedOutlet, selectedBrand, startDate, endDate]);
-
-  const loadFilters = async () => {
-    try {
-      const res = await api.getFilters();
-      if (res.owners) setOwners(res.owners);
-      if (res.outlets) setOutlets(res.outlets);
-      if (res.brands) setBrands(res.brands);
-    } catch (err) {
-      console.error('Error loading filters:', err);
-    }
-  };
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = {
@@ -105,7 +96,16 @@ export const LaporanPerformaPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [tipeLaporan, selectedOwner, selectedOutlet, selectedBrand, startDate, endDate]);
+
+  useEffect(() => {
+    loadFilters();
+    loadAnalytics();
+  }, [loadFilters, loadAnalytics]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const chartRows = data.filter(r => r.periode_label !== 'Grand Total');
 

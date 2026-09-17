@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -287,7 +287,7 @@ export const OutletDetailPage: React.FC = () => {
     return [];
   });
 
-  const handleFetchRealData = async () => {
+  const handleFetchRealData = useCallback(async () => {
     setIsFetching(true);
     setFetchError(null);
     try {
@@ -313,13 +313,14 @@ export const OutletDetailPage: React.FC = () => {
     } finally {
       setIsFetching(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (rawDBRRows.length === 0) {
+    const cachedCsv = localStorage.getItem('elevate_dbr_raw_csv');
+    if (!cachedCsv) {
       handleFetchRealData();
     }
-  }, []);
+  }, [handleFetchRealData]);
 
   // Resolve dynamic outlet detail data from DBR rows
   const data: OutletDetailData = useMemo(() => {

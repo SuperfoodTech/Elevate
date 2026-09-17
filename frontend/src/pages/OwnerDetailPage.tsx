@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -889,12 +889,45 @@ export const OwnerDetailPage: React.FC = () => {
     return [];
   });
 
-  // Automatically fetch from DBR if no raw rows cached yet
-  useEffect(() => {
-    if (rawDBRRows.length === 0) {
-      handleFetchRealData();
+  const handleFetchRealData = useCallback(async () => {
+    setIsFetching(true);
+    setFetchError(null);
+    try {
+      const response = await fetch(GOOGLE_SHEETS_CSV_URL);
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+      const csvText = await response.text();
+      const parsedRows = parseDBRRows(csvText);
+      if (parsedRows.length === 0) {
+        throw new Error('Data CSV DBR kosong atau tidak memiliki baris data');
+      }
+
+      setRawDBRRows(parsedRows);
+      const realOwners = transformCSVToOwners(parsedRows);
+      setCachedOwners(realOwners);
+
+      const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      setLastFetched(now);
+
+      localStorage.setItem('elevate_dbr_raw_csv', csvText);
+      localStorage.setItem('elevate_owners_real_data', JSON.stringify(realOwners));
+      localStorage.setItem('elevate_owners_last_fetched', now);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal mengambil data dari Google Sheets DBR';
+      setFetchError(message);
+    } finally {
+      setIsFetching(false);
     }
   }, []);
+
+  // Automatically fetch from DBR if no raw rows cached yet
+  useEffect(() => {
+    const cached = localStorage.getItem('elevate_dbr_raw_csv');
+    if (!cached) {
+      handleFetchRealData();
+    }
+  }, [handleFetchRealData]);
 
   // Calculate resolved owner detail data
   const data: OwnerDetailData = useMemo(() => {
@@ -957,38 +990,6 @@ export const OwnerDetailPage: React.FC = () => {
       id: targetId
     };
   }, [id, cachedOwners, rawDBRRows]);
-
-  const handleFetchRealData = async () => {
-    setIsFetching(true);
-    setFetchError(null);
-    try {
-      const response = await fetch(GOOGLE_SHEETS_CSV_URL);
-      if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
-      }
-      const csvText = await response.text();
-      const parsedRows = parseDBRRows(csvText);
-      if (parsedRows.length === 0) {
-        throw new Error('Data CSV DBR kosong atau tidak memiliki baris data');
-      }
-
-      setRawDBRRows(parsedRows);
-      const realOwners = transformCSVToOwners(parsedRows);
-      setCachedOwners(realOwners);
-
-      const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      setLastFetched(now);
-
-      localStorage.setItem('elevate_dbr_raw_csv', csvText);
-      localStorage.setItem('elevate_owners_real_data', JSON.stringify(realOwners));
-      localStorage.setItem('elevate_owners_last_fetched', now);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal mengambil data dari Google Sheets DBR';
-      setFetchError(message);
-    } finally {
-      setIsFetching(false);
-    }
-  };
 
   // State for listings filter inside detail page
   const [listingSearch, setListingSearch] = useState('');

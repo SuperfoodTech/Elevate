@@ -374,7 +374,7 @@ export const OutletsPage: React.FC = () => {
     return !!localStorage.getItem('elevate_dbr_raw_csv');
   });
 
-  const handleFetchRealData = async () => {
+  const handleFetchRealData = useCallback(async () => {
     setIsFetching(true);
     setFetchError(null);
     try {
@@ -417,7 +417,7 @@ export const OutletsPage: React.FC = () => {
     } finally {
       setIsFetching(false);
     }
-  };
+  }, []);
 
   const handleResetToMock = () => {
     setOutlets([]);
@@ -435,7 +435,7 @@ export const OutletsPage: React.FC = () => {
     if (!cachedCsv) {
       handleFetchRealData();
     }
-  }, []);
+  }, [handleFetchRealData]);
 
   const brands = useMemo(() => {
     const set = new Set(outlets.map((o) => o.brand).filter(Boolean));

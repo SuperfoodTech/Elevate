@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue, useCallback } from 'react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { Search } from 'lucide-react';
 
@@ -51,35 +51,19 @@ export const RekapBillingPage: React.FC = () => {
     return `Rp ${num.toLocaleString('id-ID')}`;
   };
 
-  useEffect(() => {
-    loadOwners();
-  }, []);
-
-  useEffect(() => {
-    setSelectedPeriode('');
-  }, [cycle]);
-
-  useEffect(() => {
-    if (viewMode === 'summary') {
-      loadBillingData();
-    } else {
-      loadDailyCalculator();
-    }
-  }, [viewMode, cycle, selectedPeriode, selectedOwner, calcOwner, calcStart, calcEnd]);
-
-  const loadOwners = async () => {
+  const loadOwners = useCallback(async () => {
     try {
       const json = await fetchCached('/api/rekap-tagihan/owners');
       if (json.owners && json.owners.length > 0) {
         setOwners(json.owners);
-        if (!calcOwner) setCalcOwner(json.owners[0]);
+        setCalcOwner(prev => prev || json.owners[0]);
       }
     } catch (err) {
       console.error('Error loading owners:', err);
     }
-  };
+  }, []);
 
-  const loadDailyCalculator = async () => {
+  const loadDailyCalculator = useCallback(async () => {
     if (!calcOwner) return;
     setLoadingDaily(true);
     try {
@@ -92,9 +76,9 @@ export const RekapBillingPage: React.FC = () => {
     } finally {
       setLoadingDaily(false);
     }
-  };
+  }, [calcOwner, calcStart, calcEnd]);
 
-  const loadBillingData = async () => {
+  const loadBillingData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ billing_cycle: cycle });
@@ -114,7 +98,23 @@ export const RekapBillingPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cycle, selectedPeriode, selectedOwner]);
+
+  useEffect(() => {
+    loadOwners();
+  }, [loadOwners]);
+
+  useEffect(() => {
+    setSelectedPeriode('');
+  }, [cycle]);
+
+  useEffect(() => {
+    if (viewMode === 'summary') {
+      loadBillingData();
+    } else {
+      loadDailyCalculator();
+    }
+  }, [viewMode, loadBillingData, loadDailyCalculator]);
 
   const filteredRows = useMemo(() => {
     const q = deferredSearchQuery.trim().toLowerCase();
