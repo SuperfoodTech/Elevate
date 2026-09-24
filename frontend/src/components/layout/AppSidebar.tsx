@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   Users,
@@ -23,8 +23,10 @@ import {
   Activity,
   ChevronDown,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '../../context/useAuth';
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -218,6 +220,13 @@ export const AppSidebar: React.FC<SidebarProps> = ({
   onToggleCollapse
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   const [expandedMenus, setExpandedMenus] = React.useState<Record<string, boolean>>(() => {
     const isTx = location.pathname === '/transactions' || location.pathname.startsWith('/vb');
@@ -464,8 +473,49 @@ export const AppSidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Footer Collapse Button */}
-      <div className="p-2 border-t border-[#F1F5F9] bg-white">
+      {/* Footer Profile & Collapse Button */}
+      <div className="p-2 border-t border-[#F1F5F9] bg-white space-y-1">
+        {user && (
+          <div
+            className={`flex items-center gap-2 p-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] ${
+              collapsed ? 'justify-center' : 'justify-between'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 rounded-full bg-[#4F46E5] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                {user.name
+                  .split(' ')
+                  .map((n) => n[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase()}
+              </div>
+              {!collapsed && (
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#0F172A] truncate">
+                    {user.name}
+                  </div>
+                  <div className="text-[10px] text-[#64748B] capitalize truncate">
+                    {user.role}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {!collapsed && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Keluar dari Portal"
+                aria-label="Keluar dari Portal"
+                className="p-1 text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] rounded transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
         {onToggleCollapse && (
           <button
             type="button"
