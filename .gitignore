@@ -83,7 +83,10 @@ src/data/discord_notifications/
 # Local development / agent cache
 database.bak/
 .agent/
+anti-slop/
+antislop/
 
 # Design mockups & local specification docs
 Elevate*.png
 FSR*.md
+
