@@ -128,7 +128,7 @@ export const LoginPage: React.FC = () => {
                     setEmail(e.target.value);
                     if (errorMessage) setErrorMessage(null);
                   }}
-                  placeholder="nama@elevate.id"
+                  placeholder="nama@byfoodmaster.com"
                   className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-[#CBD5E1] rounded-lg text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent transition-colors"
                 />
               </div>
@@ -233,7 +233,7 @@ export const LoginPage: React.FC = () => {
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => handleSelectDemoAccount('admin@elevate.id', 'elevate2026')}
+                onClick={() => handleSelectDemoAccount('admin@byfoodmaster.com', 'elevate2026')}
                 className="w-full text-left p-2.5 rounded-lg border border-[#E2E8F0] hover:border-[#CBD5E1] bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors flex items-center justify-between"
               >
                 <div>
@@ -243,16 +243,16 @@ export const LoginPage: React.FC = () => {
                       Akses Penuh
                     </span>
                   </div>
-                  <div className="text-[11px] text-[#64748B]">admin@elevate.id</div>
+                  <div className="text-[11px] text-[#64748B]">admin@byfoodmaster.com</div>
                 </div>
-                {email === 'admin@elevate.id' && (
+                {email === 'admin@byfoodmaster.com' && (
                   <Check className="w-4 h-4 text-[#4F46E5] shrink-0" />
                 )}
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSelectDemoAccount('finance@elevate.id', 'elevate2026')}
+                onClick={() => handleSelectDemoAccount('finance@byfoodmaster.com', 'elevate2026')}
                 className="w-full text-left p-2.5 rounded-lg border border-[#E2E8F0] hover:border-[#CBD5E1] bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors flex items-center justify-between"
               >
                 <div>
@@ -262,9 +262,9 @@ export const LoginPage: React.FC = () => {
                       Billing & Settlement
                     </span>
                   </div>
-                  <div className="text-[11px] text-[#64748B]">finance@elevate.id</div>
+                  <div className="text-[11px] text-[#64748B]">finance@byfoodmaster.com</div>
                 </div>
-                {email === 'finance@elevate.id' && (
+                {email === 'finance@byfoodmaster.com' && (
                   <Check className="w-4 h-4 text-[#4F46E5] shrink-0" />
                 )}
               </button>

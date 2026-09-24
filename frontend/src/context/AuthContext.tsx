@@ -7,23 +7,23 @@ const AUTH_TOKEN_KEY = 'elevate_auth_token';
 // Kredensial akun resmi yang terdaftar pada sistem
 const AUTHORIZED_ACCOUNTS: Array<{ email: string; pass: string; user: User }> = [
   {
-    email: 'admin@elevate.id',
+    email: 'admin@byfoodmaster.com',
     pass: 'elevate2026',
     user: {
       id: 'usr-admin',
       name: 'Super Admin',
-      email: 'admin@elevate.id',
+      email: 'admin@byfoodmaster.com',
       role: 'admin',
       title: 'Portal Administrator',
     },
   },
   {
-    email: 'finance@elevate.id',
+    email: 'finance@byfoodmaster.com',
     pass: 'elevate2026',
     user: {
       id: 'usr-finance',
       name: 'Tim Finance',
-      email: 'finance@elevate.id',
+      email: 'finance@byfoodmaster.com',
       role: 'finance',
       title: 'Finance & Settlement Analyst',
     },
