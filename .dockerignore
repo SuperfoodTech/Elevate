@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Frontend
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Python
+.venv
+backend/.venv
+src/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Logs and Downloads
+logs
+laporan
+downloads
+*.log
+*.csv
+*.xlsx
+*.bak
+
+# Databases and Volumes
+postgres_data
+database_dumps
+
+# Chrome profiles and browser artifacts
+**/chrome_profile*
+**/browser_data
+**/shopee_profile
+
+# Documentation & Images
+*.png
+*.jpg
+*.md
+deploy

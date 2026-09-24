@@ -1,16 +1,67 @@
 version: '3.8'
 
 services:
-  elevate_postgres:
+  # Database Service (PostgreSQL 15)
+  elevate_db:
     image: postgres:15-alpine
-    container_name: elevate_postgres
+    container_name: elevate_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: elevate_admin
       POSTGRES_PASSWORD: superfood_elevate_secret_pass
       POSTGRES_DB: elevate_db
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
-      - ./postgres_data:/var/lib/postgresql/data
-      - ./database/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elevate_admin -d elevate_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - elevate_net
+
+  # Backend REST API Service (FastAPI)
+  elevate_backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: elevate_backend
+    restart: unless-stopped
+    depends_on:
+      elevate_db:
+        condition: service_healthy
+    environment:
+      DB_HOST: elevate_db
+      DB_PORT: 5432
+      DB_NAME: elevate_db
+      DB_USERNAME: elevate_admin
+      DB_PASSWORD: superfood_elevate_secret_pass
+      SSL_MODE: disable
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - elevate_net
+
+  # Frontend Web Portal (Nginx Reverse Proxy + SPA)
+  elevate_frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: elevate_frontend
+    restart: unless-stopped
+    depends_on:
+      - elevate_backend
+    ports:
+      # Bound to loopback interface for Tailscale routing (Zero Public Exposure)
+      - "127.0.0.1:8080:80"
+    networks:
+      - elevate_net
+
+networks:
+  elevate_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
