@@ -54,7 +54,9 @@ services:
     depends_on:
       - elevate_backend
     ports:
-      # Bound to loopback interface for Tailscale routing (Zero Public Exposure)
+      # Port 80 standar HTTP untuk domain elevate.byfoodmaster.com
+      - "80:80"
+      # Loopback 8080 untuk Tailscale serve / proxy internal
       - "127.0.0.1:8080:80"
     networks:
       - elevate_net
