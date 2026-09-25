@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Database Service (PostgreSQL 15)
   elevate_db:
@@ -10,8 +8,10 @@ services:
       POSTGRES_USER: elevate_admin
       POSTGRES_PASSWORD: superfood_elevate_secret_pass
       POSTGRES_DB: elevate_db
-    ports:
-      - "127.0.0.1:5435:5432"
+    # Port ke host bersifat opsional (backend berkomunikasi lewat internal network elevate_net:5432)
+    # Aktifkan jika butuh akses langsung dari host server via port 5436
+    # ports:
+    #   - "127.0.0.1:5436:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
