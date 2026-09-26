@@ -720,9 +720,21 @@ export const DashboardPage: React.FC = () => {
                     <span className="font-semibold text-slate-700">Normal</span>
                   </div>
                   <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex">
-                    <div className="bg-emerald-500 h-full transition-all duration-1000 ease-out" style={{ width: '97.8%' }} title="Lancar" />
-                    <div className="bg-amber-400 h-full transition-all duration-1000 ease-out" style={{ width: '1.4%' }} title="Perlu Perhatian" />
-                    <div className="bg-rose-500 h-full transition-all duration-1000 ease-out" style={{ width: '0.8%' }} title="Kendala" />
+                    <div
+                      className="bg-emerald-500 h-full animate-bar-slide"
+                      style={{ width: '97.8%' }}
+                      title="Lancar"
+                    />
+                    <div
+                      className="bg-amber-400 h-full animate-bar-slide"
+                      style={{ width: '1.4%', animationDelay: '150ms' }}
+                      title="Perlu Perhatian"
+                    />
+                    <div
+                      className="bg-rose-500 h-full animate-bar-slide"
+                      style={{ width: '0.8%', animationDelay: '300ms' }}
+                      title="Kendala"
+                    />
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> 224k Berhasil</span>
@@ -744,7 +756,10 @@ export const DashboardPage: React.FC = () => {
                         <span className="font-bold text-slate-900 tabular-nums">2.82x</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="bg-blue-600 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: '88%' }} />
+                        <div
+                          className="bg-blue-600 h-full rounded-full animate-bar-slide"
+                          style={{ width: '88%', animationDelay: '100ms' }}
+                        />
                       </div>
                     </div>
 
@@ -754,7 +769,10 @@ export const DashboardPage: React.FC = () => {
                         <span className="font-bold text-emerald-600 tabular-nums">94.7%</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="bg-emerald-600 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: '94.7%' }} />
+                        <div
+                          className="bg-emerald-600 h-full rounded-full animate-bar-slide"
+                          style={{ width: '94.7%', animationDelay: '200ms' }}
+                        />
                       </div>
                     </div>
 
@@ -764,7 +782,10 @@ export const DashboardPage: React.FC = () => {
                         <span className="font-bold text-indigo-600 tabular-nums">85.4%</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="bg-indigo-600 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: '85.4%' }} />
+                        <div
+                          className="bg-indigo-600 h-full rounded-full animate-bar-slide"
+                          style={{ width: '85.4%', animationDelay: '300ms' }}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1620,10 +1641,13 @@ export const DashboardPage: React.FC = () => {
                         {/* Progress track */}
                         <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                            className={`h-full rounded-full animate-bar-slide ${
                               idx === 0 ? 'bg-purple-600' : idx === 1 ? 'bg-indigo-500' : 'bg-slate-400'
                             }`}
-                            style={{ width: `${brand.share * 2.5}%` }}
+                            style={{
+                              width: `${brand.share * 2.5}%`,
+                              animationDelay: `${idx * 120}ms`
+                            }}
                           />
                         </div>
 
@@ -1831,7 +1855,13 @@ export const DashboardPage: React.FC = () => {
                           strokeDashoffset={314.16 * (1 - 0.854)}
                           strokeLinecap="round"
                           fill="transparent"
-                          className="transition-all duration-1000 ease-out"
+                          className="animate-radial-ring"
+                          style={{
+                            '--ring-circumference': '314.16',
+                            '--ring-target': `${314.16 * (1 - 0.854)}`,
+                            animationDuration: '1.2s',
+                            animationDelay: '100ms'
+                          } as React.CSSProperties}
                         />
 
                         {/* Ring 2: Invoice Terverifikasi (Middle - Radius 42, Circumference 263.89, Stroke 5) */}
@@ -1846,7 +1876,13 @@ export const DashboardPage: React.FC = () => {
                           strokeDashoffset={263.89 * (1 - 0.920)}
                           strokeLinecap="round"
                           fill="transparent"
-                          className="transition-all duration-1000 ease-out"
+                          className="animate-radial-ring"
+                          style={{
+                            '--ring-circumference': '263.89',
+                            '--ring-target': `${263.89 * (1 - 0.920)}`,
+                            animationDuration: '1.2s',
+                            animationDelay: '250ms'
+                          } as React.CSSProperties}
                         />
 
                         {/* Ring 3: Rekonsiliasi Otomatis (Inner - Radius 34, Circumference 213.63, Stroke 5) */}
@@ -1861,12 +1897,18 @@ export const DashboardPage: React.FC = () => {
                           strokeDashoffset={213.63 * (1 - 0.981)}
                           strokeLinecap="round"
                           fill="transparent"
-                          className="transition-all duration-1000 ease-out"
+                          className="animate-radial-ring"
+                          style={{
+                            '--ring-circumference': '213.63',
+                            '--ring-target': `${213.63 * (1 - 0.981)}`,
+                            animationDuration: '1.2s',
+                            animationDelay: '400ms'
+                          } as React.CSSProperties}
                         />
                       </svg>
 
                       {/* Center Content: Cleanly positioned in inner hole (diameter 60px) without touching any ring */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none animate-scale-fade">
                         <span className="text-xl font-black text-slate-900 tabular-nums leading-none tracking-tight">
                           91.8%
                         </span>

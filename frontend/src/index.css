@@ -55,3 +55,45 @@
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
+
+/*
+  Smooth hardware-accelerated animations for dashboard progress bars and radial rings.
+  Uses pure CSS keyframes to prevent React re-render flickering or glitches.
+*/
+@keyframes elevateBarSlide {
+  from {
+    width: 0% !important;
+  }
+}
+
+@keyframes elevateRadialDraw {
+  from {
+    stroke-dashoffset: var(--ring-circumference, 314.16);
+  }
+  to {
+    stroke-dashoffset: var(--ring-target);
+  }
+}
+
+@keyframes elevateScaleFade {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-bar-slide {
+  animation: elevateBarSlide 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-radial-ring {
+  animation: elevateRadialDraw 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-fade {
+  animation: elevateScaleFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

@@ -38,12 +38,20 @@ def refresh_agency_settlement_views() -> None:
     with db_manager.engine.begin() as conn:
         conn.execute(text("SELECT layer3_dim.refresh_agency_settlements()"))
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, status
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, status, Depends, File, UploadFile, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+
+# Import security & batch ingestion helpers
+try:
+    from backend.core.api_security import verify_ingest_api_key
+    from backend.core.batch_ingest import execute_pipeline_chain
+except ImportError:
+    from core.api_security import verify_ingest_api_key
+    from core.batch_ingest import execute_pipeline_chain
 
 # Import pipeline helpers from cli.py
 try:
@@ -110,6 +118,16 @@ class IngestRequest(BaseModel):
     start_date: str = Field(..., description="Start date (YYYY-MM-DD or DD-MM-YYYY)")
     end_date: str = Field(..., description="End date (YYYY-MM-DD or DD-MM-YYYY)")
     auto_normalize: bool = Field(True, description="Trigger data cleaning & normalization after ingestion")
+
+class OFDBatchIngestRequest(BaseModel):
+    platform: Literal["grab", "shopee", "gofood"] = Field(..., description="Target OFD platform (grab, shopee, or gofood)")
+    start_date: Optional[str] = Field(None, description="Start date of data (YYYY-MM-DD or DD-MM-YYYY)")
+    end_date: Optional[str] = Field(None, description="End date of data (YYYY-MM-DD or DD-MM-YYYY)")
+    worker_id: Optional[str] = Field("server_b", description="Identifier of the scraping worker server")
+    auto_process: bool = Field(True, description="Automatically trigger Layer 2, Layer 3, and view refresh")
+    records: List[Dict[str, Any]] = Field(..., description="Array of raw transaction objects")
+    items: Optional[List[Dict[str, Any]]] = Field(None, description="Array of line-item objects (used for GoFood items)")
+
 
 class JobResponse(BaseModel):
     job_id: str
@@ -330,6 +348,162 @@ def trigger_db_normalization():
         "message": "Database normalization & master refresh complete.",
         "row_counts": counts
     }
+
+
+# ── V1 Remote Worker Ingestion Endpoints (Tailscale Mesh Protected) ──
+
+@app.post("/api/v1/ingest/ofd/batch", summary="Batch Ingest OFD Transactions from Remote Worker (Tailscale)")
+def ingest_ofd_batch(
+    req: OFDBatchIngestRequest,
+    _auth: str = Depends(verify_ingest_api_key)
+):
+    """
+    Receives JSON transaction records from the remote scraper worker (Server B) via Tailscale.
+    Ingests into layer1_raw and optionally executes Layer 2, Layer 3, and Materialized View refresh.
+    """
+    try:
+        import pandas as pd
+        if not req.records:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Payload contains no transaction records in 'records' list."
+            )
+
+        df = pd.DataFrame(req.records)
+        items_df = pd.DataFrame(req.items) if req.items else None
+
+        result = execute_pipeline_chain(
+            platform=req.platform,
+            df=df,
+            items_df=items_df,
+            auto_process=req.auto_process
+        )
+        result["worker_id"] = req.worker_id
+        result["start_date"] = req.start_date
+        result["end_date"] = req.end_date
+        return result
+    except HTTPException:
+        raise
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Batch pipeline execution failed: {e}"
+        )
+
+
+@app.post("/api/v1/ingest/ofd/upload", summary="Upload OFD Excel/CSV File & Ingest from Remote Worker (Tailscale)")
+async def ingest_ofd_upload(
+    platform: Literal["grab", "shopee", "gofood"] = Form(..., description="Target platform"),
+    auto_process: bool = Form(True, description="Trigger Layer 2 and 3 automatically"),
+    worker_id: str = Form("server_b", description="Identifier of worker"),
+    file: UploadFile = File(..., description="Excel (.xlsx) or CSV (.csv) report file"),
+    _auth: str = Depends(verify_ingest_api_key)
+):
+    """
+    Receives physical Excel/CSV files from remote worker, preserves them in the traceback archive,
+    and executes the 3-layer database pipeline.
+    """
+    try:
+        import pandas as pd
+        import io
+
+        filename = file.filename or "upload.xlsx"
+        contents = await file.read()
+
+        # Archive copy on Server A for manual audit & traceback
+        archive_dir = os.path.join(BASE_DIR, "data", "traceback_archive", platform)
+        os.makedirs(archive_dir, exist_ok=True)
+        archive_path = os.path.join(archive_dir, f"{int(time.time())}_{filename}")
+        with open(archive_path, "wb") as f_out:
+            f_out.write(contents)
+
+        file_buffer = io.BytesIO(contents)
+        items_df = None
+
+        if filename.endswith(".csv"):
+            df = pd.read_csv(file_buffer, dtype=str)
+        else:
+            xl = pd.ExcelFile(file_buffer)
+            if "Transactions" in xl.sheet_names:
+                df = pd.read_excel(xl, sheet_name="Transactions", dtype=str)
+            elif len(xl.sheet_names) > 0:
+                df = pd.read_excel(xl, sheet_name=0, dtype=str)
+            else:
+                raise ValueError("Excel file contains no readable sheets.")
+
+            if platform == "gofood" and "Line No" in df.columns:
+                tx_df = df[df["Line No"].astype(str) == "1"].copy()
+                items_df = df[df["Item Name"].notna() & (df["Item Name"] != "")].copy() if "Item Name" in df.columns else None
+                df = tx_df
+
+        result = execute_pipeline_chain(
+            platform=platform,
+            df=df,
+            items_df=items_df,
+            auto_process=auto_process
+        )
+        result["worker_id"] = worker_id
+        result["archived_file"] = os.path.basename(archive_path)
+        return result
+    except HTTPException:
+        raise
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"File upload pipeline execution failed: {e}"
+        )
+
+
+@app.get("/api/v1/ingest/status", summary="Check Pipeline & Layer Ingestion Status")
+def get_ingest_pipeline_status():
+    """
+    Returns pipeline health and current row counts across Layer 1 Raw, Layer 2 Clean, and Layer 3 Dim.
+    """
+    counts = {}
+    with db_manager.engine.connect() as conn:
+        counts["raw_grab"] = conn.execute(text("SELECT COUNT(*) FROM layer1_raw.raw_grab")).scalar()
+        counts["raw_shopee"] = conn.execute(text("SELECT COUNT(*) FROM layer1_raw.raw_shopee")).scalar()
+        counts["raw_go"] = conn.execute(text("SELECT COUNT(*) FROM layer1_raw.raw_go")).scalar()
+        counts["raw_go_items"] = conn.execute(text("SELECT COUNT(*) FROM layer1_raw.raw_go_items")).scalar()
+        counts["stg_grab_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_grab_orders")).scalar()
+        counts["stg_shopee_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_shopee_orders")).scalar()
+        counts["stg_go_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_go_orders")).scalar()
+        counts["fact_transactions"] = conn.execute(text("SELECT COUNT(*) FROM layer3_dim.fact_transactions")).scalar()
+
+        last_tx = conn.execute(text("""
+            SELECT platform, max(transaction_date) as latest_date, count(*) as total_orders
+            FROM layer3_dim.fact_transactions
+            GROUP BY platform
+        """)).fetchall()
+
+    return {
+        "status": "healthy",
+        "pipeline_layers": {
+            "layer1_raw": {
+                "raw_grab": counts["raw_grab"],
+                "raw_shopee": counts["raw_shopee"],
+                "raw_go": counts["raw_go"],
+                "raw_go_items": counts["raw_go_items"],
+            },
+            "layer2_clean": {
+                "stg_grab_orders": counts["stg_grab_orders"],
+                "stg_shopee_orders": counts["stg_shopee_orders"],
+                "stg_go_orders": counts["stg_go_orders"],
+            },
+            "layer3_dim": {
+                "fact_transactions": counts["fact_transactions"],
+                "platform_summary": [
+                    {"platform": r[0], "latest_date": str(r[1]) if r[1] else None, "total_orders": r[2]}
+                    for r in last_tx
+                ]
+            }
+        }
+    }
+
 
 @app.get("/api/jobs", summary="List All Background Jobs")
 def list_jobs(limit: int = Query(50, ge=1, le=200)):
