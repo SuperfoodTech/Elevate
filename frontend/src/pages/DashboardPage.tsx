@@ -34,7 +34,6 @@ import {
   LayoutDashboard,
   BarChart3,
   CircleDollarSign,
-  Bell,
   ShieldCheck,
   Award
 } from 'lucide-react';
@@ -219,34 +218,8 @@ export const DashboardPage: React.FC = () => {
     { date: '19 Mei', receivable: 130600000, payable: 206900000, disbursed: 94400000 }
   ], []);
 
-  // Top bar right actions: Bell + Profile
-  const topBarActions = (
-    <div className="flex items-center gap-4">
-      <button
-        type="button"
-        title="Notifications"
-        className="relative p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-full transition-colors"
-      >
-        <Bell className="w-5 h-5" />
-        <span className="absolute top-1 right-1 w-4 h-4 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-          12
-        </span>
-      </button>
-
-      <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200">
-        <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-sm">
-          OP
-        </div>
-        <div className="flex items-center gap-1.5 cursor-pointer select-none">
-          <span className="text-xs font-semibold text-slate-800">Operation FoodMaster</span>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-        </div>
-      </div>
-    </div>
-  );
-
   return (
-    <DashboardLayout title="Home" actions={topBarActions}>
+    <DashboardLayout title="Home">
       <div className="space-y-6">
 
         {/* Feedback Alert if refreshed */}
@@ -449,7 +422,7 @@ export const DashboardPage: React.FC = () => {
                             <stop offset="100%" stopColor="#2563EB" stopOpacity={0.0} />
                           </linearGradient>
                         </defs>
-                        <Area type="monotone" dataKey="val" stroke="#2563EB" strokeWidth={1.75} fill="url(#ownerGrad)" isAnimationActive={false} />
+                        <Area type="monotone" dataKey="val" stroke="#2563EB" strokeWidth={1.75} fill="url(#ownerGrad)" isAnimationActive={true} animationDuration={900} animationEasing="ease-out" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -480,7 +453,7 @@ export const DashboardPage: React.FC = () => {
                             <stop offset="100%" stopColor="#059669" stopOpacity={0.0} />
                           </linearGradient>
                         </defs>
-                        <Area type="monotone" dataKey="val" stroke="#059669" strokeWidth={1.75} fill="url(#outletGrad)" isAnimationActive={false} />
+                        <Area type="monotone" dataKey="val" stroke="#059669" strokeWidth={1.75} fill="url(#outletGrad)" isAnimationActive={true} animationDuration={1000} animationEasing="ease-out" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -511,7 +484,7 @@ export const DashboardPage: React.FC = () => {
                             <stop offset="100%" stopColor="#D97706" stopOpacity={0.0} />
                           </linearGradient>
                         </defs>
-                        <Area type="monotone" dataKey="val" stroke="#D97706" strokeWidth={1.75} fill="url(#listingGrad)" isAnimationActive={false} />
+                        <Area type="monotone" dataKey="val" stroke="#D97706" strokeWidth={1.75} fill="url(#listingGrad)" isAnimationActive={true} animationDuration={1100} animationEasing="ease-out" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -544,7 +517,7 @@ export const DashboardPage: React.FC = () => {
                             <stop offset="100%" stopColor="#2563EB" stopOpacity={0.0} />
                           </linearGradient>
                         </defs>
-                        <Area type="monotone" dataKey="val" stroke="#2563EB" strokeWidth={1.75} fill="url(#mOrderGrad)" isAnimationActive={false} />
+                        <Area type="monotone" dataKey="val" stroke="#2563EB" strokeWidth={1.75} fill="url(#mOrderGrad)" isAnimationActive={true} animationDuration={1200} animationEasing="ease-out" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -577,7 +550,7 @@ export const DashboardPage: React.FC = () => {
                             <stop offset="100%" stopColor="#7C3AED" stopOpacity={0.0} />
                           </linearGradient>
                         </defs>
-                        <Area type="monotone" dataKey="val" stroke="#7C3AED" strokeWidth={1.75} fill="url(#vbOrderGrad)" isAnimationActive={false} />
+                        <Area type="monotone" dataKey="val" stroke="#7C3AED" strokeWidth={1.75} fill="url(#vbOrderGrad)" isAnimationActive={true} animationDuration={1300} animationEasing="ease-out" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -704,6 +677,9 @@ export const DashboardPage: React.FC = () => {
                       stroke="#2563EB"
                       strokeWidth={2.2}
                       fill="url(#merchantStreamGrad)"
+                      isAnimationActive={true}
+                      animationDuration={1300}
+                      animationEasing="ease-out"
                     />
                     <Area
                       type="monotone"
@@ -712,6 +688,10 @@ export const DashboardPage: React.FC = () => {
                       stroke="#7C3AED"
                       strokeWidth={2.2}
                       fill="url(#virtualStreamGrad)"
+                      isAnimationActive={true}
+                      animationDuration={1400}
+                      animationBegin={150}
+                      animationEasing="ease-out"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -740,9 +720,9 @@ export const DashboardPage: React.FC = () => {
                     <span className="font-semibold text-slate-700">Normal</span>
                   </div>
                   <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex">
-                    <div className="bg-emerald-500 h-full" style={{ width: '97.8%' }} title="Lancar" />
-                    <div className="bg-amber-400 h-full" style={{ width: '1.4%' }} title="Perlu Perhatian" />
-                    <div className="bg-rose-500 h-full" style={{ width: '0.8%' }} title="Kendala" />
+                    <div className="bg-emerald-500 h-full transition-all duration-1000 ease-out" style={{ width: '97.8%' }} title="Lancar" />
+                    <div className="bg-amber-400 h-full transition-all duration-1000 ease-out" style={{ width: '1.4%' }} title="Perlu Perhatian" />
+                    <div className="bg-rose-500 h-full transition-all duration-1000 ease-out" style={{ width: '0.8%' }} title="Kendala" />
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> 224k Berhasil</span>
@@ -764,7 +744,7 @@ export const DashboardPage: React.FC = () => {
                         <span className="font-bold text-slate-900 tabular-nums">2.82x</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="bg-blue-600 h-full rounded-full" style={{ width: '88%' }} />
+                        <div className="bg-blue-600 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: '88%' }} />
                       </div>
                     </div>
 
@@ -774,7 +754,7 @@ export const DashboardPage: React.FC = () => {
                         <span className="font-bold text-emerald-600 tabular-nums">94.7%</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="bg-emerald-600 h-full rounded-full" style={{ width: '94.7%' }} />
+                        <div className="bg-emerald-600 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: '94.7%' }} />
                       </div>
                     </div>
 
@@ -784,7 +764,7 @@ export const DashboardPage: React.FC = () => {
                         <span className="font-bold text-indigo-600 tabular-nums">85.4%</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: '85.4%' }} />
+                        <div className="bg-indigo-600 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: '85.4%' }} />
                       </div>
                     </div>
                   </div>
@@ -1146,6 +1126,9 @@ export const DashboardPage: React.FC = () => {
                         stroke="#2563EB"
                         strokeWidth={2.2}
                         fill="url(#merchantGmvStreamGrad)"
+                        isAnimationActive={true}
+                        animationDuration={1200}
+                        animationEasing="ease-out"
                       />
                       <Area
                         type="monotone"
@@ -1154,6 +1137,10 @@ export const DashboardPage: React.FC = () => {
                         stroke="#7C3AED"
                         strokeWidth={2.2}
                         fill="url(#merchantRevStreamGrad)"
+                        isAnimationActive={true}
+                        animationDuration={1300}
+                        animationBegin={150}
+                        animationEasing="ease-out"
                       />
                       <Area
                         type="monotone"
@@ -1162,6 +1149,10 @@ export const DashboardPage: React.FC = () => {
                         stroke="#0D9488"
                         strokeWidth={2.2}
                         fill="url(#merchantOfdStreamGrad)"
+                        isAnimationActive={true}
+                        animationDuration={1400}
+                        animationBegin={300}
+                        animationEasing="ease-out"
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1222,8 +1213,29 @@ export const DashboardPage: React.FC = () => {
                           );
                         }}
                       />
-                      <Bar dataKey="orderSucceed" name="Order Berhasil" stackId="orderStack" fill="#10B981" radius={[0, 0, 0, 0]} maxBarSize={32} />
-                      <Bar dataKey="orderCanceled" name="Order Batal" stackId="orderStack" fill="#F43F5E" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                      <Bar
+                        dataKey="orderSucceed"
+                        name="Order Berhasil"
+                        stackId="orderStack"
+                        fill="#10B981"
+                        radius={[0, 0, 0, 0]}
+                        maxBarSize={32}
+                        isAnimationActive={true}
+                        animationDuration={1000}
+                        animationEasing="ease-out"
+                      />
+                      <Bar
+                        dataKey="orderCanceled"
+                        name="Order Batal"
+                        stackId="orderStack"
+                        fill="#F43F5E"
+                        radius={[4, 4, 0, 0]}
+                        maxBarSize={32}
+                        isAnimationActive={true}
+                        animationDuration={1100}
+                        animationBegin={150}
+                        animationEasing="ease-out"
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1458,6 +1470,9 @@ export const DashboardPage: React.FC = () => {
                           stroke="#7C3AED"
                           strokeWidth={2.2}
                           fill="url(#vbRevenueStreamGrad)"
+                          isAnimationActive={true}
+                          animationDuration={1200}
+                          animationEasing="ease-out"
                         />
                         <Area
                           type="monotone"
@@ -1466,6 +1481,10 @@ export const DashboardPage: React.FC = () => {
                           stroke="#059669"
                           strokeWidth={2.2}
                           fill="url(#vbCogsStreamGrad)"
+                          isAnimationActive={true}
+                          animationDuration={1300}
+                          animationBegin={150}
+                          animationEasing="ease-out"
                         />
                         <Area
                           type="monotone"
@@ -1474,6 +1493,10 @@ export const DashboardPage: React.FC = () => {
                           stroke="#D97706"
                           strokeWidth={2.2}
                           fill="url(#vbMarginStreamGrad)"
+                          isAnimationActive={true}
+                          animationDuration={1400}
+                          animationBegin={300}
+                          animationEasing="ease-out"
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -1534,8 +1557,29 @@ export const DashboardPage: React.FC = () => {
                             );
                           }}
                         />
-                        <Bar dataKey="orderSucceed" name="Order Berhasil" stackId="vbOrderStack" fill="#7C3AED" radius={[0, 0, 0, 0]} maxBarSize={32} />
-                        <Bar dataKey="orderCanceled" name="Order Batal" stackId="vbOrderStack" fill="#F43F5E" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                        <Bar
+                          dataKey="orderSucceed"
+                          name="Order Berhasil"
+                          stackId="vbOrderStack"
+                          fill="#7C3AED"
+                          radius={[0, 0, 0, 0]}
+                          maxBarSize={32}
+                          isAnimationActive={true}
+                          animationDuration={1000}
+                          animationEasing="ease-out"
+                        />
+                        <Bar
+                          dataKey="orderCanceled"
+                          name="Order Batal"
+                          stackId="vbOrderStack"
+                          fill="#F43F5E"
+                          radius={[4, 4, 0, 0]}
+                          maxBarSize={32}
+                          isAnimationActive={true}
+                          animationDuration={1100}
+                          animationBegin={150}
+                          animationEasing="ease-out"
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1576,7 +1620,7 @@ export const DashboardPage: React.FC = () => {
                         {/* Progress track */}
                         <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full transition-all duration-500 ${
+                            className={`h-full rounded-full transition-all duration-1000 ease-out ${
                               idx === 0 ? 'bg-purple-600' : idx === 1 ? 'bg-indigo-500' : 'bg-slate-400'
                             }`}
                             style={{ width: `${brand.share * 2.5}%` }}
@@ -1724,6 +1768,9 @@ export const DashboardPage: React.FC = () => {
                       stroke="#10B981"
                       strokeWidth={2.2}
                       fill="url(#receivableStreamGrad)"
+                      isAnimationActive={true}
+                      animationDuration={1200}
+                      animationEasing="ease-out"
                     />
                     <Area
                       type="monotone"
@@ -1732,6 +1779,10 @@ export const DashboardPage: React.FC = () => {
                       stroke="#7C3AED"
                       strokeWidth={2.2}
                       fill="url(#payableStreamGrad)"
+                      isAnimationActive={true}
+                      animationDuration={1300}
+                      animationBegin={150}
+                      animationEasing="ease-out"
                     />
                     <Area
                       type="monotone"
@@ -1740,6 +1791,10 @@ export const DashboardPage: React.FC = () => {
                       stroke="#2563EB"
                       strokeWidth={2.2}
                       fill="url(#disbursedStreamGrad)"
+                      isAnimationActive={true}
+                      animationDuration={1400}
+                      animationBegin={300}
+                      animationEasing="ease-out"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -1776,6 +1831,7 @@ export const DashboardPage: React.FC = () => {
                           strokeDashoffset={314.16 * (1 - 0.854)}
                           strokeLinecap="round"
                           fill="transparent"
+                          className="transition-all duration-1000 ease-out"
                         />
 
                         {/* Ring 2: Invoice Terverifikasi (Middle - Radius 42, Circumference 263.89, Stroke 5) */}
@@ -1790,6 +1846,7 @@ export const DashboardPage: React.FC = () => {
                           strokeDashoffset={263.89 * (1 - 0.920)}
                           strokeLinecap="round"
                           fill="transparent"
+                          className="transition-all duration-1000 ease-out"
                         />
 
                         {/* Ring 3: Rekonsiliasi Otomatis (Inner - Radius 34, Circumference 213.63, Stroke 5) */}
@@ -1804,6 +1861,7 @@ export const DashboardPage: React.FC = () => {
                           strokeDashoffset={213.63 * (1 - 0.981)}
                           strokeLinecap="round"
                           fill="transparent"
+                          className="transition-all duration-1000 ease-out"
                         />
                       </svg>
 

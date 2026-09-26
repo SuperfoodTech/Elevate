@@ -27,6 +27,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { useAuth } from '../../context/useAuth';
+import { SuperFoodLogo, SuperFoodMark } from '../common/SuperFoodLogo';
 
 interface SidebarProps {
   collapsed?: boolean;
@@ -311,19 +312,10 @@ export const AppSidebar: React.FC<SidebarProps> = ({
             collapsed ? 'justify-center px-0' : 'gap-2.5'
           }`}
         >
-          {/* Logo Mark */}
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#4F46E5] via-[#6366F1] to-[#38BDF8] flex items-center justify-center text-white shadow-sm shrink-0">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-              <path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2H4V6zm0 5h16v2H4v-2zm0 5h16a2 2 0 01-2 2H6a2 2 0 01-2-2v-0z" />
-            </svg>
-          </div>
-
-          {!collapsed && (
-            <div className="flex items-center min-w-0">
-              <span className="text-[17px] font-bold text-[#0F172A] tracking-wider uppercase">
-                ELEVATE
-              </span>
-            </div>
+          {collapsed ? (
+            <SuperFoodMark className="w-6 h-6" />
+          ) : (
+            <SuperFoodLogo size="md" />
           )}
         </div>
 
