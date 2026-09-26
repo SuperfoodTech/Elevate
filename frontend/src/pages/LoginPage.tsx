@@ -65,8 +65,8 @@ export const LoginPage: React.FC = () => {
             <SuperFoodMark className="w-8 h-8" />
           </div>
           <div className="flex items-center gap-1.5 text-2xl font-bold tracking-tight text-[#0F172A]">
-            <span>Dashboard</span>
-            <span className="font-normal text-[#64748B]">Analytic</span>
+            <span>Analytics</span>
+            <span className="font-normal text-[#64748B]">Dashboard</span>
           </div>
           <p className="mt-1.5 text-xs text-[#64748B]">
             Portal Operasional dan Rekonsiliasi Finansial
@@ -219,7 +219,7 @@ export const LoginPage: React.FC = () => {
 
         {/* Footer */}
         <div className="mt-6 text-center text-xs text-[#71717A]">
-          SuperFoodTech &middot; Dashboard Analytic v1.3.0
+          SuperFoodTech &middot; Analytics Dashboard v1.3.1
         </div>
       </div>
 

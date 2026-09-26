@@ -419,6 +419,17 @@ export const OutletsPage: React.FC = () => {
     }
   }, []);
 
+  const handleResetData = () => {
+    setOutlets([]);
+    setIsRealData(false);
+    setLastFetched(null);
+    setFetchError(null);
+    localStorage.removeItem('elevate_dbr_raw_csv');
+    localStorage.removeItem('elevate_owners_real_data');
+    localStorage.removeItem('elevate_owners_last_fetched');
+    setPage(1);
+  };
+
   useEffect(() => {
     const cachedCsv = localStorage.getItem('elevate_dbr_raw_csv');
     if (!cachedCsv) {
@@ -497,6 +508,11 @@ export const OutletsPage: React.FC = () => {
 
   const topBarActions = (
     <div className="flex items-center gap-2.5">
+      {lastFetched && (
+        <span className="text-xs text-gray-400 hidden sm:inline">
+          Diperbarui: {lastFetched}
+        </span>
+      )}
       {fetchError && (
         <span className="text-xs text-[#DC2626] font-medium hidden sm:inline-flex items-center gap-1 bg-[#FEF2F2] px-2.5 py-1 rounded-md border border-[#FEE2E2]">
           <AlertCircle className="w-3.5 h-3.5" />
@@ -504,20 +520,30 @@ export const OutletsPage: React.FC = () => {
         </span>
       )}
       {isRealData && (
-        <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]">
           <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
-          Live DBR ({outlets.length} Outlets) &bull; {lastFetched}
+          Live DBR
         </span>
       )}
       <button
         type="button"
         onClick={handleFetchRealData}
         disabled={isFetching}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC] hover:border-[#CBD5E1] shadow-xs transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm disabled:opacity-50"
       >
-        <RefreshCw className={`w-3.5 h-3.5 text-[#2563EB] ${isFetching ? 'animate-spin' : ''}`} />
-        <span>{isFetching ? 'Mengambil Data...' : 'Fetch Data Real'}</span>
+        <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+        <span>{isFetching ? 'Sinkronisasi...' : 'Tarik Data DBR'}</span>
       </button>
+      {isRealData && (
+        <button
+          type="button"
+          onClick={handleResetData}
+          title="Hapus cache lokal DBR"
+          className="p-1.5 text-[#6B7280] hover:text-[#DC2626] hover:bg-[#FEF2F2] rounded-lg transition-colors border border-[#E5E7EB]"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 

@@ -62,6 +62,11 @@ const moduleMetadata: Record<string, { title: string; category: string; descript
     category: 'REPORT',
     description: 'Ringkasan komprehensif performa bulanan, tren pertumbuhan omzet, dan laporan laba rugi konsolidasian.'
   },
+  analytics: {
+    title: 'Custom Analytics & AI Insights',
+    category: 'REPORTS & ANALYTICS',
+    description: 'Modul kustomisasi analitik performa bisnis, visualisasi metrik agregat, dan asisten analitik cerdas.'
+  },
   // Operations
   bot: {
     title: 'Bot Operations',
@@ -92,6 +97,16 @@ const moduleMetadata: Record<string, { title: string; category: string; descript
     title: 'E-Sign & Proposal',
     category: 'OPERATIONS',
     description: 'Penyusunan dokumen proposal kemitraan bisnis dan integrasi tanda tangan digital tersertifikasi.'
+  },
+  proposals: {
+    title: 'E-Sign & Proposal',
+    category: 'DOCUMENTS',
+    description: 'Penyusunan dokumen proposal kemitraan bisnis dan integrasi tanda tangan digital tersertifikasi.'
+  },
+  exceptions: {
+    title: 'Transaction Exceptions & Anomalies',
+    category: 'OPERATIONS',
+    description: 'Pusat pemantauan dan investigasi anomali transaksi, pesanan bermasalah, selisih diskon, dan dispute rekonsiliasi.'
   },
   // System
   'data-ingestion': {
