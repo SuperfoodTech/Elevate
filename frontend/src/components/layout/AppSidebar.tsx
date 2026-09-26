@@ -21,6 +21,8 @@ import {
   PenTool,
   Settings,
   Activity,
+  AlertTriangle,
+  BarChart3,
   ChevronDown,
   ChevronRight,
   ChevronLeft,
@@ -65,19 +67,19 @@ const homeNavItem: NavItemConfig = {
 
 const navSections: NavSectionConfig[] = [
   {
-    title: 'MERCHANT',
+    title: 'Merchants',
     items: [
-      { name: 'Owner', path: '/owners', aliases: ['/modules/owner'], icon: Users },
-      { name: 'Brand', path: '/brands', aliases: ['/modules/brand'], icon: Building2 },
-      { name: 'Outlet', path: '/outlets', aliases: ['/modules/outlet'], icon: Store },
-      { name: 'Listing', path: '/listings', aliases: ['/modules/listing'], icon: Layers }
+      { name: 'Owners', path: '/owners', aliases: ['/modules/owner'], icon: Users },
+      { name: 'Brands', path: '/brands', aliases: ['/modules/brand'], icon: Building2 },
+      { name: 'Outlets', path: '/outlets', aliases: ['/modules/outlet'], icon: Store },
+      { name: 'Listings', path: '/listings', aliases: ['/modules/listing'], icon: Layers }
     ]
   },
   {
-    title: 'OPERATIONS',
+    title: 'Operations',
     items: [
       {
-        name: 'Transaction',
+        name: 'Transactions',
         path: '/transactions',
         aliases: [
           '/order-sukses-vs-batal',
@@ -102,16 +104,22 @@ const navSections: NavSectionConfig[] = [
         ]
       },
       {
-        name: 'Settlement',
-        path: '/settlement',
-        aliases: ['/performa-comparison', '/modules/settlement', '/vb/settlement'],
-        icon: CircleDollarSign
+        name: 'Exceptions',
+        path: '/operations/exceptions',
+        aliases: ['/modules/exceptions', '/exceptions'],
+        icon: AlertTriangle
       }
     ]
   },
   {
-    title: 'FINANCE',
+    title: 'Finance',
     items: [
+      {
+        name: 'Settlement',
+        path: '/settlement',
+        aliases: ['/performa-comparison', '/modules/settlement', '/vb/settlement', '/finance/settlement'],
+        icon: CircleDollarSign
+      },
       {
         name: 'Billing',
         path: '/payments',
@@ -131,15 +139,15 @@ const navSections: NavSectionConfig[] = [
         icon: Scale
       },
       {
-        name: 'Account Receivable',
+        name: 'Accounts Receivable',
         path: '/finance/account-receivable',
-        aliases: ['/modules/account-receivable'],
+        aliases: ['/modules/account-receivable', '/finance/accounts-receivable'],
         icon: ArrowDownLeft
       }
     ]
   },
   {
-    title: 'REPORT',
+    title: 'Reports & Analytics',
     items: [
       {
         name: 'Weekly Report',
@@ -152,11 +160,51 @@ const navSections: NavSectionConfig[] = [
         path: '/reports/monthly',
         aliases: ['/modules/monthly-report'],
         icon: CalendarRange
+      },
+      {
+        name: 'Analytics',
+        path: '/reports/analytics',
+        aliases: ['/modules/analytics', '/analytics'],
+        icon: BarChart3
       }
     ]
   },
   {
-    title: 'TOOLS',
+    title: 'Documents',
+    items: [
+      {
+        name: 'KKS',
+        path: '/operations/kks',
+        aliases: ['/documents/kks', '/modules/kks'],
+        icon: FileCheck
+      },
+      {
+        name: 'Proposals',
+        path: '/operations/esign-proposal',
+        aliases: ['/documents/proposal', '/documents/proposals', '/modules/proposal', '/modules/proposals'],
+        icon: PenTool
+      }
+    ]
+  },
+  {
+    title: 'Administration',
+    items: [
+      {
+        name: 'Settings',
+        path: '/system/settings',
+        aliases: ['/modules/settings', '/administration/settings'],
+        icon: Settings
+      },
+      {
+        name: 'System Health',
+        path: '/system/system-health',
+        aliases: ['/modules/system-health', '/system/health', '/administration/system-health', '/administration/health'],
+        icon: Activity
+      }
+    ]
+  },
+  {
+    title: 'Tools',
     items: [
       {
         name: 'Bot',
@@ -166,9 +214,9 @@ const navSections: NavSectionConfig[] = [
         isExternal: true
       },
       {
-        name: 'Menu',
+        name: 'Menu Management',
         path: 'https://menu.byfoodmaster.com',
-        aliases: ['/tools/menu', '/operations/menu', '/modules/menu'],
+        aliases: ['/tools/menu', '/operations/menu', '/modules/menu', '/tools/menu-management'],
         icon: LayoutGrid,
         isExternal: true
       },
@@ -177,40 +225,6 @@ const navSections: NavSectionConfig[] = [
         path: '/operations/promo',
         aliases: ['/tools/promo', '/modules/promo'],
         icon: BadgePercent
-      }
-    ]
-  },
-  {
-    title: 'DOCUMENTS',
-    items: [
-      {
-        name: 'KKS',
-        path: '/operations/kks',
-        aliases: ['/documents/kks', '/modules/kks'],
-        icon: FileCheck
-      },
-      {
-        name: 'Proposal',
-        path: '/operations/esign-proposal',
-        aliases: ['/documents/proposal', '/modules/proposal'],
-        icon: PenTool
-      }
-    ]
-  },
-  {
-    title: 'SYSTEM',
-    items: [
-      {
-        name: 'Settings',
-        path: '/system/settings',
-        aliases: ['/modules/settings'],
-        icon: Settings
-      },
-      {
-        name: 'System Health',
-        path: '/system/system-health',
-        aliases: ['/modules/system-health', '/system/health'],
-        icon: Activity
       }
     ]
   }
@@ -232,13 +246,14 @@ export const AppSidebar: React.FC<SidebarProps> = ({
   const [expandedMenus, setExpandedMenus] = React.useState<Record<string, boolean>>(() => {
     const isTx = location.pathname === '/transactions' || location.pathname.startsWith('/vb');
     return {
+      Transactions: isTx,
       Transaction: isTx
     };
   });
 
   React.useEffect(() => {
     if (location.pathname === '/transactions' || location.pathname.startsWith('/vb')) {
-      setExpandedMenus((prev) => ({ ...prev, Transaction: true }));
+      setExpandedMenus((prev) => ({ ...prev, Transactions: true, Transaction: true }));
     }
   }, [location.pathname]);
 

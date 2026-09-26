@@ -329,7 +329,7 @@ export const ListingsPage: React.FC = () => {
   const topBarActions = (
     <div className="flex items-center gap-2.5">
       {lastFetched && (
-        <span className="text-xs text-gray-400 hidden lg:inline">
+        <span className="text-xs text-gray-400 hidden sm:inline">
           Diperbarui: {lastFetched}
         </span>
       )}
@@ -367,7 +367,7 @@ export const ListingsPage: React.FC = () => {
 
   return (
     <DashboardLayout title="Listings" actions={topBarActions}>
-      <div className="p-8 max-w-[1600px] mx-auto">
+      <div className="space-y-6">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-xs text-gray-500 mb-6">
           <Link to="/dashboard" className="hover:text-gray-900 transition-colors">

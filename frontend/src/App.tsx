@@ -73,6 +73,8 @@ export const App: React.FC = () => {
             {/* REPORT Routes */}
             <Route path="/reports/weekly" element={<LaporanPerformaPage />} />
             <Route path="/reports/monthly" element={<PlaceholderPage />} />
+            <Route path="/reports/analytics" element={<PlaceholderPage />} />
+            <Route path="/reports/:moduleName" element={<PlaceholderPage />} />
 
             {/* TOOLS & DOCUMENTS Routes */}
             <Route path="/tools/:moduleName" element={<PlaceholderPage />} />
@@ -81,8 +83,11 @@ export const App: React.FC = () => {
             {/* OPERATIONS Routes */}
             <Route path="/operations/:moduleName" element={<PlaceholderPage />} />
 
-            {/* SYSTEM Routes */}
+            {/* SYSTEM & ADMINISTRATION Routes */}
             <Route path="/system/:moduleName" element={<PlaceholderPage />} />
+            <Route path="/administration/:moduleName" element={<PlaceholderPage />} />
+            <Route path="/exceptions" element={<Navigate to="/operations/exceptions" replace />} />
+            <Route path="/analytics" element={<Navigate to="/reports/analytics" replace />} />
 
             {/* Legacy and Detailed Feature Pages */}
             <Route path="/rekap-tagihan-billing" element={<RekapBillingPage />} />
