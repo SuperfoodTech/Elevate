@@ -17,6 +17,7 @@ __pycache__/
 laporan/
 downloads/
 logs/
+data_raw/
 *.csv
 *.xlsx
 *.log
