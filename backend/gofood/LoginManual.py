@@ -88,16 +88,16 @@ def _save_session_token(identifier: str, token: str, meta: dict = None):
 
 def fetch_gofood_outlets():
     """
-    Mengambil semua outlet GoFood Live dari master Google Sheet.
-    Mengembalikan list of dict:
-      {
-        'nama_outlet': str,
-        'cabang'     : str,
-        'email'      : str,   # kolom Y (index 24) — email login
-        'phone'      : str,   # kolom AA (index 26) — nomor HP
-        'store_id'   : str,
-      }
+    Mengambil semua outlet GoFood Live dari Master DBR menggunakan dbr_resolver.
     """
+    try:
+        from core.dbr_resolver import get_gofood_accounts
+        accounts = get_gofood_accounts()
+        if accounts:
+            return accounts
+    except Exception as e:
+        print(f"[DBR Resolver warning] {e}. Menggunakan fallback...")
+
     try:
         import time
         cache_buster_url = MASTER_SHEET_URL + f"&t={int(time.time())}"

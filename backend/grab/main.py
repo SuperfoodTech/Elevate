@@ -64,100 +64,39 @@ async def run_all(date_start: str = None, date_end: str = None, output_dir: str 
     # Reload env just in case
     load_dotenv(override=True)
     
-    log.info("Fetching merchant list from spreadsheet...")
-    base_dir = Path(__file__).resolve().parent
-    cache_path = base_dir / "data" / "master_merchants_cache.csv"
-    df = None
-
+    log.info("Fetching merchant list from Master DBR...")
     try:
-        import time
-        cache_buster = f"&t={int(time.time())}" if "?" in CSV_URL else f"?t={int(time.time())}"
-        resp = requests.get(CSV_URL + cache_buster, timeout=30)
-        resp.raise_for_status()
-        df = pd.read_csv(io.StringIO(resp.text))
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(cache_path, index=False)
-    except Exception as fetch_err:
-        if cache_path.exists():
-            log.warning(f"[WARNING] Gagal mengunduh spreadsheet online ({fetch_err}). Menggunakan cache lokal: {cache_path}")
-            df = pd.read_csv(cache_path)
-        else:
-            log.error(f"Failed to fetch or parse spreadsheet: {fetch_err}")
-            return
-
-    try:
-        # Bersihkan spasi pada header kolom
-        df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
-
-        # Filter for GrabFood and Status Live
-        app_col = "Aplikasi" if "Aplikasi" in df.columns else ("Aplikator" if "Aplikator" in df.columns else None)
-        status_col = "Status" if "Status" in df.columns else ("Status Internal" if "Status Internal" in df.columns else None)
-
-        grab_df = df
-        if app_col:
-            grab_df = grab_df[grab_df[app_col].astype(str).str.contains("Grab", na=False, case=False)]
-        if status_col:
-            grab_df = grab_df[grab_df[status_col].astype(str).str.contains("Live", na=False, case=False)]
+        from core.dbr_resolver import get_grab_accounts
+        raw_accounts = get_grab_accounts(
+            outlet_filter=outlet_filter,
+            branch_filter=branch_filter,
+            user_filter=user_filter
+        )
 
         portals = []
-        for idx, row in grab_df.iterrows():
-            user_sf = row.get("Nama Pengguna.1")
-            user_mt = row.get("Nama Pengguna")
-            pwd_sf = row.get("Kata Sandi.1")
-            pwd_mt = row.get("Kata Sandi")
+        for idx, acc in enumerate(raw_accounts):
+            u_str = acc["user"]
+            p_str = acc["pwd"]
+            outlet = acc["outlet"]
+            branch = acc["branch"]
 
-            user = user_sf if pd.notna(user_sf) and str(user_sf).strip() not in ("", "-", "nan") else user_mt
-            pwd = pwd_sf if pd.notna(pwd_sf) and str(pwd_sf).strip() not in ("", "-", "nan") else pwd_mt
+            is_valid, err_msg = validate_credentials(u_str, p_str)
+            if not is_valid:
+                log.warning(f"[VALIDATION WARNING] #{idx+1} for '{outlet} ({branch})' has invalid credentials: {err_msg}")
 
-            if pd.notna(user) and pd.notna(pwd) and str(user).strip() not in ("", "-", "nan") and str(pwd).strip() not in ("", "-", "nan"):
-                u_str = str(user).strip()
-                p_str = str(pwd).strip()
+            portals.append({
+                "id": idx + 1,
+                "outlet": outlet,
+                "branch": branch,
+                "user": u_str,
+                "pwd": p_str,
+                "store_id": acc.get("store_id", ""),
+                "group_id": acc.get("group_id", "")
+            })
 
-                # Robust outlet name resolution (mendukung Nama Outlet, Outlet, Nama Resto Final)
-                outlet_val = row.get("Nama Outlet")
-                if pd.isna(outlet_val) or str(outlet_val).strip() in ("", "-", "nan"):
-                    outlet_val = row.get("Outlet")
-                if pd.isna(outlet_val) or str(outlet_val).strip() in ("", "-", "nan"):
-                    outlet_val = row.get("Nama Resto Final", "Unknown")
-                outlet = str(outlet_val).strip() if pd.notna(outlet_val) and str(outlet_val).strip() not in ("", "-", "nan") else "Unknown"
-
-                # Robust branch name resolution (mendukung Cabang, Brand, Nama Brand)
-                branch_val = row.get("Cabang")
-                if pd.isna(branch_val) or str(branch_val).strip() in ("", "-", "nan"):
-                    branch_val = row.get("Brand")
-                if pd.isna(branch_val) or str(branch_val).strip() in ("", "-", "nan"):
-                    branch_val = row.get("Nama Brand", "")
-                branch = str(branch_val).strip() if pd.notna(branch_val) and str(branch_val).strip() not in ("", "-", "nan") else ""
-
-                # Apply custom outlet and branch filters internally
-                if outlet_filter:
-                    if "|" in outlet_filter:
-                        valid_outlets = [o.strip().lower() for o in outlet_filter.split("|")]
-                        if str(outlet).strip().lower() not in valid_outlets: continue
-                    elif str(outlet).strip().lower() != str(outlet_filter).strip().lower():
-                        continue
-                if branch_filter:
-                    if "|" in branch_filter:
-                        valid_branches = [b.strip().lower() for b in branch_filter.split("|")]
-                        if str(branch).strip().lower() not in valid_branches: continue
-                    elif str(branch).strip().lower() != str(branch_filter).strip().lower():
-                        continue
-
-                # Smart credential validation
-                is_valid, err_msg = validate_credentials(u_str, p_str)
-                if not is_valid:
-                    log.warning(f"[VALIDATION WARNING] Row #{idx+1} for '{outlet} ({branch})' has invalid credentials: {err_msg}")
-
-                portals.append({
-                    "id": len(portals) + 1,
-                    "outlet": outlet,
-                    "branch": branch,
-                    "user": u_str,
-                    "pwd": p_str
-                })
-
+        log.info(f"Loaded {len(portals)} active GrabFood portals from Master DBR.")
     except Exception as e:
-        log.error(f"Failed to fetch or parse spreadsheet: {e}")
+        log.error(f"Failed to fetch or parse Master DBR: {e}")
         return
 
     # Determine output directory
