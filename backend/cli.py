@@ -11,8 +11,11 @@ import asyncio
 import sys
 import os
 import time
+import io
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import pandas as pd
+import requests
 
 # Add parent directory to sys.path so core/ imports work
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -149,11 +152,22 @@ def _resolve_shopee_merchant(outlet_name: str, branch_name: str = None) -> str:
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
             df.to_csv(cache_path, index=False)
 
+        if 'Nama Outlet' not in df.columns and 'Outlet' in df.columns:
+            df['Nama Outlet'] = df['Outlet']
+        if 'Aplikasi' not in df.columns and 'Aplikator' in df.columns:
+            df['Aplikasi'] = df['Aplikator']
+        if 'Status' not in df.columns and 'Status Internal' in df.columns:
+            df['Status'] = df['Status Internal']
+
         outlet_lower = outlet_name.strip().lower()
+        outlet_col = 'Nama Outlet' if 'Nama Outlet' in df.columns else ('Outlet' if 'Outlet' in df.columns else 'Nama Resto Final')
+        app_col = 'Aplikasi' if 'Aplikasi' in df.columns else 'Aplikator'
+        status_col = 'Status' if 'Status' in df.columns else 'Status Internal'
+
         b_filter = (
-            (df['Aplikasi'] == 'ShopeeFood') &
-            (df['Status'] == 'Live') &
-            (df['Nama Outlet'].str.strip().str.lower() == outlet_lower)
+            (df[app_col].astype(str).str.contains('Shopee', na=False, case=False)) &
+            (df[status_col].astype(str).str.contains('Live', na=False, case=False)) &
+            (df[outlet_col].astype(str).str.strip().str.lower() == outlet_lower)
         )
 
         if branch_name:
@@ -229,7 +243,7 @@ def run_gofood(start_date: str, end_date: str, outlet_filter: str = None, branch
     relative paths and imports resolve correctly.
     task_choice: "1" = Baseline, "2" = Weekly (default)
     """
-    gofood_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "gofood")
+    gofood_dir = os.path.join(os.path.dirname(__file__), "gofood")
     if not os.path.isdir(gofood_dir):
         print(f"{RED}[ERROR]{RESET} GoFood directory not found: {gofood_dir}")
         return False
@@ -334,6 +348,57 @@ def interactive_mode():
     end_date = None
     
     df_main = None
+
+    def _normalize_master_df(df):
+        if df is None or getattr(df, 'empty', True):
+            return df
+        # Bersihkan spasi pada header kolom
+        df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+        
+        # Pemetaan alias kolom Nama Outlet
+        if 'Nama Outlet' not in df.columns:
+            if 'Outlet' in df.columns:
+                df['Nama Outlet'] = df['Outlet']
+            elif 'Nama Resto Final' in df.columns:
+                df['Nama Outlet'] = df['Nama Resto Final']
+                
+        # Pemetaan alias kolom Aplikasi
+        if 'Aplikasi' not in df.columns and 'Aplikator' in df.columns:
+            df['Aplikasi'] = df['Aplikator']
+            
+        # Pemetaan alias kolom Status
+        if 'Status' not in df.columns and 'Status Internal' in df.columns:
+            df['Status'] = df['Status Internal']
+            
+        # Pemetaan alias kolom Merchant Name
+        if 'Merchant Name' not in df.columns and 'Nama Portal' in df.columns:
+            df['Merchant Name'] = df['Nama Portal']
+            
+        # Pemetaan alias kolom Cabang
+        if 'Cabang' not in df.columns:
+            if 'Brand' in df.columns:
+                df['Cabang'] = df['Brand']
+            elif 'Nama Brand' in df.columns:
+                df['Cabang'] = df['Nama Brand']
+                
+        # Penyelarasan kredensial pengguna (Username & Password)
+        if 'Nama Pengguna.1' in df.columns and 'Nama Pengguna' in df.columns:
+            df['Nama Pengguna.1'] = df['Nama Pengguna.1'].fillna(df['Nama Pengguna'])
+            m_empty = df['Nama Pengguna.1'].astype(str).str.strip().isin(['', '-', 'nan'])
+            df.loc[m_empty, 'Nama Pengguna.1'] = df.loc[m_empty, 'Nama Pengguna']
+        elif 'Nama Pengguna' in df.columns:
+            df['Nama Pengguna.1'] = df['Nama Pengguna']
+
+        if 'Kata Sandi.1' in df.columns and 'Kata Sandi' in df.columns:
+            df['Kata Sandi.1'] = df['Kata Sandi.1'].fillna(df['Kata Sandi'])
+            m_empty_pwd = df['Kata Sandi.1'].astype(str).str.strip().isin(['', '-', 'nan'])
+            df.loc[m_empty_pwd, 'Kata Sandi.1'] = df.loc[m_empty_pwd, 'Kata Sandi']
+        elif 'Kata Sandi' in df.columns:
+            df['Kata Sandi.1'] = df['Kata Sandi']
+            
+        return df
+
+
     def load_df():
         nonlocal df_main
         if df_main is not None:
@@ -359,12 +424,14 @@ def interactive_mode():
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
             df_main.to_csv(cache_path, index=False)
             
+            df_main = _normalize_master_df(df_main)
             return df_main
         except Exception as e:
             print(f"  {YELLOW}[WARNING] Gagal mengunduh Google Sheets: {e}{RESET}")
             if os.path.exists(cache_path):
                 print(f"  {CYAN}[INFO] Menggunakan data cache terakhir...{RESET}")
                 df_main = pd.read_csv(cache_path)
+                df_main = _normalize_master_df(df_main)
                 return df_main
             else:
                 print(f"  {RED}[ERROR] Tidak ada cache yang tersedia. Keluar.{RESET}")
@@ -479,19 +546,25 @@ def interactive_mode():
                 print(f"  {RED}Input tidak valid. Masukkan 1, 2, atau 3.{RESET}")
 
         elif state == "grab_outlet":
-            df_grab = df_main[
-                df_main["Aplikasi"].str.contains("Grab", na=False, case=False) & 
-                df_main["Status"].str.contains("Live", na=False, case=False) &
-                df_main["Nama Pengguna.1"].notna() & 
-                (df_main["Nama Pengguna.1"].str.strip() != "") & 
-                (df_main["Nama Pengguna.1"].str.strip() != "-")
-            ]
+            app_col = "Aplikasi" if "Aplikasi" in df_main.columns else ("Aplikator" if "Aplikator" in df_main.columns else None)
+            status_col = "Status" if "Status" in df_main.columns else ("Status Internal" if "Status Internal" in df_main.columns else None)
+            user_col = "Nama Pengguna.1" if "Nama Pengguna.1" in df_main.columns else ("Nama Pengguna" if "Nama Pengguna" in df_main.columns else None)
+            
+            df_grab = df_main
+            if app_col:
+                df_grab = df_grab[df_grab[app_col].astype(str).str.contains("Grab", na=False, case=False)]
+            if status_col:
+                df_grab = df_grab[df_grab[status_col].astype(str).str.contains("Live", na=False, case=False)]
+            if user_col:
+                df_grab = df_grab[df_grab[user_col].notna() & (df_grab[user_col].astype(str).str.strip() != "") & (df_grab[user_col].astype(str).str.strip() != "-")]
+            
             if df_grab.empty:
                 print(f"  {RED}[ERROR] Tidak ada outlet Grab di Google Sheets.{RESET}")
                 state = "scope"
                 continue
                 
-            outlets_list = sorted(df_grab["Nama Outlet"].dropna().unique())
+            outlet_col = "Nama Outlet" if "Nama Outlet" in df_grab.columns else ("Outlet" if "Outlet" in df_grab.columns else "Nama Resto Final")
+            outlets_list = sorted(df_grab[outlet_col].dropna().unique())
             print(f"\n  {BOLD}Pilih Outlet Grab:{RESET}")
             for idx, o_name in enumerate(outlets_list):
                 print(f"    {GREEN}[{idx + 1}]{RESET} {o_name}")
@@ -526,15 +599,21 @@ def interactive_mode():
                     print(f"  {RED}Pilihan tidak valid.{RESET}")
 
         elif state == "grab_branch":
-            df_grab = df_main[
-                df_main["Aplikasi"].str.contains("Grab", na=False, case=False) & 
-                df_main["Status"].str.contains("Live", na=False, case=False) &
-                df_main["Nama Pengguna.1"].notna() & 
-                (df_main["Nama Pengguna.1"].str.strip() != "") & 
-                (df_main["Nama Pengguna.1"].str.strip() != "-")
-            ]
-            df_branch = df_grab[df_grab["Nama Outlet"] == outlet[0]]
-            branch_col = "Cabang" if "Cabang" in df_branch.columns else "Brand"
+            app_col = "Aplikasi" if "Aplikasi" in df_main.columns else ("Aplikator" if "Aplikator" in df_main.columns else None)
+            status_col = "Status" if "Status" in df_main.columns else ("Status Internal" if "Status Internal" in df_main.columns else None)
+            user_col = "Nama Pengguna.1" if "Nama Pengguna.1" in df_main.columns else ("Nama Pengguna" if "Nama Pengguna" in df_main.columns else None)
+            
+            df_grab = df_main
+            if app_col:
+                df_grab = df_grab[df_grab[app_col].astype(str).str.contains("Grab", na=False, case=False)]
+            if status_col:
+                df_grab = df_grab[df_grab[status_col].astype(str).str.contains("Live", na=False, case=False)]
+            if user_col:
+                df_grab = df_grab[df_grab[user_col].notna() & (df_grab[user_col].astype(str).str.strip() != "") & (df_grab[user_col].astype(str).str.strip() != "-")]
+            
+            outlet_col = "Nama Outlet" if "Nama Outlet" in df_grab.columns else ("Outlet" if "Outlet" in df_grab.columns else "Nama Resto Final")
+            df_branch = df_grab[df_grab[outlet_col] == outlet[0]]
+            branch_col = "Cabang" if "Cabang" in df_branch.columns else ("Brand" if "Brand" in df_branch.columns else "Nama Brand")
             branches = sorted(df_branch[branch_col].dropna().unique()) if branch_col in df_branch.columns else []
             
             print(f"\n  {BOLD}Pilih Cabang Grab untuk '{outlet[0]}':{RESET}")
@@ -619,16 +698,20 @@ def interactive_mode():
                     print(f"  {RED}Pilihan tidak valid.{RESET}")
 
         elif state == "gofood_outlet":
-            df_gofood = df_main[
-                df_main["Aplikasi"].str.contains("GoFood", na=False, case=False) & 
-                df_main["Status"].str.contains("Live", na=False, case=False)
-            ]
+            app_col = "Aplikasi" if "Aplikasi" in df_main.columns else ("Aplikator" if "Aplikator" in df_main.columns else None)
+            status_col = "Status" if "Status" in df_main.columns else ("Status Internal" if "Status Internal" in df_main.columns else None)
+            df_gofood = df_main
+            if app_col:
+                df_gofood = df_gofood[df_gofood[app_col].astype(str).str.contains("GoFood", na=False, case=False)]
+            if status_col:
+                df_gofood = df_gofood[df_gofood[status_col].astype(str).str.contains("Live", na=False, case=False)]
             if df_gofood.empty:
                 print(f"  {RED}[ERROR] Tidak ada outlet GoFood di Google Sheets.{RESET}")
                 state = "date"
                 continue
                 
-            gofood_outlets = sorted(df_gofood["Nama Outlet"].dropna().unique())
+            outlet_col = "Nama Outlet" if "Nama Outlet" in df_gofood.columns else ("Outlet" if "Outlet" in df_gofood.columns else "Nama Resto Final")
+            gofood_outlets = sorted(df_gofood[outlet_col].dropna().unique())
             print(f"\n  {BOLD}Pilih Outlet GoFood:{RESET}")
             for idx, o_name in enumerate(gofood_outlets):
                 print(f"    {GREEN}[{idx + 1}]{RESET} {o_name}")

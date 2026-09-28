@@ -37,14 +37,8 @@ session_*.json
 sessions/
 shopee/sessions/
 grab/sessions/
-backend/data/session.json
-
-# Chrome profiles and temporary runtime data
-**/chrome_profile/
-**/chrome_profile*/
-**/chrome_profiles/
-**/shopee_profile/
-backend/data/chrome_profile/
+backend/data/
+backend/data/**
 src/data/discord_notifications/
 
 # Generic Chrome profile, cache, and DB ignores
