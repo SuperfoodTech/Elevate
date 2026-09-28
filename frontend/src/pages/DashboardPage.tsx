@@ -1,7 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { getWeeksForMonth, getAvailableMonths } from '../utils/periodHelper';
+import {
+  api,
+  HomeDashboardKPI,
+  DailyVelocityPoint,
+  MerchantChartPoint,
+  VirtualChartPoint,
+  TopBrandRankingItem,
+  SettlementFlowPoint
+} from '../services/api';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -106,12 +115,17 @@ export const DashboardPage: React.FC = () => {
     return getWeeksForMonth(selectedYear, selectedMonthIndex);
   }, [selectedYear, selectedMonthIndex]);
 
+  // Current active week object from availableWeeks
+  const currentWeekObj = useMemo(() => {
+    return availableWeeks.find((w) => w.label === selectedPeriod) || availableWeeks[0];
+  }, [availableWeeks, selectedPeriod]);
+
   // Extract current and previous week labels based on business rule:
   // Week 1 starts on the first Monday of the month, not day 1.
   const currentWeekLabel = useMemo(() => {
     const match = selectedPeriod.match(/\(([^)]+)\)/);
-    return match ? match[1] : 'Minggu 2';
-  }, [selectedPeriod]);
+    return match ? match[1] : (currentWeekObj?.weekLabel || 'Minggu 1');
+  }, [selectedPeriod, currentWeekObj]);
 
   const prevWeekLabel = useMemo(() => {
     const match = currentWeekLabel.match(/\d+/);
@@ -134,89 +148,193 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  // Convert Date object to YYYY-MM-DD
+  const formatToISODate = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const activeStartDate = useMemo(() => {
+    return currentWeekObj ? formatToISODate(currentWeekObj.startDate) : undefined;
+  }, [currentWeekObj]);
+
+  const activeEndDate = useMemo(() => {
+    return currentWeekObj ? formatToISODate(currentWeekObj.endDate) : undefined;
+  }, [currentWeekObj]);
+
   // View modes for Brand Performance cards
   const [merchantViewMode, setMerchantViewMode] = useState<'financial' | 'orders'>('financial');
   const [virtualViewMode, setVirtualViewMode] = useState<'financial' | 'orders'>('financial');
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      setRefreshNotice('Data berhasil diperbarui sesuai sinkronisasi terbaru.');
-      setTimeout(() => setRefreshNotice(null), 3000);
-    }, 600);
+  // Real Data State from PostgreSQL
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [hasData, setHasData] = useState<boolean>(true);
+  const [ownerList, setOwnerList] = useState<string[]>([]);
+  const [dashboardKPI, setDashboardKPI] = useState<HomeDashboardKPI | null>(null);
+  const [velocityData, setVelocityData] = useState<DailyVelocityPoint[]>([]);
+  const [merchantData, setMerchantData] = useState<MerchantChartPoint[]>([]);
+  const [virtualData, setVirtualData] = useState<VirtualChartPoint[]>([]);
+  const [topBrands, setTopBrands] = useState<TopBrandRankingItem[]>([]);
+  const [settlementData, setSettlementData] = useState<SettlementFlowPoint[]>([]);
+
+  // Load filter options (owners) once on mount
+  useEffect(() => {
+    api.getFilters()
+      .then((res) => {
+        if (res && res.owners) {
+          setOwnerList(res.owners);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load filter owners', err);
+      });
+  }, []);
+
+  // Fetch dashboard metrics when date range, owner, or business group changes
+  const fetchDashboardData = async (force = false) => {
+    if (!activeStartDate || !activeEndDate) return;
+    setIsLoading(true);
+    try {
+      const res = await api.getHomeDashboardMetrics({
+        startDate: activeStartDate,
+        endDate: activeEndDate,
+        owner: selectedOwner,
+        business: selectedBusiness,
+        forceRefresh: force
+      });
+      if (res && res.status === 'success') {
+        setHasData(res.has_data);
+        setDashboardKPI(res.kpi);
+        setVelocityData(res.velocity || []);
+        setMerchantData(res.merchant_chart_data || []);
+        setVirtualData(res.virtual_chart_data || []);
+        setTopBrands(res.top_brands || []);
+        setSettlementData(res.settlement_flow || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch home dashboard metrics', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Mock series exactly matching Elevate1 Home.png
-  const merchantChartData: MerchantDailyPoint[] = useMemo(() => [
-    { date: '13 May', gmv: 3400000000, ofdFees: 340000000, revenue: 300000000, orderSucceed: 36000, orderCanceled: 1100 },
-    { date: '14 May', gmv: 4100000000, ofdFees: 410000000, revenue: 380000000, orderSucceed: 42000, orderCanceled: 1200 },
-    { date: '15 May', gmv: 4120000000, ofdFees: 412000000, revenue: 390000000, orderSucceed: 43000, orderCanceled: 1050 },
-    { date: '16 May', gmv: 4100000000, ofdFees: 410000000, revenue: 380000000, orderSucceed: 42500, orderCanceled: 980 },
-    { date: '17 May', gmv: 4250000000, ofdFees: 425000000, revenue: 410000000, orderSucceed: 45000, orderCanceled: 1150 },
-    { date: '18 May', gmv: 4050000000, ofdFees: 405000000, revenue: 375000000, orderSucceed: 41000, orderCanceled: 900 },
-    { date: '19 May', gmv: 3750000000, ofdFees: 375000000, revenue: 350000000, orderSucceed: 37000, orderCanceled: 850 }
-  ], []);
+  useEffect(() => {
+    fetchDashboardData();
+  }, [activeStartDate, activeEndDate, selectedOwner, selectedBusiness]);
 
-  const virtualChartData: VirtualDailyPoint[] = useMemo(() => [
-    { date: '13 May', gmv: 3500000000, ofdFees: 350000000, revenue: 650000000, cogs: 2500000000, grossMargin: 1000000000, orderSucceed: 28000, orderCanceled: 800 },
-    { date: '14 May', gmv: 3800000000, ofdFees: 380000000, revenue: 720000000, cogs: 2650000000, grossMargin: 1150000000, orderSucceed: 31000, orderCanceled: 750 },
-    { date: '15 May', gmv: 3900000000, ofdFees: 390000000, revenue: 700000000, cogs: 2680000000, grossMargin: 1220000000, orderSucceed: 32000, orderCanceled: 820 },
-    { date: '16 May', gmv: 3600000000, ofdFees: 360000000, revenue: 680000000, cogs: 2800000000, grossMargin: 800000000, orderSucceed: 29500, orderCanceled: 710 },
-    { date: '17 May', gmv: 3950000000, ofdFees: 395000000, revenue: 740000000, cogs: 2700000000, grossMargin: 1250000000, orderSucceed: 33000, orderCanceled: 690 },
-    { date: '18 May', gmv: 3900000000, ofdFees: 390000000, revenue: 710000000, cogs: 2750000000, grossMargin: 1150000000, orderSucceed: 32000, orderCanceled: 730 },
-    { date: '19 May', gmv: 3650000000, ofdFees: 365000000, revenue: 690000000, cogs: 2780000000, grossMargin: 870000000, orderSucceed: 29000, orderCanceled: 730 }
-  ], []);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchDashboardData(true);
+    setIsRefreshing(false);
+    setRefreshNotice('Data berhasil diperbarui sesuai sinkronisasi terbaru.');
+    setTimeout(() => setRefreshNotice(null), 3000);
+  };
 
-  // Overview 7-day sparkline trends for KPI Cards
-  const sparklineData = useMemo(() => ({
-    owners: [
-      { val: 140 }, { val: 142 }, { val: 145 }, { val: 147 }, { val: 148 }, { val: 150 }, { val: 152 }
-    ],
-    outlets: [
-      { val: 1220 }, { val: 1235 }, { val: 1250 }, { val: 1262 }, { val: 1270 }, { val: 1278 }, { val: 1285 }
-    ],
-    listings: [
-      { val: 3480 }, { val: 3510 }, { val: 3540 }, { val: 3570 }, { val: 3590 }, { val: 3610 }, { val: 3620 }
-    ],
-    merchantOrders: [
-      { val: 36000 }, { val: 42000 }, { val: 43000 }, { val: 42500 }, { val: 45000 }, { val: 41000 }, { val: 37000 }
-    ],
-    virtualOrders: [
-      { val: 28000 }, { val: 31000 }, { val: 32000 }, { val: 29500 }, { val: 33000 }, { val: 32000 }, { val: 29000 }
-    ]
-  }), []);
+  // Sparkline data with safe fallback
+  const sparklineData = useMemo(() => {
+    if (dashboardKPI?.sparklines) {
+      return dashboardKPI.sparklines;
+    }
+    return {
+      owners: [{ val: 0 }],
+      outlets: [{ val: 0 }],
+      listings: [{ val: 0 }],
+      merchantOrders: [{ val: 0 }],
+      virtualOrders: [{ val: 0 }]
+    };
+  }, [dashboardKPI]);
 
-  // Combined Ecosystem Daily Order Velocity for Overview Tab Hero Chart
-  const ecosystemVelocityData = useMemo(() => [
-    { date: '13 May', merchantOrders: 36000, virtualOrders: 28000, totalOrders: 64000 },
-    { date: '14 May', merchantOrders: 42000, virtualOrders: 31000, totalOrders: 73000 },
-    { date: '15 May', merchantOrders: 43000, virtualOrders: 32000, totalOrders: 75000 },
-    { date: '16 May', merchantOrders: 42500, virtualOrders: 29500, totalOrders: 72000 },
-    { date: '17 May', merchantOrders: 45000, virtualOrders: 33000, totalOrders: 78000 },
-    { date: '18 May', merchantOrders: 41000, virtualOrders: 32000, totalOrders: 73000 },
-    { date: '19 May', merchantOrders: 37000, virtualOrders: 29000, totalOrders: 66000 }
-  ], []);
+  const ecosystemVelocityData = velocityData;
+  const merchantChartData = merchantData;
+  const virtualChartData = virtualData;
+  const topVirtualBrands = topBrands;
+  const settlementFlowData = settlementData;
 
-  // Top 5 Virtual Brands Contribution Matrix
-  const topVirtualBrands = useMemo(() => [
-    { name: 'Ayam Geprek Mantul', gmv: 742500000, share: 35.0, orders: 33800, growth: '+18.4%' },
-    { name: 'Kopi Kenangan Senja', gmv: 510200000, share: 24.0, orders: 23150, growth: '+12.1%' },
-    { name: 'Burger Nusantara Express', gmv: 382400000, share: 18.0, orders: 17400, growth: '+9.8%' },
-    { name: 'Rice Bowl Bento Master', gmv: 276180000, share: 13.0, orders: 12550, growth: '+15.2%' },
-    { name: 'Boba Time Artisan', gmv: 213170000, share: 10.0, orders: 9640, growth: '+6.5%' }
-  ], []);
+  // Order Share calculations for Velocity summary
+  const orderShare = useMemo(() => {
+    const m = dashboardKPI?.merchant_orders || 0;
+    const v = dashboardKPI?.virtual_orders || 0;
+    const tot = m + v;
+    if (tot === 0) return { mPct: '0', vPct: '0', total: 0 };
+    return {
+      mPct: ((m / tot) * 100).toFixed(0),
+      vPct: ((v / tot) * 100).toFixed(0),
+      total: tot
+    };
+  }, [dashboardKPI]);
 
-  // Daily Settlement Liquidity Flow for Settlement & Finance Tab
-  const settlementFlowData = useMemo(() => [
-    { date: '13 Mei', receivable: 165000000, payable: 245000000, disbursed: 172000000 },
-    { date: '14 Mei', receivable: 182000000, payable: 278000000, disbursed: 195000000 },
-    { date: '15 Mei', receivable: 178000000, payable: 265000000, disbursed: 188000000 },
-    { date: '16 Mei', receivable: 195000000, payable: 290000000, disbursed: 210000000 },
-    { date: '17 Mei', receivable: 210000000, payable: 312000000, disbursed: 228000000 },
-    { date: '18 Mei', receivable: 185000000, payable: 280000000, disbursed: 198000000 },
-    { date: '19 Mei', receivable: 130600000, payable: 206900000, disbursed: 94400000 }
-  ], []);
+  // Highest order day
+  const highestOrderDay = useMemo(() => {
+    if (!velocityData || velocityData.length === 0) return { count: 0, date: '-' };
+    let maxItem = velocityData[0];
+    for (const item of velocityData) {
+      if (item.totalOrders > maxItem.totalOrders) {
+        maxItem = item;
+      }
+    }
+    return { count: maxItem.totalOrders, date: maxItem.date };
+  }, [velocityData]);
+
+  // Merchant Brand Summary calculation
+  const merchantSummary = useMemo(() => {
+    let gmv = 0;
+    let ofd = 0;
+    let rev = 0;
+    let succ = 0;
+    let canc = 0;
+    for (const p of merchantData) {
+      gmv += p.gmv;
+      ofd += p.ofdFees;
+      rev += p.revenue;
+      succ += p.orderSucceed;
+      canc += p.orderCanceled;
+    }
+    return { gmv, ofd, rev, succ, canc };
+  }, [merchantData]);
+
+  // Virtual Brand Summary calculation
+  const virtualSummary = useMemo(() => {
+    let gmv = 0;
+    let ofd = 0;
+    let rev = 0;
+    let cogs = 0;
+    let margin = 0;
+    let succ = 0;
+    let canc = 0;
+    for (const p of virtualData) {
+      gmv += p.gmv;
+      ofd += p.ofdFees;
+      rev += p.revenue;
+      cogs += p.cogs;
+      margin += p.grossMargin;
+      succ += p.orderSucceed;
+      canc += p.orderCanceled;
+    }
+    const marginPct = rev > 0 ? ((margin / rev) * 100).toFixed(1) : '0.0';
+    return { gmv, ofd, rev, cogs, margin, marginPct, succ, canc };
+  }, [virtualData]);
+
+  // Settlement flow summary calculation
+  const settlementSummary = useMemo(() => {
+    let rec = 0;
+    let pay = 0;
+    let disb = 0;
+    let maxDisb = 0;
+    let maxDisbDate = '-';
+    for (const p of settlementData) {
+      rec += p.receivable;
+      pay += p.payable;
+      disb += p.disbursed;
+      if (p.disbursed > maxDisb) {
+        maxDisb = p.disbursed;
+        maxDisbDate = p.date;
+      }
+    }
+    const netPos = rec - pay;
+    return { rec, pay, disb, maxDisb, maxDisbDate, netPos };
+  }, [settlementData]);
 
   return (
     <DashboardLayout title="Home">
@@ -289,12 +407,14 @@ export const DashboardPage: React.FC = () => {
                 <select
                   value={selectedOwner}
                   onChange={(e) => setSelectedOwner(e.target.value)}
-                  className="appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[200px]"
                 >
                   <option value="All Owner">All Owner</option>
-                  <option value="H. Amirudin">H. Amirudin</option>
-                  <option value="Rina Parahyangan">Rina Parahyangan</option>
-                  <option value="Ahmad Syahrul">Ahmad Syahrul</option>
+                  {ownerList.map((owner) => (
+                    <option key={owner} value={owner}>
+                      {owner}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
@@ -331,6 +451,30 @@ export const DashboardPage: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Empty State Banner when no transactions exist for the selected week */}
+        {!isLoading && !hasData && (
+          <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 flex items-center justify-between text-xs text-amber-900 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="font-bold text-amber-950">Belum ada data transaksi untuk rentang {currentWeekLabel}</p>
+                <p className="text-[11px] text-amber-700 mt-0.5">
+                  Data penjualan pada periode ini belum tercatat atau belum ditarik dari aplikasi ojol. Silakan pilih minggu lain atau klik Refresh Data.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold text-xs shrink-0 transition-colors"
+            >
+              Refresh Data
+            </button>
+          </div>
+        )}
 
         {/* ── Tabs Navigation: Prevents Endless Vertical Scrolling ── */}
         <div className="flex items-center gap-2 border-b border-[#EBEBEF] pb-1 overflow-x-auto">
@@ -408,9 +552,15 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-2">
                   <div>
-                    <div className="text-2xl font-bold text-slate-900 tabular-nums">152</div>
+                    {isLoading ? (
+                      <div className="h-7 w-20 bg-slate-200 animate-pulse rounded my-1" />
+                    ) : (
+                      <div className="text-2xl font-bold text-slate-900 tabular-nums">
+                        {formatNumber(dashboardKPI?.total_owner ?? 0)}
+                      </div>
+                    )}
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>▲ 8 vs last week</span>
+                      <span>▲ {dashboardKPI?.total_owner_change ?? 0} vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -439,9 +589,15 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-2">
                   <div>
-                    <div className="text-2xl font-bold text-slate-900 tabular-nums">1,285</div>
+                    {isLoading ? (
+                      <div className="h-7 w-20 bg-slate-200 animate-pulse rounded my-1" />
+                    ) : (
+                      <div className="text-2xl font-bold text-slate-900 tabular-nums">
+                        {formatNumber(dashboardKPI?.total_outlet ?? 0)}
+                      </div>
+                    )}
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>▲ 45 vs last week</span>
+                      <span>▲ {dashboardKPI?.total_outlet_change ?? 0} vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -470,9 +626,15 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-2">
                   <div>
-                    <div className="text-2xl font-bold text-slate-900 tabular-nums">3,620</div>
+                    {isLoading ? (
+                      <div className="h-7 w-20 bg-slate-200 animate-pulse rounded my-1" />
+                    ) : (
+                      <div className="text-2xl font-bold text-slate-900 tabular-nums">
+                        {formatNumber(dashboardKPI?.active_listings ?? 0)}
+                      </div>
+                    )}
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
-                      <span>▲ 112 vs last week</span>
+                      <span>▲ {dashboardKPI?.active_listings_change ?? 0} vs last week</span>
                     </div>
                   </div>
                   <div className="w-20 h-9 shrink-0">
@@ -503,7 +665,13 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-2">
                   <div>
-                    <div className="text-2xl font-bold text-slate-900 tabular-nums">128,230</div>
+                    {isLoading ? (
+                      <div className="h-7 w-20 bg-slate-200 animate-pulse rounded my-1" />
+                    ) : (
+                      <div className="text-2xl font-bold text-slate-900 tabular-nums">
+                        {formatNumber(dashboardKPI?.merchant_orders ?? 0)}
+                      </div>
+                    )}
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
                       <span>▲ 12.5% vs last week</span>
                     </div>
@@ -536,7 +704,13 @@ export const DashboardPage: React.FC = () => {
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-2">
                   <div>
-                    <div className="text-2xl font-bold text-slate-900 tabular-nums">96,540</div>
+                    {isLoading ? (
+                      <div className="h-7 w-20 bg-slate-200 animate-pulse rounded my-1" />
+                    ) : (
+                      <div className="text-2xl font-bold text-slate-900 tabular-nums">
+                        {formatNumber(dashboardKPI?.virtual_orders ?? 0)}
+                      </div>
+                    )}
                     <div className="text-[11px] font-semibold text-emerald-600 mt-0.5 flex items-center gap-1">
                       <span>▲ 15.3% vs last week</span>
                     </div>
@@ -583,11 +757,11 @@ export const DashboardPage: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1.5 text-xs">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
-                    <span className="font-medium text-slate-600">Merchant (57%)</span>
+                    <span className="font-medium text-slate-600">Merchant ({orderShare.mPct}%)</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#7C3AED]" />
-                    <span className="font-medium text-slate-600">Virtual (43%)</span>
+                    <span className="font-medium text-slate-600">Virtual ({orderShare.vPct}%)</span>
                   </div>
                 </div>
               </div>
@@ -596,18 +770,25 @@ export const DashboardPage: React.FC = () => {
               <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50/70 rounded-lg border border-slate-100 text-xs">
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Order {currentWeekLabel}</div>
-                  <div className="text-base font-bold text-slate-900 tabular-nums">224,770</div>
+                  <div className="text-base font-bold text-slate-900 tabular-nums">
+                    {isLoading ? '...' : formatNumber(orderShare.total)}
+                  </div>
                   <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">▲ 13.8% vs {prevWeekLabel}</div>
                 </div>
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase font-semibold">Order Tertinggi</div>
-                  <div className="text-base font-bold text-slate-900 tabular-nums">78,000 <span className="text-xs font-normal text-slate-500">/hari</span></div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Jumat (17 Mei)</div>
+                  <div className="text-base font-bold text-slate-900 tabular-nums">
+                    {isLoading ? '...' : formatNumber(highestOrderDay.count)}{' '}
+                    <span className="text-xs font-normal text-slate-500">/hari</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">{highestOrderDay.date}</div>
                 </div>
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase font-semibold">Porsi Virtual Brand</div>
-                  <div className="text-base font-bold text-purple-700 tabular-nums">42.9%</div>
-                  <div className="text-[10px] text-purple-600 font-medium mt-0.5">Naik +2.4%</div>
+                  <div className="text-base font-bold text-purple-700 tabular-nums">
+                    {isLoading ? '...' : `${orderShare.vPct}%`}
+                  </div>
+                  <div className="text-[10px] text-purple-600 font-medium mt-0.5">Kontribusi Portofolio</div>
                 </div>
               </div>
 
@@ -1013,7 +1194,7 @@ export const DashboardPage: React.FC = () => {
               <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                 <span className="text-[11px] font-medium text-slate-500">GMV</span>
                 <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
-                  Rp 3,210,560,000
+                  {isLoading ? '...' : formatCurrency(merchantSummary.gmv)}
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
                   <span>▲ 12.6%</span>
@@ -1023,7 +1204,7 @@ export const DashboardPage: React.FC = () => {
               <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                 <span className="text-[11px] font-medium text-slate-500">Biaya Platform (OFD)</span>
                 <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
-                  Rp 321,056,000
+                  {isLoading ? '...' : formatCurrency(merchantSummary.ofd)}
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
                   <span>▲ 11.8%</span>
@@ -1033,7 +1214,7 @@ export const DashboardPage: React.FC = () => {
               <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                 <span className="text-[11px] font-medium text-slate-500">Pendapatan Bersih</span>
                 <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
-                  Rp 289,876,000
+                  {isLoading ? '...' : formatCurrency(merchantSummary.rev)}
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
                   <span>▲ 10.3%</span>
@@ -1043,7 +1224,7 @@ export const DashboardPage: React.FC = () => {
               <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                 <span className="text-[11px] font-medium text-slate-500">Order Berhasil</span>
                 <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
-                  128,230
+                  {isLoading ? '...' : formatNumber(merchantSummary.succ)}
                 </div>
                 <div className="text-[11px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
                   <span>▲ 12.5%</span>
@@ -1053,7 +1234,7 @@ export const DashboardPage: React.FC = () => {
               <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                 <span className="text-[11px] font-medium text-slate-500">Order Batal</span>
                 <div className="text-sm font-bold text-slate-900 tabular-nums mt-0.5">
-                  7,230
+                  {isLoading ? '...' : formatNumber(merchantSummary.canc)}
                 </div>
                 <div className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-0.5">
                   <span>▼ -4.2%</span>
@@ -1297,7 +1478,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                   <span className="text-[11px] font-medium text-slate-500">GMV</span>
                   <div className="text-xs font-bold text-slate-900 tabular-nums mt-0.5">
-                    Rp 2,124,450,000
+                    {isLoading ? '...' : formatCurrency(virtualSummary.gmv)}
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
                     ▲ 14.2%
@@ -1307,7 +1488,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                   <span className="text-[11px] font-medium text-slate-500">Biaya Platform (OFD)</span>
                   <div className="text-xs font-bold text-slate-900 tabular-nums mt-0.5">
-                    Rp 212,445,000
+                    {isLoading ? '...' : formatCurrency(virtualSummary.ofd)}
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
                     ▲ 13.1%
@@ -1317,7 +1498,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                   <span className="text-[11px] font-medium text-slate-500">Pendapatan Bersih</span>
                   <div className="text-xs font-bold text-slate-900 tabular-nums mt-0.5">
-                    Rp 403,980,000
+                    {isLoading ? '...' : formatCurrency(virtualSummary.rev)}
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
                     ▲ 16.7%
@@ -1327,7 +1508,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                   <span className="text-[11px] font-medium text-slate-500">Biaya Bahan (COGS)</span>
                   <div className="text-xs font-bold text-slate-900 tabular-nums mt-0.5">
-                    Rp 1,478,430,000
+                    {isLoading ? '...' : formatCurrency(virtualSummary.cogs)}
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
                     ▲ 13.9%
@@ -1337,7 +1518,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="border border-purple-100 rounded-xl p-3 bg-purple-50/40 hover:border-purple-200 transition-colors">
                   <span className="text-[11px] font-medium text-purple-700">Margin Kotor</span>
                   <div className="text-xs font-bold text-purple-900 tabular-nums mt-0.5">
-                    Rp 646,020,000 (30.4%)
+                    {isLoading ? '...' : `${formatCurrency(virtualSummary.margin)} (${virtualSummary.marginPct}%)`}
                   </div>
                   <div className="text-[11px] font-semibold text-purple-700 mt-1">
                     ▲ 18.6%
@@ -1347,7 +1528,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                   <span className="text-[11px] font-medium text-slate-500">Order Berhasil</span>
                   <div className="text-xs font-bold text-slate-900 tabular-nums mt-0.5">
-                    96,540
+                    {isLoading ? '...' : formatNumber(virtualSummary.succ)}
                   </div>
                   <div className="text-[11px] font-semibold text-emerald-600 mt-1">
                     ▲ 15.3%
@@ -1357,7 +1538,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 hover:border-slate-200 transition-colors">
                   <span className="text-[11px] font-medium text-slate-500">Order Batal</span>
                   <div className="text-xs font-bold text-slate-900 tabular-nums mt-0.5">
-                    5,230
+                    {isLoading ? '...' : formatNumber(virtualSummary.canc)}
                   </div>
                   <div className="text-[11px] font-semibold text-rose-600 mt-1">
                     ▼ -2.1%
@@ -1622,47 +1803,53 @@ export const DashboardPage: React.FC = () => {
 
                   {/* Brand ranking horizontal bars */}
                   <div className="space-y-3.5 pt-1">
-                    {topVirtualBrands.map((brand, idx) => (
-                      <div key={brand.name} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1.5 truncate pr-2">
-                            <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-600 font-bold text-[10px] flex items-center justify-center shrink-0">
-                              {idx + 1}
-                            </span>
-                            <span className="font-semibold text-slate-800 truncate" title={brand.name}>
-                              {brand.name}
+                    {topVirtualBrands.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-slate-400">
+                        {isLoading ? 'Memuat peringkat brand...' : 'Belum ada data brand untuk periode ini'}
+                      </div>
+                    ) : (
+                      topVirtualBrands.map((brand, idx) => (
+                        <div key={brand.name} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 truncate pr-2">
+                              <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-600 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                {idx + 1}
+                              </span>
+                              <span className="font-semibold text-slate-800 truncate" title={brand.name}>
+                                {brand.name}
+                              </span>
+                            </div>
+                            <span className="font-bold text-slate-900 shrink-0 tabular-nums">
+                              {brand.share}%
                             </span>
                           </div>
-                          <span className="font-bold text-slate-900 shrink-0 tabular-nums">
-                            {brand.share}%
-                          </span>
-                        </div>
 
-                        {/* Progress track */}
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full animate-bar-slide ${
-                              idx === 0 ? 'bg-purple-600' : idx === 1 ? 'bg-indigo-500' : 'bg-slate-400'
-                            }`}
-                            style={{
-                              width: `${brand.share * 2.5}%`,
-                              animationDelay: `${idx * 120}ms`
-                            }}
-                          />
-                        </div>
+                          {/* Progress track */}
+                          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full animate-bar-slide ${
+                                idx === 0 ? 'bg-purple-600' : idx === 1 ? 'bg-indigo-500' : 'bg-slate-400'
+                              }`}
+                              style={{
+                                width: `${Math.min(100, brand.share * 2.5)}%`,
+                                animationDelay: `${idx * 120}ms`
+                              }}
+                            />
+                          </div>
 
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
-                          <span>{formatCurrency(brand.gmv)}</span>
-                          <span className="text-emerald-600 font-semibold">{brand.growth}</span>
+                          <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                            <span>{formatCurrency(brand.gmv)}</span>
+                            <span className="text-emerald-600 font-semibold">{brand.growth}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500">Total Brand Virtual</span>
-                  <span className="font-semibold text-purple-700">12 Brand Aktif</span>
+                  <span className="text-slate-500">Total Brand Teratas</span>
+                  <span className="font-semibold text-purple-700">{topVirtualBrands.length} Brand Aktif</span>
                 </div>
               </div>
             </div>
@@ -1713,17 +1900,24 @@ export const DashboardPage: React.FC = () => {
                 <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50/70 rounded-lg border border-slate-100 text-xs">
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Perputaran Dana</div>
-                    <div className="text-base font-bold text-slate-900 tabular-nums">Rp 3,12 Miliar</div>
+                    <div className="text-base font-bold text-slate-900 tabular-nums">
+                      {isLoading ? '...' : formatCurrency(settlementSummary.rec + settlementSummary.pay)}
+                    </div>
                     <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">▲ 8.4% vs {prevWeekLabel}</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Pencairan Tertinggi</div>
-                    <div className="text-base font-bold text-slate-900 tabular-nums">Rp 228 Juta <span className="text-xs font-normal text-slate-500">/hari</span></div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Jumat (17 Mei)</div>
+                    <div className="text-base font-bold text-slate-900 tabular-nums">
+                      {isLoading ? '...' : formatCurrency(settlementSummary.maxDisb)}{' '}
+                      <span className="text-xs font-normal text-slate-500">/hari</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{settlementSummary.maxDisbDate}</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-500 uppercase font-semibold">Posisi Kas Bersih</div>
-                    <div className="text-base font-bold text-rose-600 tabular-nums">-Rp 631 Juta</div>
+                    <div className="text-base font-bold text-slate-900 tabular-nums">
+                      {isLoading ? '...' : `${settlementSummary.netPos >= 0 ? '+' : ''}${formatCurrency(settlementSummary.netPos)}`}
+                    </div>
                     <div className="text-[10px] text-slate-500 font-medium mt-0.5">Net Settlement {currentWeekLabel}</div>
                   </div>
                 </div>
