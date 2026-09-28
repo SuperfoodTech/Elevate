@@ -49,6 +49,43 @@ def normalisasi_nomor_hp(nomor_hp):
     return nomor_hp
 
 
+def _session_cache_path(identifier: str) -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    sessions_dir = os.path.join(base_dir, 'sessions')
+    os.makedirs(sessions_dir, exist_ok=True)
+    safe_id = re.sub(r'[^a-zA-Z0-9@._-]', '_', identifier)
+    return os.path.join(sessions_dir, f"{safe_id}.json")
+
+
+def _load_session_token(identifier: str) -> str:
+    path = _session_cache_path(identifier)
+    if not os.path.exists(path):
+        return ''
+    try:
+        with open(path, 'r') as f:
+            data = json.load(f)
+        return data.get('token', '')
+    except Exception:
+        return ''
+
+
+def _save_session_token(identifier: str, token: str, meta: dict = None):
+    path = _session_cache_path(identifier)
+    data = {
+        'token': token,
+        'saved_at': time.time(),
+        'ttl': 0,
+    }
+    if meta:
+        data.update(meta)
+    try:
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Gagal menyimpan session cache '{identifier}': {e}")
+
+
+
 def fetch_gofood_outlets():
     """
     Mengambil semua outlet GoFood Live dari master Google Sheet.
@@ -601,8 +638,20 @@ def main():
         print("Tidak ada outlet GoFood dengan email kredensial yang tersedia.")
         return
 
-    # Cek token yang sudah ada di .env
+    # Cek token yang sudah ada (dari session cache dan fallback .env)
     existing_tokens = {}
+    sessions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sessions')
+    if os.path.exists(sessions_dir):
+        for fname in os.listdir(sessions_dir):
+            if fname.endswith('.json'):
+                ident = fname[:-5]
+                tok = _load_session_token(ident)
+                if tok:
+                    existing_tokens[ident] = True
+                    norm_id = normalisasi_nomor_hp(ident)
+                    if norm_id:
+                        existing_tokens[norm_id] = True
+
     for key, value in os.environ.items():
         if key.startswith('BEARER_TOKEN_') and value:
             suffix = key[len('BEARER_TOKEN_'):]
@@ -679,38 +728,25 @@ def main():
             token = result['access_token']
             phone_norm = normalisasi_nomor_hp(outlet['phone'])
             sanitized_name = re.sub(r'[^a-zA-Z0-9]', '', outlet['nama_outlet'])
-            suffix = f"_{phone_norm}_{sanitized_name}"
+            
+            # Simpan ke session JSON cache (bersih dan terstruktur)
+            meta_info = {
+                'nama_outlet': outlet['nama_outlet'],
+                'cabang': outlet.get('cabang', ''),
+                'store_id': outlet.get('store_id', '')
+            }
+            if phone_norm:
+                _save_session_token(phone_norm, token, meta=meta_info)
+            for em in outlet.get('emails', [outlet.get('email')]):
+                if em:
+                    _save_session_token(em.strip().lower(), token, meta=meta_info)
 
-            # Simpan ke .env (gofood/.env dan parent src/.env)
-            target_envs = [env_path]
-            if os.path.exists(parent_env) and parent_env != env_path:
-                target_envs.append(parent_env)
+            # Set aktif di runtime os.environ tanpa menulis ratusan baris ke .env
+            os.environ['BEARER_TOKEN'] = token
+            if phone_norm:
+                os.environ['ACTIVE_NOMOR_HP'] = phone_norm
 
-            for target_env in target_envs:
-                try:
-                    set_key(target_env, "BEARER_TOKEN", token)
-                    set_key(target_env, f"BEARER_TOKEN{suffix}", token)
-                    set_key(target_env, "ACTIVE_NOMOR_HP", phone_norm)
-                    set_key(target_env, f"NAMA_OUTLET{suffix}", outlet['nama_outlet'])
-                    if outlet['cabang']:
-                        set_key(target_env, f"CABANG{suffix}", outlet['cabang'])
-                    if outlet['store_id']:
-                        set_key(target_env, f"STORE_ID{suffix}", outlet['store_id'])
-
-                    # Simpan juga untuk setiap email outlet
-                    for em in outlet.get('emails', [outlet.get('email')]):
-                        if em and em != phone_norm:
-                            em_suffix = f"_{em.strip().lower()}_{sanitized_name}"
-                            set_key(target_env, f"BEARER_TOKEN{em_suffix}", token)
-                            set_key(target_env, f"NAMA_OUTLET{em_suffix}", outlet['nama_outlet'])
-                            if outlet['cabang']:
-                                set_key(target_env, f"CABANG{em_suffix}", outlet['cabang'])
-                            if outlet['store_id']:
-                                set_key(target_env, f"STORE_ID{em_suffix}", outlet['store_id'])
-                except Exception as e:
-                    print(f"   Gagal simpan ke {target_env}: {e}")
-
-            print(f"   Token disimpan: BEARER_TOKEN{suffix}")
+            print(f"   Token berhasil disimpan ke session cache ({outlet['nama_outlet']})")
             success_count += 1
 
             # Dump session JSON
@@ -741,7 +777,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"  SELESAI: {success_count}/{len(selected)} outlet berhasil login.")
     print(f"{'='*60}")
-    print(f"\n  Jalankan 'python src/gofood/gofood.py' untuk menarik data analytics.")
+    print(f"\n  Jalankan 'python backend/gofood/gofood.py' untuk menarik data analytics.")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,31 @@ def is_email(s):
     return "@" in (s or "")
 
 
+def _session_cache_path(identifier: str) -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    sessions_dir = os.path.join(base_dir, 'sessions')
+    os.makedirs(sessions_dir, exist_ok=True)
+    safe_id = re.sub(r'[^a-zA-Z0-9@._-]', '_', identifier)
+    return os.path.join(sessions_dir, f"{safe_id}.json")
+
+
+def _save_session_token(identifier: str, token: str, meta: dict = None):
+    path = _session_cache_path(identifier)
+    data = {
+        'token': token,
+        'saved_at': time.time(),
+        'ttl': 0,
+    }
+    if meta:
+        data.update(meta)
+    try:
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Gagal menyimpan session cache '{identifier}': {e}")
+
+
+
 def check_headless_mode():
     """
     Mengecek mode headless dari berkas config.json atau variabel lingkungan .env
@@ -498,16 +523,15 @@ if __name__ == "__main__":
         token = login_dan_ambil_sesi(nomor, nama_resto_final=nama_resto_final, mode_otp=pilihan_mode, otp_endpoint_url=endpoint_otp)
             
         if token:
-            env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
-            sanitized_resto_name = re.sub(r'[^a-zA-Z0-9]', '', nama_resto_final or nama)
-            suffix = f"_{nomor}_{sanitized_resto_name}"
-            set_key(env_path, "BEARER_TOKEN", token)
-            set_key(env_path, f"BEARER_TOKEN{suffix}", token)
-            set_key(env_path, "ACTIVE_NOMOR_HP", nomor)
-            if nama: set_key(env_path, f"NAMA_OUTLET{suffix}", str(nama))
-            if cabang: set_key(env_path, f"CABANG{suffix}", str(cabang))
-            print(f"✅ Login sukses untuk {nama}. BEARER_TOKEN disimpan di .env.")
+            _save_session_token(nomor, token, meta={
+                'nama_outlet': nama,
+                'cabang': cabang,
+                'store_id': ''
+            })
+            os.environ["BEARER_TOKEN"] = token
+            os.environ["ACTIVE_NOMOR_HP"] = nomor
+            print(f"Login sukses untuk {nama}. Sesi disimpan di cache sessions/.")
         else:
-            print(f"\n⚠️ Login gagal untuk {nama} ({nomor}).")
+            print(f"\nLogin gagal untuk {nama} ({nomor}).")
 
     print("\n✅ Proses login selesai.")

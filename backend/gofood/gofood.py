@@ -30,10 +30,28 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+_curr_dir = Path(__file__).resolve().parent
+_backend_dir = _curr_dir.parent
+_project_root = _backend_dir.parent
+_src_dir = _project_root / "src"
+
+for _p in [_backend_dir, _src_dir, _project_root]:
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
 from discord_notifier import send_discord_error
 from config import get_sheet_url
 
+_gofood_dir = os.path.dirname(os.path.abspath(__file__))
+_gofood_env = os.path.join(_gofood_dir, '.env')
+_parent_env = os.path.join(os.path.dirname(_gofood_dir), '.env')
+_src_env = os.path.join(str(_src_dir), '.env')
+if os.path.exists(_src_env):
+    load_dotenv(_src_env, override=True)
+if os.path.exists(_parent_env):
+    load_dotenv(_parent_env, override=True)
+if os.path.exists(_gofood_env):
+    load_dotenv(_gofood_env, override=True)
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -42,15 +60,6 @@ from rich.status import Status
 from rich.text import Text
 from rich.columns import Columns
 from rich.theme import Theme
-
-_gofood_dir = os.path.dirname(os.path.abspath(__file__))
-_gofood_env = os.path.join(_gofood_dir, '.env')
-_parent_env = os.path.join(os.path.dirname(_gofood_dir), '.env')
-if os.path.exists(_parent_env):
-    load_dotenv(_parent_env, override=True)
-if os.path.exists(_gofood_env):
-    load_dotenv(_gofood_env, override=True)
-load_dotenv(override=True)
 
 # Initialize Rich Console
 custom_theme = Theme({
@@ -148,17 +157,19 @@ def fetch_csv_rows(url):
 
 def fetch_gofood_accounts_from_sheet(task="2"):
     """
-    Mengambil daftar akun GoFood dari master Google Sheet yang sama
-    dengan yang digunakan Grab & Shopee di cli.py.
-    Filter: Aplikasi=GoFood (case-insensitive), Status=Live.
-    Mengembalikan list of dict:
-      {
-        'phone'     : str,   # kolom AA (index 26) — nomor HP / email login
-        'nama_outlet': str,
-        'cabang'    : str,
-        'store_id'  : str,   # kolom "Store ID" / "Merchant ID"
-      }
+    Mengambil daftar akun GoFood dari Master DBR (Database Record).
+    Filter: Aplikator=GoFood, Status Internal=Live.
     """
+    if task == "2":
+        try:
+            from core.dbr_resolver import get_gofood_accounts
+            accounts = get_gofood_accounts(task=task)
+            if accounts:
+                console.print(f"[success]Resolved {len(accounts)} GoFood accounts from Master DBR[/success]")
+                return accounts
+        except Exception as e:
+            console.print(f"[warning]DBR Resolver warning ({e}), falling back to direct sheet...[/warning]")
+
     url = SHEET_PUBLISHED_URL
     if task == "1":
         url = get_sheet_url("gofood_baseline_list")
@@ -386,31 +397,39 @@ def build_sheet_mapping(rows):
     cabang_idx = None
     aplikasi_idx = None
     status_idx = None
+    phone_idx = None
+    email_idx = None
+
     for i, h in enumerate(header):
         if not h:
             continue
         hl = h.strip().lower()
         if 'cabang' in hl or 'brand' in hl:
             cabang_idx = i
-        if 'aplikasi' in hl:
+        if 'aplikasi' in hl or 'aplikator' in hl:
             aplikasi_idx = i
-        if hl == 'status' or ' status' in hl or hl.startswith('status'):
+        if hl in ('status', 'status internal') or 'status' in hl:
             status_idx = i
+        if hl in ('nomor hp', 'phone', 'no hp', 'handphone'):
+            phone_idx = i
+        if hl in ('email foodmaster1', 'email login go 1', 'email go 1', 'email foodmaster', 'email 1'):
+            email_idx = i
         # prefer exact "store id" match, then look for "store" or "merchant"
         if hl == 'store id' or hl == 'store_id':
             store_idx_candidates.insert(0, i)
         elif any(x in hl for x in ('store', 'merchant')) and hl not in ['merchant id', 'merchant_id', 'merchant name']:
             store_idx_candidates.append(i)
 
+    if phone_idx is None:
+        phone_idx = 26
+    if email_idx is None:
+        email_idx = 24
+
     for r in rows[1:]:
-        if len(r) <= aa_idx:
-            continue
+        email_val = r[email_idx].strip() if len(r) > email_idx else ""
+        phone_val = r[phone_idx].strip() if len(r) > phone_idx else ""
         
-        # Mendapatkan email dari kolom Y (index 24) dan nomor HP dari kolom AA (index 26)
-        email_val = r[24].strip() if len(r) > 24 else ""
-        phone_val = r[26].strip() if len(r) > 26 else ""
-        
-        # Jika kolom Y berisi email valid, gunakan email tersebut sebagai key pencocokan
+        # Jika kolom email berisi email valid, gunakan email tersebut sebagai key pencocokan
         key = normalize_phone(email_val) if "@" in email_val else normalize_phone(phone_val)
         if not key:
             continue
@@ -425,7 +444,7 @@ def build_sheet_mapping(rows):
         aplikasi_val = ''
         if aplikasi_idx is not None and len(r) > aplikasi_idx:
             aplikasi_val = (r[aplikasi_idx] or '').strip().lower()
-        if aplikasi_idx is not None and aplikasi_val and aplikasi_val != 'gofood':
+        if aplikasi_idx is not None and aplikasi_val and 'gofood' not in aplikasi_val:
             continue
 
         status_val = ''
@@ -1695,8 +1714,25 @@ if __name__ == "__main__":
             if (not phone_norm or phone_norm == "-") and acc.get('email'):
                 phone_norm = normalize_phone(acc['email'])
                 
-            # Cari token yang cocok
-            token = token_map.get(phone_norm, '')
+            # Cari token yang cocok (prioritas: session cache JSON, lalu token_map .env)
+            session_candidates = []
+            if acc.get('email'):
+                session_candidates.append(acc['email'].strip().lower())
+            for em_c in acc.get('emails', []):
+                if em_c and em_c.strip().lower() not in session_candidates:
+                    session_candidates.append(em_c.strip().lower())
+            if phone_norm and phone_norm not in session_candidates:
+                session_candidates.append(phone_norm)
+
+            token = ''
+            for sc in session_candidates:
+                tok_cached = _load_session_token(sc)
+                if tok_cached:
+                    token = tok_cached
+                    break
+
+            if not token:
+                token = token_map.get(phone_norm, '')
             # Coba cari token via email dari Kolom Y dan Kolom Z
             if not token:
                 for em_candidate in acc.get('emails', []):
@@ -1869,37 +1905,15 @@ if __name__ == "__main__":
                 token = new_token
                 token_valid = True
 
-                # Simpan token baru ke .env
-                sanitized_resto_name = re.sub(r'[^a-zA-Z0-9]', '', cabang or nama_outlet)
-                suffix = f"_{phone}_{sanitized_resto_name}"
-                os.environ['BEARER_TOKEN'] = token  # backward compat
-                target_envs = [env_path]
-                if os.path.exists(_parent_env) and _parent_env != env_path:
-                    target_envs.append(_parent_env)
-
-                env_lock = _FileLock(f"{env_path}.lock", timeout=15)
-                with env_lock:
-                    for t_env in target_envs:
-                        set_key(t_env, f"BEARER_TOKEN{suffix}", token)
-                        set_key(t_env, f"NAMA_OUTLET{suffix}", str(nama_outlet))
-                        set_key(t_env, f"CABANG{suffix}", str(cabang))
-                        set_key(t_env, f"STORE_ID{suffix}", str(store_id))
-                        for em in acc.get('emails', []):
-                            if em and em != phone:
-                                em_suffix = f"_{em.strip().lower()}_{sanitized_resto_name}"
-                                set_key(t_env, f"BEARER_TOKEN{em_suffix}", token)
-                                set_key(t_env, f"NAMA_OUTLET{em_suffix}", str(nama_outlet))
-                                set_key(t_env, f"CABANG{em_suffix}", str(cabang))
-                                set_key(t_env, f"STORE_ID{em_suffix}", str(store_id))
-
-                # Simpan juga ke session JSON cache
+                # Simpan token baru ke session JSON cache (bersih & modular)
+                os.environ['BEARER_TOKEN'] = token  # backward compat di runtime
                 _save_session_token(session_id, token, meta={
                     'nama_outlet': nama_outlet,
                     'cabang': cabang,
                     'store_id': store_id,
                 })
 
-                console.print(f"[success]Token berhasil ditangkap dan disimpan ke .env + session cache untuk {nama_outlet}.[/success]")
+                console.print(f"[success]Token berhasil ditangkap dan disimpan ke session cache untuk {nama_outlet}.[/success]")
 
                 # Update token untuk akun dengan email/phone yang sama agar tidak login ulang
                 for other_acc in resolved_accounts:
@@ -1973,12 +1987,11 @@ if __name__ == "__main__":
                             })
                             
                             if t_id:
-                                sanitized_resto_name = re.sub(r'[^a-zA-Z0-9]', '', t_cabang or t_nama)
-                                suffix = f"_{phone}_{sanitized_resto_name}"
-                                env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
-                                env_lock = _FileLock(f"{env_path}.lock", timeout=15)
-                                with env_lock:
-                                    set_key(env_path, f"STORE_ID{suffix}", str(t_id))
+                                _save_session_token(session_id, token, meta={
+                                    'nama_outlet': resolved_nama,
+                                    'cabang': t_cabang,
+                                    'store_id': str(t_id)
+                                })
                 else:
                     console.print(f"[warning]⚠️ API GoBiz merespons dengan HTTP {resp_search.status_code}[/warning]")
             except Exception as e:
