@@ -9,8 +9,8 @@ WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwQHzEy_cNW_N81YwSKcnZrgW
 # Nama sheet tujuan di Google Sheet
 SHEET_NAME = 'Gofood'
 
-# Path folder laporan GoFood (relatif terhadap lokasi file ini)
-RAW_BASE_DIR = os.path.join(os.path.dirname(__file__), '..', 'laporan', 'gofood')
+# Path folder data mentah GoFood (relatif terhadap lokasi file ini)
+RAW_BASE_DIR = os.path.join(os.path.dirname(__file__), '..', 'data_raw', 'gofood')
 
 # Urutan kolom yang dikirim ke GSheet (harus sesuai header di sheet GAS)
 # GAS auto-buat header: Tanggal | Outlet Name | Store ID | Penjualan Kotor |

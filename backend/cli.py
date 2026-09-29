@@ -121,7 +121,7 @@ def _resolve_python_executable() -> str:
 
 def _resolve_output_dir(platform_name: str, start_date: str, end_date: str) -> str:
     base = os.path.dirname(os.path.abspath(__file__))
-    folder_type = "data_raw" if platform_name in ("grab", "shopee") else "laporan"
+    folder_type = "data_raw"
     out = os.path.join(base, folder_type, platform_name, f"{start_date}_to_{end_date}")
     os.makedirs(out, exist_ok=True)
     return out

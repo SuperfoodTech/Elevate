@@ -1453,7 +1453,7 @@ def ambil_data_analytics(write_header=True, start_date=None, end_date=None, retu
     if GLOBAL_OUTPUT_DIR:
         raw_gofood_dir = GLOBAL_OUTPUT_DIR
     else:
-        raw_gofood_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'laporan', 'gofood', date_folder)
+        raw_gofood_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data_raw', 'gofood', date_folder)
     os.makedirs(raw_gofood_dir, exist_ok=True)
     
     base_raw_excel_filename = os.path.join(raw_gofood_dir, f"{safe_outlet}.xlsx")
@@ -2078,7 +2078,7 @@ if __name__ == "__main__":
     if GLOBAL_OUTPUT_DIR:
         report_dir = GLOBAL_OUTPUT_DIR
     else:
-        report_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'laporan', 'gofood', date_folder)
+        report_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data_raw', 'gofood', date_folder)
 
     os.makedirs(report_dir, exist_ok=True)
     console.print("[PROGRESS] PHASE: Aggregating GoFood data into JSON and 0Master.xlsx...")
