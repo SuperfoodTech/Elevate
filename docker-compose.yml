@@ -22,7 +22,28 @@ services:
     networks:
       - elevate_net
 
-  # Backend REST API Service (FastAPI)
+  # Message Broker Service (RabbitMQ)
+  elevate_rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: elevate_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: elevate_mq
+      RABBITMQ_DEFAULT_PASS: superfood_rabbit_pass_2026
+    ports:
+      # Bound to loopback interface for local management UI / Tailscale
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - elevate_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend REST API Service (FastAPI) - Ingestion & Query Serving
   elevate_backend:
     build:
       context: .
@@ -32,6 +53,8 @@ services:
     depends_on:
       elevate_db:
         condition: service_healthy
+      elevate_rabbitmq:
+        condition: service_healthy
     environment:
       DB_HOST: elevate_db
       DB_PORT: 5432
@@ -39,8 +62,39 @@ services:
       DB_USERNAME: elevate_admin
       DB_PASSWORD: superfood_elevate_secret_pass
       SSL_MODE: disable
+      RABBITMQ_HOST: elevate_rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: elevate_mq
+      RABBITMQ_PASS: superfood_rabbit_pass_2026
     ports:
       - "127.0.0.1:8000:8000"
+    networks:
+      - elevate_net
+
+  # Background Asynchronous ETL Worker Service
+  elevate_etl_worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: elevate_etl_worker
+    restart: unless-stopped
+    command: ["uv", "run", "python", "-u", "core/etl_worker.py"]
+    depends_on:
+      elevate_db:
+        condition: service_healthy
+      elevate_rabbitmq:
+        condition: service_healthy
+    environment:
+      DB_HOST: elevate_db
+      DB_PORT: 5432
+      DB_NAME: elevate_db
+      DB_USERNAME: elevate_admin
+      DB_PASSWORD: superfood_elevate_secret_pass
+      SSL_MODE: disable
+      RABBITMQ_HOST: elevate_rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: elevate_mq
+      RABBITMQ_PASS: superfood_rabbit_pass_2026
     networks:
       - elevate_net
 
@@ -65,3 +119,4 @@ networks:
 
 volumes:
   postgres_data:
+  rabbitmq_data:

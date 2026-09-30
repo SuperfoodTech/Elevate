@@ -38,7 +38,7 @@ def refresh_agency_settlement_views() -> None:
     with db_manager.engine.begin() as conn:
         conn.execute(text("SELECT layer3_dim.refresh_agency_settlements()"))
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, status, Depends, File, UploadFile, Form
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, status, Depends, File, UploadFile, Form, Response
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -127,6 +127,19 @@ class OFDBatchIngestRequest(BaseModel):
     auto_process: bool = Field(True, description="Automatically trigger Layer 2, Layer 3, and view refresh")
     records: List[Dict[str, Any]] = Field(..., description="Array of raw transaction objects")
     items: Optional[List[Dict[str, Any]]] = Field(None, description="Array of line-item objects (used for GoFood items)")
+
+
+class OFDOutletStreamRequest(BaseModel):
+    platform: Literal["grab", "shopee", "gofood"] = Field(..., description="Target OFD platform (grab, shopee, or gofood)")
+    store_id: str = Field(..., description="Store ID or merchant ID")
+    outlet_name: Optional[str] = Field(None, description="Name of the outlet")
+    branch_name: Optional[str] = Field(None, description="Branch or brand name")
+    start_date: str = Field(..., description="Start date (YYYY-MM-DD)")
+    end_date: str = Field(..., description="End date (YYYY-MM-DD)")
+    records: List[Dict[str, Any]] = Field(..., description="Array of raw transaction objects for this store")
+    items: Optional[List[Dict[str, Any]]] = Field(None, description="Array of menu item objects (e.g. GoFood line items)")
+    idempotency_key: Optional[str] = Field(None, description="Deterministic SHA256 key to prevent duplicate processing")
+    worker_id: Optional[str] = Field("server_b", description="Identifier of the scraping worker server")
 
 
 class JobResponse(BaseModel):
@@ -391,6 +404,177 @@ def ingest_ofd_batch(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Batch pipeline execution failed: {e}"
         )
+
+
+@app.post("/api/v1/ingest/ofd/outlet", status_code=status.HTTP_202_ACCEPTED, summary="Fast ACK Stream Ingest for Single Outlet (Tailscale Protected)")
+def ingest_ofd_outlet_stream(
+    req: OFDOutletStreamRequest,
+    response: Response,
+    _auth: str = Depends(verify_ingest_api_key)
+):
+    """
+    Receives JSON transaction records for a single store from Server B.
+    Performs fast validation, idempotency check, persists raw stream payload,
+    publishes an event to RabbitMQ, and returns a Fast ACK (202 Accepted) in <50ms.
+    """
+    import hashlib
+    import json
+
+    if not req.records:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payload contains no records in 'records' list."
+        )
+
+    # Deterministic SHA-256 idempotency key
+    raw_key = req.idempotency_key or f"{req.platform.lower()}:{req.store_id.strip()}:{req.start_date}:{req.end_date}:{len(req.records)}"
+    idempotency_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+    # 1. Check idempotency & save raw stream payload in database
+    payload_id = None
+    try:
+        with db_manager.engine.begin() as conn:
+            is_postgres = "postgres" in db_manager.engine.dialect.name
+            if is_postgres:
+                conn.execute(text("CREATE SCHEMA IF NOT EXISTS layer1_raw;"))
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS layer1_raw.raw_stream_payloads (
+                        id SERIAL PRIMARY KEY,
+                        idempotency_key TEXT UNIQUE NOT NULL,
+                        platform TEXT NOT NULL,
+                        store_id TEXT NOT NULL,
+                        outlet_name TEXT,
+                        branch_name TEXT,
+                        start_date DATE NOT NULL,
+                        end_date DATE NOT NULL,
+                        record_count INTEGER NOT NULL,
+                        raw_payload JSONB NOT NULL,
+                        status TEXT DEFAULT 'RECEIVED',
+                        error_message TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        processed_at TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_stream_payloads_status ON layer1_raw.raw_stream_payloads(status);
+                """))
+            else:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS raw_stream_payloads (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        idempotency_key TEXT UNIQUE NOT NULL,
+                        platform TEXT NOT NULL,
+                        store_id TEXT NOT NULL,
+                        outlet_name TEXT,
+                        branch_name TEXT,
+                        start_date TEXT NOT NULL,
+                        end_date TEXT NOT NULL,
+                        record_count INTEGER NOT NULL,
+                        raw_payload TEXT NOT NULL,
+                        status TEXT DEFAULT 'RECEIVED',
+                        error_message TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        processed_at TIMESTAMP
+                    );
+                """))
+
+            tbl_name = "layer1_raw.raw_stream_payloads" if is_postgres else "raw_stream_payloads"
+            existing = conn.execute(
+                text(f"SELECT id, status FROM {tbl_name} WHERE idempotency_key = :k"),
+                {"k": idempotency_key}
+            ).fetchone()
+
+            if existing:
+                response.status_code = status.HTTP_200_OK
+                return {
+                    "status": "already_received",
+                    "payload_id": existing[0],
+                    "stream_status": existing[1],
+                    "idempotency_key": idempotency_key,
+                    "message": "Payload was previously received and is either queued or processed."
+                }
+
+            payload_dict = req.model_dump()
+            payload_json = json.dumps(payload_dict, ensure_ascii=False)
+
+            if is_postgres:
+                insert_res = conn.execute(text(f"""
+                    INSERT INTO {tbl_name} (
+                        idempotency_key, platform, store_id, outlet_name, branch_name,
+                        start_date, end_date, record_count, raw_payload, status
+                    ) VALUES (
+                        :k, :p, :s, :o, :b, CAST(:sd AS DATE), CAST(:ed AS DATE), :rc, CAST(:rp AS JSONB), 'RECEIVED'
+                    ) RETURNING id;
+                """), {
+                    "k": idempotency_key,
+                    "p": req.platform,
+                    "s": req.store_id,
+                    "o": req.outlet_name,
+                    "b": req.branch_name,
+                    "sd": req.start_date,
+                    "ed": req.end_date,
+                    "rc": len(req.records),
+                    "rp": payload_json
+                })
+                payload_id = insert_res.scalar()
+            else:
+                insert_res = conn.execute(text(f"""
+                    INSERT INTO {tbl_name} (
+                        idempotency_key, platform, store_id, outlet_name, branch_name,
+                        start_date, end_date, record_count, raw_payload, status
+                    ) VALUES (
+                        :k, :p, :s, :o, :b, :sd, :ed, :rc, :rp, 'RECEIVED'
+                    )
+                """), {
+                    "k": idempotency_key,
+                    "p": req.platform,
+                    "s": req.store_id,
+                    "o": req.outlet_name,
+                    "b": req.branch_name,
+                    "sd": req.start_date,
+                    "ed": req.end_date,
+                    "rc": len(req.records),
+                    "rp": payload_json
+                })
+                payload_id = insert_res.lastrowid
+    except Exception as db_err:
+        log.error(f"Failed to persist raw stream payload to database: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database storage service temporarily unavailable: {db_err}"
+        )
+
+    # 2. Publish event to RabbitMQ
+    event_data = {
+        "payload_id": payload_id,
+        "idempotency_key": idempotency_key,
+        "platform": req.platform,
+        "store_id": req.store_id,
+        "outlet_name": req.outlet_name,
+        "branch_name": req.branch_name,
+        "start_date": req.start_date,
+        "end_date": req.end_date,
+        "record_count": len(req.records),
+        "records": req.records,
+        "items": req.items or []
+    }
+
+    try:
+        from backend.core.queue_client import publish_ingest_event
+    except ImportError:
+        from core.queue_client import publish_ingest_event
+
+    queued = publish_ingest_event(event_data)
+
+    # 3. Return Fast ACK immediately
+    return {
+        "status": "accepted",
+        "payload_id": payload_id,
+        "idempotency_key": idempotency_key,
+        "platform": req.platform,
+        "store_id": req.store_id,
+        "records_received": len(req.records),
+        "queued_to_broker": queued,
+        "received_at": datetime.utcnow().isoformat()
+    }
 
 
 @app.post("/api/v1/ingest/ofd/upload", summary="Upload OFD Excel/CSV File & Ingest from Remote Worker (Tailscale)")
