@@ -199,6 +199,11 @@ def run_test_suite():
     # TEST 1: Live Stream Ingestion (Fast ACK HTTP 202)
     # =========================================================================
     print("\n--- TEST 1: Live Stream Ingestion (Fast ACK HTTP 202) ---")
+    import hashlib
+    test_run_key = hashlib.sha256(
+        f"gofood:{store_id}:{test_date_start}:{test_date_end}:{len(sim_records)}:{unique_run_id}".encode("utf-8")
+    ).hexdigest()
+
     start_time = time.time()
     res1 = send_outlet_stream_payload(
         platform="gofood",
@@ -208,6 +213,7 @@ def run_test_suite():
         records=sim_records,
         items=sim_items,
         outlet_name=outlet_name,
+        idempotency_key=test_run_key,
         server_a_url=SERVER_A_URL,
         api_key=API_KEY,
         staging_dir=str(STAGING_DIR),
@@ -251,7 +257,7 @@ def run_test_suite():
     l2_rows = conn.execute(text(\"SELECT COUNT(*) FROM layer2_clean.stg_go_orders WHERE order_id IN ('{order_id_1}', '{order_id_2}')\")).scalar()
     print('L2_STG_ORDERS_COUNT:', l2_rows)
 
-    l3_row = conn.execute(text(\"SELECT external_id, outlet_name, owner_name, net_sales, revenue FROM layer3_dim.fact_transactions WHERE external_id = '{order_id_1}'\")).fetchone()
+    l3_row = conn.execute(text(\"SELECT external_id, outlet_name, net_sales, revenue FROM layer3_dim.fact_transactions WHERE external_id = '{order_id_1}'\")).fetchone()
     if l3_row:
         print('L3_FACT_RECORD:', l3_row)
     else:
@@ -294,6 +300,7 @@ def run_test_suite():
         records=sim_records,
         items=sim_items,
         outlet_name=outlet_name,
+        idempotency_key=test_run_key,
         server_a_url=SERVER_A_URL,
         api_key=API_KEY,
         staging_dir=str(STAGING_DIR),
@@ -333,6 +340,10 @@ def run_test_suite():
         }
     ]
 
+    offline_run_key = hashlib.sha256(
+        f"gofood:{offline_store_id}:{test_date_start}:{test_date_end}:{len(offline_records)}:{unique_run_id}".encode("utf-8")
+    ).hexdigest()
+
     # Attempt to stream to an unreachable port (simulate network outage)
     res_offline = send_outlet_stream_payload(
         platform="gofood",
@@ -340,6 +351,7 @@ def run_test_suite():
         start_date=test_date_start,
         end_date=test_date_end,
         records=offline_records,
+        idempotency_key=offline_run_key,
         server_a_url="http://127.0.0.1:9999",  # Non-existent endpoint
         api_key=API_KEY,
         staging_dir=str(STAGING_DIR),

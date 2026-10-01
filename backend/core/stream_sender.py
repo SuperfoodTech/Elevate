@@ -65,6 +65,7 @@ def send_outlet_stream_payload(
     items: Optional[List[Dict[str, Any]]] = None,
     outlet_name: Optional[str] = None,
     branch_name: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
     server_a_url: Optional[str] = None,
     api_key: Optional[str] = None,
     staging_dir: Optional[str] = None,
@@ -87,7 +88,8 @@ def send_outlet_stream_payload(
 
     date_folder = f"{start_date}_to_{end_date}"
     platform_clean = platform.lower().strip()
-    idempotency_key = compute_idempotency_key(platform_clean, store_id, start_date, end_date, len(records))
+    if not idempotency_key:
+        idempotency_key = compute_idempotency_key(platform_clean, store_id, start_date, end_date, len(records))
 
     payload = {
         "platform": platform_clean,
@@ -219,6 +221,7 @@ def retry_failed_staging_payloads(
                     items=payload.get("items"),
                     outlet_name=payload.get("outlet_name"),
                     branch_name=payload.get("branch_name"),
+                    idempotency_key=payload.get("idempotency_key"),
                     server_a_url=server_a_url,
                     api_key=api_key,
                     staging_dir=staging_dir,
