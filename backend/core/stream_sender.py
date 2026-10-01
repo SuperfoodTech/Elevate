@@ -15,6 +15,9 @@ import hashlib
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 try:
     import requests
@@ -29,7 +32,7 @@ if not log.handlers:
     log.addHandler(ch)
     log.setLevel(logging.INFO)
 
-# Default Server A Ingestion Configuration (Tailscale Mesh)
+# Default Server A Ingestion Configuration (Tailscale Mesh or Direct)
 DEFAULT_SERVER_A_URL = os.getenv("ELEVATE_SERVER_A_URL", "http://127.0.0.1:8000")
 DEFAULT_API_KEY = os.getenv("ELEVATE_INGEST_API_KEY", "elevate_internal_tailscale_secret_key_2026")
 DEFAULT_STAGING_DIR = os.getenv("ELEVATE_STAGING_DIR") or os.path.join(
@@ -138,6 +141,7 @@ def send_outlet_stream_payload(
                     "success": True,
                     "status_code": resp.status_code,
                     "idempotency_key": idempotency_key,
+                    "staged_file": str(staging_file),
                     "response": res_data
                 }
             else:

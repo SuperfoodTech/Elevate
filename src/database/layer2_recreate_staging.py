@@ -4,7 +4,10 @@ import os
 from sqlalchemy import text
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-from db_manager import DatabaseManager
+try:
+    from layer1_db_manager import DatabaseManager
+except ImportError:
+    from db_manager import DatabaseManager
 
 def recreate_clean_tables():
     db = DatabaseManager()

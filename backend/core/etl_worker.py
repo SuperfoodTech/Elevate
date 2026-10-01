@@ -123,31 +123,6 @@ def sweep_pending_db_payloads():
     that remained in 'RECEIVED' status (e.g. if RabbitMQ broker was temporarily down).
     """
     log.info("Starting background DB queue fallback sweeper thread...")
-    try:
-        with db_manager.engine.begin() as conn:
-            conn.execute(text("CREATE SCHEMA IF NOT EXISTS layer1_raw;"))
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS layer1_raw.raw_stream_payloads (
-                    id SERIAL PRIMARY KEY,
-                    idempotency_key TEXT UNIQUE NOT NULL,
-                    platform TEXT NOT NULL,
-                    store_id TEXT NOT NULL,
-                    outlet_name TEXT,
-                    branch_name TEXT,
-                    start_date DATE NOT NULL,
-                    end_date DATE NOT NULL,
-                    record_count INTEGER NOT NULL,
-                    raw_payload JSONB NOT NULL,
-                    status TEXT DEFAULT 'RECEIVED',
-                    error_message TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    processed_at TIMESTAMP
-                );
-                CREATE INDEX IF NOT EXISTS idx_stream_payloads_status ON layer1_raw.raw_stream_payloads(status);
-            """))
-    except Exception as init_err:
-        log.warning(f"Could not verify raw_stream_payloads schema on sweeper start: {init_err}")
-
     while True:
         try:
             with db_manager.engine.begin() as conn:
