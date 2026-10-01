@@ -68,6 +68,9 @@ services:
       RABBITMQ_PASS: superfood_rabbit_pass_2026
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./src:/app/src
     networks:
       - elevate_net
 
@@ -95,6 +98,9 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: elevate_mq
       RABBITMQ_PASS: superfood_rabbit_pass_2026
+    volumes:
+      - ./backend:/app/backend
+      - ./src:/app/src
     networks:
       - elevate_net
 
