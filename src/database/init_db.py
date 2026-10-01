@@ -9,23 +9,43 @@ from sqlalchemy import text
 
 def init_db():
     db = DatabaseManager()
-    init_sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "init_db.sql")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 1. Initialize Layer 3 Dim tables (dim_merchant_mapping, fact_transactions, etc.)
+    layer3_dim_sql = os.path.join(base_dir, "init_layer3_dim.sql")
+    if os.path.exists(layer3_dim_sql):
+        print(f"Reading Layer 3 Dim SQL from {layer3_dim_sql}...")
+        with open(layer3_dim_sql, "r", encoding="utf-8") as f:
+            sql_dim = f.read()
+        with db.engine.begin() as conn:
+            conn.execute(text(sql_dim))
+        print("Layer 3 Dimensions tables successfully initialized!")
+
+    # 2. Initialize Fact Transactions & Stored Procedures
+    init_sql_path = os.path.join(base_dir, "init_db.sql")
     if not os.path.exists(init_sql_path):
         print(f"Error: {init_sql_path} does not exist.")
         return
         
     print(f"Reading SQL from {init_sql_path}...")
-    with open(init_sql_path, "r") as f:
+    with open(init_sql_path, "r", encoding="utf-8") as f:
         sql = f.read()
         
-    print("Executing SQL statements on remote database...")
+    print("Executing SQL statements on database...")
     with db.engine.begin() as conn:
         conn.execute(text(sql))
-        agency_rules_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agency_settlement_rules.sql")
-        if os.path.exists(agency_rules_path):
-            print(f"Applying Agency settlement rules from {agency_rules_path}...")
-            with open(agency_rules_path, "r", encoding="utf-8") as f:
-                conn.execute(text(f.read()))
+    print("Stored procedures successfully initialized!")
+
+    # 3. Agency Settlement Rules
+    agency_rules_path = os.path.join(base_dir, "agency_settlement_rules.sql")
+    if os.path.exists(agency_rules_path):
+        print(f"Applying Agency settlement rules from {agency_rules_path}...")
+        with open(agency_rules_path, "r", encoding="utf-8") as f:
+            conn_rules = f.read()
+        with db.engine.begin() as conn:
+            conn.execute(text(conn_rules))
+        print("Agency settlement rules successfully applied!")
+
     print("Database schema successfully initialized!")
 
 if __name__ == "__main__":

@@ -145,9 +145,49 @@ CREATE TABLE IF NOT EXISTS layer3_dim.fact_daily_merchant_performance (
     UNIQUE(transaction_date, store_id, platform)
 );
 
+-- 7. Unified Master Fact Table (layer3_dim.fact_transactions)
+CREATE TABLE IF NOT EXISTS layer3_dim.fact_transactions (
+    id SERIAL PRIMARY KEY,
+    order_id_duplicate INTEGER DEFAULT 1,
+    year INTEGER,
+    month TEXT,
+    week TEXT,
+    transaction_date DATE,
+    hour INTEGER,
+    platform VARCHAR(20) NOT NULL, -- 'GrabFood', 'ShopeeFood', or 'GoFood'
+    merchant_id TEXT,              -- Maps to store_id in dim_merchant_mapping
+    group_code TEXT,
+    outlet_name TEXT,
+    branch_name TEXT,
+    store_name TEXT,
+    created_on TIMESTAMP,
+    status TEXT,
+    is_success INTEGER DEFAULT 0,
+    is_cancelled INTEGER DEFAULT 0,
+    external_id TEXT NOT NULL,     -- Period ID / Long Order ID / Order ID
+    gross_amount NUMERIC(15,2),    
+    discounts NUMERIC(15,2),       
+    delivery_discount NUMERIC(15,2), 
+    net_sales NUMERIC(15,2),
+    marketing_fee NUMERIC(15,2),
+    commission NUMERIC(15,2),   
+    ofd_fees NUMERIC(15,2),
+    revenue NUMERIC(15,2),         -- Total Payout (adjusted for refund)
+    context TEXT,                  -- E.g. 'Refund Adjusted'
+    gmv_vs_ofd_commission TEXT,    
+    gmv_vs_ofd_fees TEXT,
+    gmv_vs_revenue TEXT,
+    raw_record_id INTEGER,         -- Reference to stg table ID
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(platform, external_id)
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_mapping_platform ON layer3_dim.dim_merchant_mapping(platform);
 CREATE INDEX IF NOT EXISTS idx_mapping_status ON layer3_dim.dim_merchant_mapping(mapping_status);
 CREATE INDEX IF NOT EXISTS idx_mapping_group ON layer3_dim.dim_merchant_mapping(group_code);
 CREATE INDEX IF NOT EXISTS idx_daily_perf_date ON layer3_dim.fact_daily_merchant_performance(transaction_date);
 CREATE INDEX IF NOT EXISTS idx_daily_perf_store ON layer3_dim.fact_daily_merchant_performance(store_id);
+CREATE INDEX IF NOT EXISTS idx_fact_date ON layer3_dim.fact_transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_fact_platform ON layer3_dim.fact_transactions(platform);
+CREATE INDEX IF NOT EXISTS idx_fact_group ON layer3_dim.fact_transactions(group_code);
