@@ -22,6 +22,7 @@ import {
   formatRupiah,
   type Platform,
   type OrderStatus,
+  type Transaction,
 } from '../data/transactions';
 import {
   MOCK_VB_TRANSACTIONS,
@@ -35,6 +36,15 @@ import {
   type PeriodFilterValue,
 } from '../components/common/TransactionPeriodPicker';
 import { parseTransactionDate, isWithinDateRange } from '../utils/dateParser';
+import { api } from '../services/api';
+
+function formatToYMD(d: Date | null | undefined): string | undefined {
+  if (!d) return undefined;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 const DEFAULT_AGENCY_PERIOD: PeriodFilterValue = {
   type: 'week',
@@ -162,6 +172,78 @@ export const TransactionExplorerPage: React.FC = () => {
   const [agencyPage, setAgencyPage] = useState(1);
   const [agencyRowsPerPage, setAgencyRowsPerPage] = useState(10);
 
+  // Live API data state for Agency tab
+  const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasFetchedLive, setHasFetchedLive] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (currentTab !== 'agency') return;
+
+    let isMounted = true;
+    const fetchLive = async () => {
+      setIsLoading(true);
+      try {
+        const startStr = agencyPeriod.startDate ? formatToYMD(agencyPeriod.startDate) : undefined;
+        const endStr = agencyPeriod.endDate ? formatToYMD(agencyPeriod.endDate) : undefined;
+
+        const res = await api.getTransactions({
+          platform: filterPlatform !== 'all' ? filterPlatform : undefined,
+          start_date: startStr,
+          end_date: endStr,
+          limit: 5000,
+        });
+
+        if (!isMounted) return;
+
+        if (res && Array.isArray(res.data)) {
+          const mapped: Transaction[] = res.data.map((item: any) => {
+            const platLower = (item.platform || '').toLowerCase();
+            const plat: Platform = platLower === 'gofood' ? 'gofood' : platLower === 'grabfood' ? 'grabfood' : 'shopeefood';
+            const isSukses = item.is_success === 1 || String(item.status).toUpperCase() === 'SETTLEMENT' || String(item.status).toUpperCase() === 'COMPLETED';
+            const dt = item.created_on || item.transaction_date || '';
+
+            return {
+              id: String(item.id),
+              dateTime: dt,
+              orderId: item.external_id || String(item.id),
+              platform: plat,
+              owner: item.owner_name || 'FoodMaster Group',
+              physicalOutlet: item.outlet_name || item.branch_name || item.store_name || '-',
+              platformListing: item.store_name || item.branch_name || item.outlet_name || '-',
+              sid: item.merchant_id || '-',
+              status: isSukses ? 'Sukses' : 'Batal',
+              orderValue: Number(item.gross_amount) || 0,
+              agencyFee: Math.abs(Number(item.commission) || 0),
+              orderStage: 'live',
+              netSales: Number(item.net_sales) || 0,
+              marketingSuccessFee: 0,
+              orderCommission: Math.abs(Number(item.commission) || 0),
+              ofdFees: Number(item.ofd_fees) || 0,
+              ingestedAt: item.created_on || undefined,
+              ingestedBy: 'ETL Worker',
+              lastUpdated: item.created_on || undefined,
+            };
+          });
+          setLiveTransactions(mapped);
+          setHasFetchedLive(true);
+        }
+      } catch (err) {
+        console.error('Failed to fetch transactions from API:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    fetchLive();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentTab, agencyPeriod.startDate, agencyPeriod.endDate, filterPlatform]);
+
+  const agencyDataset = hasFetchedLive ? liveTransactions : MOCK_TRANSACTIONS;
+
   // VB tab filters & state (symmetrical with Agency)
   const [vbPeriod, setVbPeriod] = useState<PeriodFilterValue>(DEFAULT_VB_PERIOD);
   const [vbFilterPlatform, setVbFilterPlatform] = useState('all');
@@ -184,19 +266,19 @@ export const TransactionExplorerPage: React.FC = () => {
 
   // Agency memoized options
   const owners = useMemo(() => {
-    const set = new Set(MOCK_TRANSACTIONS.map((t) => t.owner));
-    return [{ value: 'all', label: 'Semua Owner' }, ...Array.from(set).map((o) => ({ value: o, label: o }))];
-  }, []);
+    const set = new Set(agencyDataset.map((t) => t.owner).filter(Boolean));
+    return [{ value: 'all', label: 'Semua Owner' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
+  }, [agencyDataset]);
 
   const outlets = useMemo(() => {
-    const set = new Set(MOCK_TRANSACTIONS.map((t) => t.physicalOutlet));
-    return [{ value: 'all', label: 'Semua Outlet' }, ...Array.from(set).map((o) => ({ value: o, label: o }))];
-  }, []);
+    const set = new Set(agencyDataset.map((t) => t.physicalOutlet).filter(Boolean));
+    return [{ value: 'all', label: 'Semua Outlet' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
+  }, [agencyDataset]);
 
   const listings = useMemo(() => {
-    const set = new Set(MOCK_TRANSACTIONS.map((t) => t.platformListing));
-    return [{ value: 'all', label: 'Semua Listing' }, ...Array.from(set).map((o) => ({ value: o, label: o }))];
-  }, []);
+    const set = new Set(agencyDataset.map((t) => t.platformListing).filter(Boolean));
+    return [{ value: 'all', label: 'Semua Listing' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
+  }, [agencyDataset]);
 
   // VB memoized options (symmetrical with Agency)
   const vbBrands = useMemo(() => {
@@ -220,8 +302,8 @@ export const TransactionExplorerPage: React.FC = () => {
     const tokens = q.split(/\s+/).filter(Boolean);
     const hasDateRange = Boolean(agencyPeriod.startDate && agencyPeriod.endDate);
 
-    return MOCK_TRANSACTIONS.filter((t) => {
-      if (hasDateRange) {
+    return agencyDataset.filter((t) => {
+      if (hasDateRange && !hasFetchedLive) {
         const txDate = parseTransactionDate(t.dateTime);
         if (!isWithinDateRange(txDate, agencyPeriod.startDate, agencyPeriod.endDate)) {
           return false;
@@ -246,7 +328,7 @@ export const TransactionExplorerPage: React.FC = () => {
       }
       return true;
     });
-  }, [agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
+  }, [agencyDataset, hasFetchedLive, agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
 
   const agencyKpi = useMemo(() => {
     const sukses = filteredAgency.filter((t) => t.status === 'Sukses');
@@ -689,7 +771,16 @@ export const TransactionExplorerPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedAgency.length === 0 ? (
+                      {isLoading ? (
+                        <tr>
+                          <td colSpan={10} className="px-4 py-16 text-center text-gray-500 text-sm">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="w-5 h-5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+                              <span>Memuat data transaksi...</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : paginatedAgency.length === 0 ? (
                         <tr>
                           <td colSpan={10} className="px-4 py-16 text-center text-gray-400 text-sm">
                             Tidak ada data transaksi yang cocok dengan filter yang dipilih.

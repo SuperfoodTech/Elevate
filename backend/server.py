@@ -940,7 +940,7 @@ def get_transactions(
     platform: Optional[str] = Query(None, description="Filter by platform: GrabFood, ShopeeFood, GoFood"),
     start_date: Optional[str] = Query(None, description="Filter start date YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="Filter end date YYYY-MM-DD"),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(1000, ge=1, le=10000),
     offset: int = Query(0, ge=0)
 ):
     try:
@@ -954,27 +954,37 @@ def get_transactions(
         where_clauses = ["1=1"]
         params = {}
 
-        if platform:
-            where_clauses.append("platform = :platform")
-            params["platform"] = platform
+        if platform and platform.lower() != 'all':
+            platform_map = {
+                'gofood': 'GoFood',
+                'grabfood': 'GrabFood',
+                'shopeefood': 'ShopeeFood'
+            }
+            norm_platform = platform_map.get(platform.lower(), platform)
+            where_clauses.append("f.platform = :platform")
+            params["platform"] = norm_platform
         if start_date:
-            where_clauses.append("transaction_date >= :start_date")
+            where_clauses.append("f.transaction_date >= :start_date")
             params["start_date"] = start_date
         if end_date:
-            where_clauses.append("transaction_date <= :end_date")
+            where_clauses.append("f.transaction_date <= :end_date")
             params["end_date"] = end_date
 
         where_sql = " AND ".join(where_clauses)
         query_sql = f"""
-            SELECT id, platform, external_id, transaction_date, outlet_name, branch_name, store_name,
-                   is_success, gross_amount, discounts, net_sales, commission, ofd_fees, revenue
-            FROM layer3_dim.fact_transactions
+            SELECT f.id, f.platform, f.external_id, f.transaction_date, f.created_on,
+                   f.outlet_name, f.branch_name, f.store_name, f.merchant_id,
+                   COALESCE(m.owner_name, 'FoodMaster Group') AS owner_name,
+                   f.status, f.is_success, f.gross_amount, f.discounts, f.net_sales,
+                   f.commission, f.ofd_fees, f.revenue
+            FROM layer3_dim.fact_transactions f
+            LEFT JOIN layer3_dim.dim_merchant_mapping m ON f.merchant_id = m.store_id
             WHERE {where_sql}
-            ORDER BY transaction_date DESC, id DESC
+            ORDER BY f.transaction_date DESC, f.id DESC
             LIMIT {limit} OFFSET {offset}
         """
 
-        count_sql = f"SELECT COUNT(*) FROM layer3_dim.fact_transactions WHERE {where_sql}"
+        count_sql = f"SELECT COUNT(*) FROM layer3_dim.fact_transactions f WHERE {where_sql}"
 
         with db.engine.connect() as conn:
             total_count = conn.execute(text(count_sql), params).scalar()
@@ -988,6 +998,40 @@ def get_transactions(
         }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database query error: {e}")
+
+@app.get("/api/transactions/{order_id}", summary="Get Single Cleaned Transaction Detail")
+def get_transaction_detail(order_id: str):
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        query_sql = """
+            SELECT f.id, f.platform, f.external_id, f.transaction_date, f.created_on,
+                   f.outlet_name, f.branch_name, f.store_name, f.merchant_id,
+                   COALESCE(m.owner_name, 'FoodMaster Group') AS owner_name,
+                   f.status, f.is_success, f.gross_amount, f.discounts, f.net_sales,
+                   f.commission, f.ofd_fees, f.revenue
+            FROM layer3_dim.fact_transactions f
+            LEFT JOIN layer3_dim.dim_merchant_mapping m ON f.merchant_id = m.store_id
+            WHERE f.external_id = :order_id OR CAST(f.id AS TEXT) = :order_id
+            LIMIT 1
+        """
+
+        with db.engine.connect() as conn:
+            row = conn.execute(text(query_sql), {"order_id": order_id}).mappings().first()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+
+        return {"data": dict(row)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
 
 # ── Rekap Tagihan Web Dashboard & REST API Endpoints ──
 

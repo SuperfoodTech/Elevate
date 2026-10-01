@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { ArrowLeft, Copy, Check, ShieldCheck, Info } from 'lucide-react';
@@ -9,7 +9,9 @@ import {
   formatRupiah,
   type Platform,
   type OrderStatus,
+  type Transaction,
 } from '../data/transactions';
+import { api } from '../services/api';
 
 function PlatformLogoLarge({ platform }: { platform: Platform }) {
   if (platform === 'gofood') {
@@ -130,7 +132,75 @@ export const TransactionDetailPage: React.FC = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
 
-  const transaction = orderId ? TRANSACTIONS_BY_ORDER_ID.get(orderId) : undefined;
+  const mockTx = orderId ? TRANSACTIONS_BY_ORDER_ID.get(orderId) : undefined;
+  const [liveTx, setLiveTx] = useState<Transaction | undefined>(mockTx);
+  const [loading, setLoading] = useState<boolean>(!mockTx);
+
+  useEffect(() => {
+    if (mockTx || !orderId) return;
+
+    let isMounted = true;
+    setLoading(true);
+
+    api.getTransactionDetail(orderId)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res && res.data) {
+          const item = res.data;
+          const platLower = (item.platform || '').toLowerCase();
+          const plat: Platform = platLower === 'gofood' ? 'gofood' : platLower === 'grabfood' ? 'grabfood' : 'shopeefood';
+          const isSukses = item.is_success === 1 || String(item.status).toUpperCase() === 'SETTLEMENT' || String(item.status).toUpperCase() === 'COMPLETED';
+          const dt = item.created_on || item.transaction_date || '';
+
+          setLiveTx({
+            id: String(item.id),
+            dateTime: dt,
+            orderId: item.external_id || String(item.id),
+            platform: plat,
+            owner: item.owner_name || 'FoodMaster Group',
+            physicalOutlet: item.outlet_name || item.branch_name || item.store_name || '-',
+            platformListing: item.store_name || item.branch_name || item.outlet_name || '-',
+            sid: item.merchant_id || '-',
+            status: isSukses ? 'Sukses' : 'Batal',
+            orderValue: Number(item.gross_amount) || 0,
+            agencyFee: Math.abs(Number(item.commission) || 0),
+            orderStage: 'live',
+            netSales: Number(item.net_sales) || 0,
+            marketingSuccessFee: 0,
+            orderCommission: Math.abs(Number(item.commission) || 0),
+            ofdFees: Number(item.ofd_fees) || 0,
+            ingestedAt: item.created_on || undefined,
+            ingestedBy: 'ETL Worker',
+            lastUpdated: item.created_on || undefined,
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load transaction detail:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [orderId, mockTx]);
+
+  const transaction = liveTx;
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Detail Transaksi">
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="w-5 h-5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+            <span>Memuat detail transaksi...</span>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (!transaction) {
     return (

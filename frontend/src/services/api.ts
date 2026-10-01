@@ -186,6 +186,27 @@ export const api = {
     if (params.business) search.append('business', params.business);
     if (params.forceRefresh) search.append('refresh', 'true');
     return fetchCached(`/api/dashboard-summary?${search.toString()}`);
+  },
+
+  // Transactions Explorer API
+  getTransactions: async (params?: {
+    platform?: string;
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.platform && params.platform !== 'all') search.append('platform', params.platform);
+    if (params?.start_date) search.append('start_date', params.start_date);
+    if (params?.end_date) search.append('end_date', params.end_date);
+    if (params?.limit) search.append('limit', String(params.limit));
+    if (params?.offset !== undefined) search.append('offset', String(params.offset));
+    return fetchCached(`/api/transactions?${search.toString()}`);
+  },
+
+  getTransactionDetail: async (orderId: string) => {
+    return fetchCached(`/api/transactions/${encodeURIComponent(orderId)}`);
   }
 };
 
