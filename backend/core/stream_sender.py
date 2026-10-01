@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    _env_path = Path(__file__).resolve().parent.parent / ".env"
+    load_dotenv(_env_path, override=True)
 except ImportError:
     env_file = Path(__file__).resolve().parent.parent / ".env"
     if env_file.exists():
