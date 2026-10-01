@@ -234,8 +234,7 @@ def run_test_suite():
     # TEST 2: Asynchronous ETL Worker Processing & DB Lineage
     # =========================================================================
     print("\n--- TEST 2: Asynchronous ETL Worker Verification (Server 1) ---")
-    print("Waiting 5 seconds for RabbitMQ consumer to process the payload...")
-    time.sleep(5)
+    print("Polling RabbitMQ consumer & ETL worker for L1 -> L2 -> L3 completion...")
 
     check_sql = f"""
     raw_status = conn.execute(text(\"SELECT status, error_message FROM layer1_raw.raw_stream_payloads WHERE idempotency_key = '{res1['idempotency_key']}'\")).fetchone()
@@ -259,7 +258,18 @@ def run_test_suite():
         print('L3_FACT_RECORD: NOT_FOUND')
     """
 
-    db_verification = query_server_db(check_sql)
+    db_verification = ""
+    for wait_round in range(1, 9):
+        time.sleep(2)
+        db_verification = query_server_db(check_sql)
+        if (
+            "RAW_PAYLOAD_STATUS: PROCESSED" in db_verification
+            and "L3_FACT_RECORD:" in db_verification
+            and "NOT_FOUND" not in db_verification
+        ):
+            print(f"ETL completed successfully in round {wait_round} (~{wait_round * 2}s)")
+            break
+
     print("Remote Database Verification Results:")
     for line in db_verification.splitlines():
         print(f"  {line}")
