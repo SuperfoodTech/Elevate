@@ -346,7 +346,7 @@ def trigger_db_normalization():
         db_dir = os.path.join(project_root, "src", "database")
         if db_dir not in sys.path:
             sys.path.insert(0, db_dir)
-        from db_manager import DatabaseManager
+        from layer1_db_manager import DatabaseManager
         db = DatabaseManager()
         with db.engine.connect() as conn:
             counts["stg_grab_orders"] = conn.execute(text("SELECT COUNT(*) FROM layer2_clean.stg_grab_orders")).scalar()
@@ -948,7 +948,7 @@ def get_transactions(
         db_dir = os.path.join(project_root, "src", "database")
         if db_dir not in sys.path:
             sys.path.insert(0, db_dir)
-        from db_manager import DatabaseManager
+        from layer1_db_manager import DatabaseManager
         db = DatabaseManager()
 
         where_clauses = ["1=1"]

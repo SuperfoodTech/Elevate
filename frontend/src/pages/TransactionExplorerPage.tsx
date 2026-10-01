@@ -4,7 +4,6 @@ import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
   Download,
   SlidersHorizontal,
-  Calendar,
   ChevronDown,
   Search,
   RotateCcw,
@@ -31,6 +30,29 @@ import {
   type Platform as VBPlatform,
   type OrderStatus as VBOrderStatus,
 } from '../data/vbTransactions';
+import {
+  TransactionPeriodPicker,
+  type PeriodFilterValue,
+} from '../components/common/TransactionPeriodPicker';
+import { parseTransactionDate, isWithinDateRange } from '../utils/dateParser';
+
+const DEFAULT_AGENCY_PERIOD: PeriodFilterValue = {
+  type: 'week',
+  monthKey: '2026-08',
+  weekId: '2026-08-w3',
+  label: '17 - 23 Agu 2026 (Minggu 3)',
+  startDate: new Date(2026, 7, 17, 0, 0, 0, 0),
+  endDate: new Date(2026, 7, 23, 23, 59, 59, 999),
+};
+
+const DEFAULT_VB_PERIOD: PeriodFilterValue = {
+  type: 'week',
+  monthKey: '2026-08',
+  weekId: '2026-08-w3',
+  label: '17 - 23 Agu 2026 (Minggu 3)',
+  startDate: new Date(2026, 7, 17, 0, 0, 0, 0),
+  endDate: new Date(2026, 7, 23, 23, 59, 59, 999),
+};
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
 
@@ -129,6 +151,7 @@ export const TransactionExplorerPage: React.FC = () => {
   }, []);
 
   // Agency tab filters & state
+  const [agencyPeriod, setAgencyPeriod] = useState<PeriodFilterValue>(DEFAULT_AGENCY_PERIOD);
   const [filterPlatform, setFilterPlatform] = useState('all');
   const [filterOwner, setFilterOwner] = useState('all');
   const [filterOutlet, setFilterOutlet] = useState('all');
@@ -140,6 +163,7 @@ export const TransactionExplorerPage: React.FC = () => {
   const [agencyRowsPerPage, setAgencyRowsPerPage] = useState(10);
 
   // VB tab filters & state (symmetrical with Agency)
+  const [vbPeriod, setVbPeriod] = useState<PeriodFilterValue>(DEFAULT_VB_PERIOD);
   const [vbFilterPlatform, setVbFilterPlatform] = useState('all');
   const [vbFilterBrand, setVbFilterBrand] = useState('all');
   const [vbFilterOutlet, setVbFilterOutlet] = useState('all');
@@ -194,8 +218,15 @@ export const TransactionExplorerPage: React.FC = () => {
   const filteredAgency = useMemo(() => {
     const q = deferredSearchQuery.trim().toLowerCase();
     const tokens = q.split(/\s+/).filter(Boolean);
+    const hasDateRange = Boolean(agencyPeriod.startDate && agencyPeriod.endDate);
 
     return MOCK_TRANSACTIONS.filter((t) => {
+      if (hasDateRange) {
+        const txDate = parseTransactionDate(t.dateTime);
+        if (!isWithinDateRange(txDate, agencyPeriod.startDate, agencyPeriod.endDate)) {
+          return false;
+        }
+      }
       if (filterPlatform !== 'all' && t.platform !== filterPlatform) return false;
       if (filterOwner !== 'all' && t.owner !== filterOwner) return false;
       if (filterOutlet !== 'all' && t.physicalOutlet !== filterOutlet) return false;
@@ -215,7 +246,7 @@ export const TransactionExplorerPage: React.FC = () => {
       }
       return true;
     });
-  }, [filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
+  }, [agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
 
   const agencyKpi = useMemo(() => {
     const sukses = filteredAgency.filter((t) => t.status === 'Sukses');
@@ -249,6 +280,7 @@ export const TransactionExplorerPage: React.FC = () => {
     setFilterListing('all');
     setFilterStatus('all');
     setSearchQuery('');
+    setAgencyPeriod(DEFAULT_AGENCY_PERIOD);
     setAgencyPage(1);
   }, []);
 
@@ -263,8 +295,15 @@ export const TransactionExplorerPage: React.FC = () => {
   const filteredVB = useMemo(() => {
     const q = deferredVbSearchQuery.trim().toLowerCase();
     const tokens = q.split(/\s+/).filter(Boolean);
+    const hasDateRange = Boolean(vbPeriod.startDate && vbPeriod.endDate);
 
     return MOCK_VB_TRANSACTIONS.filter((t) => {
+      if (hasDateRange) {
+        const txDate = parseTransactionDate(t.dateTime);
+        if (!isWithinDateRange(txDate, vbPeriod.startDate, vbPeriod.endDate)) {
+          return false;
+        }
+      }
       if (vbFilterPlatform !== 'all' && t.platform !== (vbFilterPlatform as VBPlatform)) return false;
       if (vbFilterBrand !== 'all' && t.vb !== vbFilterBrand) return false;
       if (vbFilterOutlet !== 'all' && t.physicalOutlet !== vbFilterOutlet) return false;
@@ -278,7 +317,7 @@ export const TransactionExplorerPage: React.FC = () => {
       }
       return true;
     });
-  }, [vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, deferredVbSearchQuery]);
+  }, [vbPeriod, vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, deferredVbSearchQuery]);
 
   const vbKpi = useMemo(() => {
     const total = filteredVB.length;
@@ -313,11 +352,13 @@ export const TransactionExplorerPage: React.FC = () => {
     setVbFilterListing('all');
     setVbFilterStatus('all');
     setVbSearchQuery('');
+    setVbPeriod(DEFAULT_VB_PERIOD);
     setVbPage(1);
   }, []);
 
   const agencyActiveFilterCount = useMemo(() => {
     let count = 0;
+    if (agencyPeriod.type !== 'all') count++;
     if (filterPlatform !== 'all') count++;
     if (filterOwner !== 'all') count++;
     if (filterOutlet !== 'all') count++;
@@ -325,10 +366,11 @@ export const TransactionExplorerPage: React.FC = () => {
     if (filterStatus !== 'all') count++;
     if (searchQuery.trim() !== '') count++;
     return count;
-  }, [filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, searchQuery]);
+  }, [agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, searchQuery]);
 
   const vbActiveFilterCount = useMemo(() => {
     let count = 0;
+    if (vbPeriod.type !== 'all') count++;
     if (vbFilterPlatform !== 'all') count++;
     if (vbFilterBrand !== 'all') count++;
     if (vbFilterOutlet !== 'all') count++;
@@ -336,7 +378,7 @@ export const TransactionExplorerPage: React.FC = () => {
     if (vbFilterStatus !== 'all') count++;
     if (vbSearchQuery.trim() !== '') count++;
     return count;
-  }, [vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, vbSearchQuery]);
+  }, [vbPeriod, vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, vbSearchQuery]);
 
   const activeFilterCount = currentTab === 'agency' ? agencyActiveFilterCount : vbActiveFilterCount;
 
@@ -558,10 +600,13 @@ export const TransactionExplorerPage: React.FC = () => {
               {showFilter && (
                 <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6 transition-all">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white min-w-[200px]">
-                      <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                      <span>17 - 23 Agustus 2026</span>
-                    </div>
+                    <TransactionPeriodPicker
+                      value={agencyPeriod}
+                      onChange={(p) => {
+                        setAgencyPeriod(p);
+                        setAgencyPage(1);
+                      }}
+                    />
 
                     <SelectDropdown
                       value={filterPlatform}
@@ -826,10 +871,13 @@ export const TransactionExplorerPage: React.FC = () => {
               {showFilter && (
                 <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6 transition-all">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white min-w-[200px]">
-                      <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                      <span>1 - 21 Agustus 2026</span>
-                    </div>
+                    <TransactionPeriodPicker
+                      value={vbPeriod}
+                      onChange={(p) => {
+                        setVbPeriod(p);
+                        setVbPage(1);
+                      }}
+                    />
 
                     <SelectDropdown
                       value={vbFilterPlatform}
