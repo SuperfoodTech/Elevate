@@ -169,5 +169,95 @@ export const api = {
 
   getBaselineVsCurrent: async () => {
     return fetchCached('/api/analytics/baseline-vs-current');
+  },
+
+  // Home Dashboard Aggregated Metrics
+  getHomeDashboardMetrics: async (params: {
+    startDate?: string;
+    endDate?: string;
+    owner?: string;
+    business?: string;
+    forceRefresh?: boolean;
+  }): Promise<HomeDashboardResponse> => {
+    const search = new URLSearchParams();
+    if (params.startDate) search.append('start_date', params.startDate);
+    if (params.endDate) search.append('end_date', params.endDate);
+    if (params.owner) search.append('owner', params.owner);
+    if (params.business) search.append('business', params.business);
+    if (params.forceRefresh) search.append('refresh', 'true');
+    return fetchCached(`/api/dashboard-summary?${search.toString()}`);
   }
 };
+
+export interface HomeDashboardKPI {
+  total_owner?: number;
+  total_owner_change?: number;
+  total_outlet?: number;
+  total_outlet_change?: number;
+  active_listings?: number;
+  active_listings_change?: number;
+  merchant_orders?: number;
+  virtual_orders?: number;
+  sparklines?: {
+    owners?: { val: number }[];
+    outlets?: { val: number }[];
+    listings?: { val: number }[];
+    merchantOrders?: { val: number }[];
+    virtualOrders?: { val: number }[];
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
+
+export interface DailyVelocityPoint {
+  date: string;
+  merchantOrders: number;
+  virtualOrders: number;
+  totalOrders: number;
+}
+
+export interface MerchantChartPoint {
+  date: string;
+  gmv: number;
+  ofdFees: number;
+  revenue: number;
+  orderSucceed: number;
+  orderCanceled: number;
+}
+
+export interface VirtualChartPoint {
+  date: string;
+  gmv: number;
+  ofdFees: number;
+  revenue: number;
+  cogs: number;
+  grossMargin: number;
+  orderSucceed: number;
+  orderCanceled: number;
+}
+
+export interface TopBrandRankingItem {
+  name: string;
+  gmv: number;
+  share: number;
+  orders: number;
+  growth: string;
+}
+
+export interface SettlementFlowPoint {
+  date: string;
+  receivable: number;
+  payable: number;
+  disbursed: number;
+}
+
+export interface HomeDashboardResponse {
+  status: string;
+  has_data: boolean;
+  kpi: HomeDashboardKPI;
+  velocity: DailyVelocityPoint[];
+  merchant_chart_data: MerchantChartPoint[];
+  virtual_chart_data: VirtualChartPoint[];
+  top_brands: TopBrandRankingItem[];
+  settlement_flow: SettlementFlowPoint[];
+}

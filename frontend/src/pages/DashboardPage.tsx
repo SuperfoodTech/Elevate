@@ -2,8 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { getWeeksForMonth, getAvailableMonths } from '../utils/periodHelper';
-import {
-  api,
+import { api } from '../services/api';
+import type {
   HomeDashboardKPI,
   DailyVelocityPoint,
   MerchantChartPoint,
@@ -49,26 +49,6 @@ import {
 
 // Data types for dashboard
 type DashboardTab = 'overview' | 'performance' | 'finance' | 'all';
-
-interface MerchantDailyPoint {
-  date: string;
-  gmv: number;
-  ofdFees: number;
-  revenue: number;
-  orderSucceed: number;
-  orderCanceled: number;
-}
-
-interface VirtualDailyPoint {
-  date: string;
-  gmv: number;
-  ofdFees: number;
-  revenue: number;
-  cogs: number;
-  grossMargin: number;
-  orderSucceed: number;
-  orderCanceled: number;
-}
 
 // Helpers
 const formatCurrency = (val: number): string => {
