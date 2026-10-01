@@ -427,8 +427,11 @@ def ingest_ofd_outlet_stream(
         )
 
     # Deterministic SHA-256 idempotency key
-    raw_key = req.idempotency_key or f"{req.platform.lower()}:{req.store_id.strip()}:{req.start_date}:{req.end_date}:{len(req.records)}"
-    idempotency_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    if req.idempotency_key:
+        idempotency_key = req.idempotency_key
+    else:
+        raw_key = f"{req.platform.lower()}:{req.store_id.strip()}:{req.start_date}:{req.end_date}:{len(req.records)}"
+        idempotency_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
     # 1. Check idempotency & save raw stream payload in database
     payload_id = None
