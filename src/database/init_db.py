@@ -21,6 +21,16 @@ def init_db():
             conn.execute(text(sql_dim))
         print("Layer 3 Dimensions tables successfully initialized!")
 
+    # 1b. Initialize Business Grouping tables & view
+    bg_sql = os.path.join(base_dir, "init_business_grouping.sql")
+    if os.path.exists(bg_sql):
+        print(f"Reading Business Grouping SQL from {bg_sql}...")
+        with open(bg_sql, "r", encoding="utf-8") as f:
+            sql_bg = f.read()
+        with db.engine.begin() as conn:
+            conn.execute(text(sql_bg))
+        print("Business Grouping schema successfully initialized!")
+
     # 2. Initialize Fact Transactions & Stored Procedures
     init_sql_path = os.path.join(base_dir, "init_db.sql")
     if not os.path.exists(init_sql_path):
