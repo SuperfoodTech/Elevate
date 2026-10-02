@@ -46,19 +46,17 @@ function formatToYMD(d: Date | null | undefined): string | undefined {
 }
 
 const DEFAULT_AGENCY_PERIOD: PeriodFilterValue = {
-  type: 'custom',
-  monthKey: '2026-08',
-  label: '17 - 23 Agu 2026',
-  startDate: new Date(2026, 7, 17, 0, 0, 0, 0),
-  endDate: new Date(2026, 7, 23, 23, 59, 59, 999),
+  type: 'all',
+  label: 'Semua Periode',
+  startDate: undefined,
+  endDate: undefined,
 };
 
 const DEFAULT_VB_PERIOD: PeriodFilterValue = {
-  type: 'custom',
-  monthKey: '2026-08',
-  label: '17 - 23 Agu 2026',
-  startDate: new Date(2026, 7, 17, 0, 0, 0, 0),
-  endDate: new Date(2026, 7, 23, 23, 59, 59, 999),
+  type: 'all',
+  label: 'Semua Periode',
+  startDate: undefined,
+  endDate: undefined,
 };
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];

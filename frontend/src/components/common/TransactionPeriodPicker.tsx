@@ -70,7 +70,7 @@ export const TransactionPeriodPicker: React.FC<TransactionPeriodPickerProps> = (
 
   // Current view month & year (for navigation)
   const initialYear = value.startDate ? value.startDate.getFullYear() : 2026;
-  const initialMonth = value.startDate ? value.startDate.getMonth() : 7; // August (0-indexed 7)
+  const initialMonth = value.startDate ? value.startDate.getMonth() : 8; // September (0-indexed 8)
   const [viewYear, setViewYear] = useState<number>(initialYear);
   const [viewMonth, setViewMonth] = useState<number>(initialMonth);
 
@@ -89,7 +89,7 @@ export const TransactionPeriodPicker: React.FC<TransactionPeriodPickerProps> = (
         setViewMonth(value.startDate.getMonth());
       } else {
         setViewYear(2026);
-        setViewMonth(7);
+        setViewMonth(8);
       }
     }
   }, [isOpen, value.startDate, value.endDate]);
