@@ -47,19 +47,17 @@ function formatToYMD(d: Date | null | undefined): string | undefined {
 }
 
 const DEFAULT_AGENCY_PERIOD: PeriodFilterValue = {
-  type: 'week',
+  type: 'custom',
   monthKey: '2026-08',
-  weekId: '2026-08-w3',
-  label: '17 - 23 Agu 2026 (Minggu 3)',
+  label: '17 - 23 Agu 2026',
   startDate: new Date(2026, 7, 17, 0, 0, 0, 0),
   endDate: new Date(2026, 7, 23, 23, 59, 59, 999),
 };
 
 const DEFAULT_VB_PERIOD: PeriodFilterValue = {
-  type: 'week',
+  type: 'custom',
   monthKey: '2026-08',
-  weekId: '2026-08-w3',
-  label: '17 - 23 Agu 2026 (Minggu 3)',
+  label: '17 - 23 Agu 2026',
   startDate: new Date(2026, 7, 17, 0, 0, 0, 0),
   endDate: new Date(2026, 7, 23, 23, 59, 59, 999),
 };
