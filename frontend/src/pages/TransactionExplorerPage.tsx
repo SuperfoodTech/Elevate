@@ -267,7 +267,7 @@ export const TransactionExplorerPage: React.FC = () => {
                 sid: item.merchant_id || '-',
                 status: isSukses ? 'Sukses' : 'Batal',
                 orderValue: Number(item.gross_amount) || 0,
-                agencyFee: Math.abs(Number(item.commission) || 0),
+                agencyFee: Number(item.agency_fee) || 0,
                 orderStage: 'live',
                 netSales: Number(item.net_sales) || 0,
                 marketingSuccessFee: 0,

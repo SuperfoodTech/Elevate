@@ -996,7 +996,9 @@ def get_transactions(
                 COUNT(*) FILTER (WHERE f.is_success = 1 OR UPPER(f.status) IN ('SETTLEMENT', 'COMPLETED', 'TRANSFERRED')) as sukses_count,
                 COUNT(*) FILTER (WHERE f.is_success = 0 OR UPPER(f.status) IN ('CANCELLED', 'BATAL')) as batal_count,
                 COALESCE(SUM(f.gross_amount) FILTER (WHERE f.is_success = 1), 0) as total_gmv,
-                COALESCE(SUM(ABS(f.commission)) FILTER (WHERE f.is_success = 1), 0) as total_commission
+                COALESCE(SUM(ABS(f.commission)) FILTER (WHERE f.is_success = 1), 0) as total_commission,
+                COALESCE(SUM(ABS(f.ofd_fees)) FILTER (WHERE f.is_success = 1), 0) as total_ofd_fees,
+                COALESCE(SUM(COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9.]', '', 'g'), '')::numeric, 0)) FILTER (WHERE f.is_success = 1 OR UPPER(f.status) IN ('SETTLEMENT', 'COMPLETED', 'TRANSFERRED')), 0) as total_agency_fee
             FROM layer3_dim.fact_transactions f
             LEFT JOIN layer3_dim.dim_merchant_mapping m ON f.merchant_id = m.store_id
             WHERE {where_sql}
@@ -1007,7 +1009,8 @@ def get_transactions(
                    f.outlet_name, f.branch_name, f.store_name, f.merchant_id,
                    COALESCE(m.owner_name, 'FoodMaster Group') AS owner_name,
                    f.status, f.is_success, f.gross_amount, f.discounts, f.net_sales,
-                   f.commission, f.ofd_fees, f.revenue
+                   f.commission, f.ofd_fees, f.revenue,
+                   COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9.]', '', 'g'), '')::numeric, 0) AS agency_fee
             FROM layer3_dim.fact_transactions f
             LEFT JOIN layer3_dim.dim_merchant_mapping m ON f.merchant_id = m.store_id
             WHERE {where_sql}
@@ -1022,6 +1025,8 @@ def get_transactions(
             batal_count = kpi_row["batal_count"] if kpi_row else 0
             total_gmv = float(kpi_row["total_gmv"] or 0) if kpi_row else 0.0
             total_commission = float(kpi_row["total_commission"] or 0) if kpi_row else 0.0
+            total_ofd_fees = float(kpi_row["total_ofd_fees"] or 0) if kpi_row else 0.0
+            total_agency_fee = float(kpi_row["total_agency_fee"] or 0) if kpi_row else 0.0
 
             rows = conn.execute(text(query_sql), params).mappings().all()
 
@@ -1040,6 +1045,8 @@ def get_transactions(
                 "batalRate": batal_rate,
                 "totalGmv": total_gmv,
                 "totalCommission": total_commission,
+                "totalOfdFees": total_ofd_fees,
+                "totalAgencyFee": total_agency_fee,
                 "preLiveCount": 0,
                 "lostRevenue": 0,
                 "lostAgencyFee": 0
@@ -1099,7 +1106,8 @@ def get_transaction_detail(order_id: str):
                    f.outlet_name, f.branch_name, f.store_name, f.merchant_id,
                    COALESCE(m.owner_name, 'FoodMaster Group') AS owner_name,
                    f.status, f.is_success, f.gross_amount, f.discounts, f.net_sales,
-                   f.commission, f.ofd_fees, f.revenue
+                   f.commission, f.ofd_fees, f.revenue,
+                   COALESCE(NULLIF(REGEXP_REPLACE(m.fee, '[^0-9.]', '', 'g'), '')::numeric, 0) AS agency_fee
             FROM layer3_dim.fact_transactions f
             LEFT JOIN layer3_dim.dim_merchant_mapping m ON f.merchant_id = m.store_id
             WHERE f.external_id = :order_id OR CAST(f.id AS TEXT) = :order_id
