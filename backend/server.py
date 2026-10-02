@@ -940,7 +940,11 @@ def get_transactions(
     platform: Optional[str] = Query(None, description="Filter by platform: GrabFood, ShopeeFood, GoFood"),
     start_date: Optional[str] = Query(None, description="Filter start date YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="Filter end date YYYY-MM-DD"),
-    limit: int = Query(1000, ge=1, le=10000),
+    owner: Optional[str] = Query(None, description="Filter by owner name"),
+    outlet: Optional[str] = Query(None, description="Filter by outlet name"),
+    status: Optional[str] = Query(None, description="Filter by status: Sukses, Batal"),
+    search: Optional[str] = Query(None, description="Search order ID, outlet, or merchant ID"),
+    limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0)
 ):
     try:
@@ -969,8 +973,35 @@ def get_transactions(
         if end_date:
             where_clauses.append("f.transaction_date <= :end_date")
             params["end_date"] = end_date
+        if owner and owner.lower() != 'all':
+            where_clauses.append("COALESCE(m.owner_name, 'FoodMaster Group') = :owner")
+            params["owner"] = owner
+        if outlet and outlet.lower() != 'all':
+            where_clauses.append("(f.outlet_name = :outlet OR f.branch_name = :outlet OR f.store_name = :outlet)")
+            params["outlet"] = outlet
+        if status and status.lower() != 'all':
+            if status.lower() == 'sukses':
+                where_clauses.append("(f.is_success = 1 OR UPPER(f.status) IN ('SETTLEMENT', 'COMPLETED', 'TRANSFERRED'))")
+            elif status.lower() == 'batal':
+                where_clauses.append("(f.is_success = 0 OR UPPER(f.status) IN ('CANCELLED', 'BATAL'))")
+        if search and search.strip():
+            where_clauses.append("(f.external_id ILIKE :search OR f.outlet_name ILIKE :search OR f.merchant_id ILIKE :search)")
+            params["search"] = f"%{search.strip()}%"
 
         where_sql = " AND ".join(where_clauses)
+
+        kpi_sql = f"""
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE f.is_success = 1 OR UPPER(f.status) IN ('SETTLEMENT', 'COMPLETED', 'TRANSFERRED')) as sukses_count,
+                COUNT(*) FILTER (WHERE f.is_success = 0 OR UPPER(f.status) IN ('CANCELLED', 'BATAL')) as batal_count,
+                COALESCE(SUM(f.gross_amount) FILTER (WHERE f.is_success = 1), 0) as total_gmv,
+                COALESCE(SUM(ABS(f.commission)) FILTER (WHERE f.is_success = 1), 0) as total_commission
+            FROM layer3_dim.fact_transactions f
+            LEFT JOIN layer3_dim.dim_merchant_mapping m ON f.merchant_id = m.store_id
+            WHERE {where_sql}
+        """
+
         query_sql = f"""
             SELECT f.id, f.platform, f.external_id, f.transaction_date, f.created_on,
                    f.outlet_name, f.branch_name, f.store_name, f.merchant_id,
@@ -984,20 +1015,74 @@ def get_transactions(
             LIMIT {limit} OFFSET {offset}
         """
 
-        count_sql = f"SELECT COUNT(*) FROM layer3_dim.fact_transactions f WHERE {where_sql}"
-
         with db.engine.connect() as conn:
-            total_count = conn.execute(text(count_sql), params).scalar()
+            kpi_row = conn.execute(text(kpi_sql), params).mappings().first()
+            total_count = kpi_row["total"] if kpi_row else 0
+            sukses_count = kpi_row["sukses_count"] if kpi_row else 0
+            batal_count = kpi_row["batal_count"] if kpi_row else 0
+            total_gmv = float(kpi_row["total_gmv"] or 0) if kpi_row else 0.0
+            total_commission = float(kpi_row["total_commission"] or 0) if kpi_row else 0.0
+
             rows = conn.execute(text(query_sql), params).mappings().all()
+
+        sukses_rate = f"{(sukses_count / total_count * 100):.1f}" if total_count > 0 else "0.0"
+        batal_rate = f"{(batal_count / total_count * 100):.1f}" if total_count > 0 else "0.0"
 
         return {
             "total": total_count,
             "limit": limit,
             "offset": offset,
+            "kpi": {
+                "total": total_count,
+                "suksesCount": sukses_count,
+                "batalCount": batal_count,
+                "suksesRate": sukses_rate,
+                "batalRate": batal_rate,
+                "totalGmv": total_gmv,
+                "totalCommission": total_commission,
+                "preLiveCount": 0,
+                "lostRevenue": 0,
+                "lostAgencyFee": 0
+            },
             "data": [dict(r) for r in rows]
         }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database query error: {e}")
+
+@app.get("/api/transactions/filter-options", summary="Get filter options for Transaction Explorer")
+def get_transaction_filter_options():
+    try:
+        project_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
+        db_dir = os.path.join(project_root, "src", "database")
+        if db_dir not in sys.path:
+            sys.path.insert(0, db_dir)
+        from layer1_db_manager import DatabaseManager
+        db = DatabaseManager()
+
+        with db.engine.connect() as conn:
+            owners = [
+                r[0] for r in conn.execute(text("""
+                    SELECT DISTINCT COALESCE(owner_name, 'FoodMaster Group')
+                    FROM layer3_dim.dim_merchant_mapping
+                    WHERE owner_name IS NOT NULL AND owner_name != ''
+                    ORDER BY 1;
+                """)).fetchall()
+            ]
+            outlets = [
+                r[0] for r in conn.execute(text("""
+                    SELECT DISTINCT outlet_name
+                    FROM layer3_dim.dim_merchant_mapping
+                    WHERE outlet_name IS NOT NULL AND outlet_name != ''
+                    ORDER BY 1;
+                """)).fetchall()
+            ]
+
+        return {
+            "owners": owners,
+            "outlets": outlets
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
 
 @app.get("/api/transactions/{order_id}", summary="Get Single Cleaned Transaction Detail")
 def get_transaction_detail(order_id: str):

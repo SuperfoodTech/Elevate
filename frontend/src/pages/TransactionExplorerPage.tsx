@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import {
   MOCK_TRANSACTIONS,
-  TOTAL_ORDER_COUNT,
   formatRupiah,
   type Platform,
   type OrderStatus,
@@ -174,6 +173,40 @@ export const TransactionExplorerPage: React.FC = () => {
   const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasFetchedLive, setHasFetchedLive] = useState<boolean>(false);
+  const [serverTotal, setServerTotal] = useState<number>(0);
+  const [serverKpi, setServerKpi] = useState({
+    suksesCount: 0,
+    batalCount: 0,
+    preLiveCount: 0,
+    total: 0,
+    suksesRate: '0.0',
+    batalRate: '0.0',
+    lostRevenue: 0,
+    lostAgencyFee: 0,
+  });
+
+  const [filterOwnersList, setFilterOwnersList] = useState<string[]>([]);
+  const [filterOutletsList, setFilterOutletsList] = useState<string[]>([]);
+
+  // Load distinct filter options on mount
+  useEffect(() => {
+    if (currentTab !== 'agency') return;
+    api.getTransactionFilterOptions()
+      .then((res: any) => {
+        if (res) {
+          if (Array.isArray(res.owners)) setFilterOwnersList(res.owners);
+          if (Array.isArray(res.outlets)) setFilterOutletsList(res.outlets);
+        }
+      })
+      .catch((err: any) => {
+        console.error('Failed to load transaction filter options:', err);
+      });
+  }, [currentTab]);
+
+  // Reset to page 1 whenever any filter changes
+  useEffect(() => {
+    setAgencyPage(1);
+  }, [agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterStatus, deferredSearchQuery]);
 
   useEffect(() => {
     if (currentTab !== 'agency') return;
@@ -189,42 +222,65 @@ export const TransactionExplorerPage: React.FC = () => {
           platform: filterPlatform !== 'all' ? filterPlatform : undefined,
           start_date: startStr,
           end_date: endStr,
-          limit: 5000,
+          owner: filterOwner !== 'all' ? filterOwner : undefined,
+          outlet: filterOutlet !== 'all' ? filterOutlet : undefined,
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          search: deferredSearchQuery ? deferredSearchQuery : undefined,
+          limit: agencyRowsPerPage,
+          offset: (agencyPage - 1) * agencyRowsPerPage,
         });
 
         if (!isMounted) return;
 
-        if (res && Array.isArray(res.data)) {
-          const mapped: Transaction[] = res.data.map((item: any) => {
-            const platLower = (item.platform || '').toLowerCase();
-            const plat: Platform = platLower === 'gofood' ? 'gofood' : platLower === 'grabfood' ? 'grabfood' : 'shopeefood';
-            const isSukses = item.is_success === 1 || String(item.status).toUpperCase() === 'SETTLEMENT' || String(item.status).toUpperCase() === 'COMPLETED';
-            const dt = item.created_on || item.transaction_date || '';
+        if (res) {
+          if (res.kpi) {
+            setServerKpi({
+              suksesCount: res.kpi.suksesCount || 0,
+              batalCount: res.kpi.batalCount || 0,
+              preLiveCount: res.kpi.preLiveCount || 0,
+              total: res.kpi.total || 0,
+              suksesRate: res.kpi.suksesRate || '0.0',
+              batalRate: res.kpi.batalRate || '0.0',
+              lostRevenue: res.kpi.lostRevenue || 0,
+              lostAgencyFee: res.kpi.lostAgencyFee || 0,
+            });
+          }
+          if (typeof res.total === 'number') {
+            setServerTotal(res.total);
+          }
 
-            return {
-              id: String(item.id),
-              dateTime: dt,
-              orderId: item.external_id || String(item.id),
-              platform: plat,
-              owner: item.owner_name || 'FoodMaster Group',
-              physicalOutlet: item.outlet_name || item.branch_name || item.store_name || '-',
-              platformListing: item.store_name || item.branch_name || item.outlet_name || '-',
-              sid: item.merchant_id || '-',
-              status: isSukses ? 'Sukses' : 'Batal',
-              orderValue: Number(item.gross_amount) || 0,
-              agencyFee: Math.abs(Number(item.commission) || 0),
-              orderStage: 'live',
-              netSales: Number(item.net_sales) || 0,
-              marketingSuccessFee: 0,
-              orderCommission: Math.abs(Number(item.commission) || 0),
-              ofdFees: Number(item.ofd_fees) || 0,
-              ingestedAt: item.created_on || undefined,
-              ingestedBy: 'ETL Worker',
-              lastUpdated: item.created_on || undefined,
-            };
-          });
-          setLiveTransactions(mapped);
-          setHasFetchedLive(true);
+          if (Array.isArray(res.data)) {
+            const mapped: Transaction[] = res.data.map((item: any) => {
+              const platLower = (item.platform || '').toLowerCase();
+              const plat: Platform = platLower === 'gofood' ? 'gofood' : platLower === 'grabfood' ? 'grabfood' : 'shopeefood';
+              const isSukses = item.is_success === 1 || String(item.status).toUpperCase() === 'SETTLEMENT' || String(item.status).toUpperCase() === 'COMPLETED' || String(item.status).toUpperCase() === 'TRANSFERRED';
+              const dt = item.created_on || item.transaction_date || '';
+
+              return {
+                id: String(item.id),
+                dateTime: dt,
+                orderId: item.external_id || String(item.id),
+                platform: plat,
+                owner: item.owner_name || 'FoodMaster Group',
+                physicalOutlet: item.outlet_name || item.branch_name || item.store_name || '-',
+                platformListing: item.store_name || item.branch_name || item.outlet_name || '-',
+                sid: item.merchant_id || '-',
+                status: isSukses ? 'Sukses' : 'Batal',
+                orderValue: Number(item.gross_amount) || 0,
+                agencyFee: Math.abs(Number(item.commission) || 0),
+                orderStage: 'live',
+                netSales: Number(item.net_sales) || 0,
+                marketingSuccessFee: 0,
+                orderCommission: Math.abs(Number(item.commission) || 0),
+                ofdFees: Number(item.ofd_fees) || 0,
+                ingestedAt: item.created_on || undefined,
+                ingestedBy: 'ETL Worker',
+                lastUpdated: item.created_on || undefined,
+              };
+            });
+            setLiveTransactions(mapped);
+            setHasFetchedLive(true);
+          }
         }
       } catch (err) {
         console.error('Failed to fetch transactions from API:', err);
@@ -238,7 +294,18 @@ export const TransactionExplorerPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [currentTab, agencyPeriod.startDate, agencyPeriod.endDate, filterPlatform]);
+  }, [
+    currentTab,
+    agencyPeriod.startDate,
+    agencyPeriod.endDate,
+    filterPlatform,
+    filterOwner,
+    filterOutlet,
+    filterStatus,
+    deferredSearchQuery,
+    agencyPage,
+    agencyRowsPerPage,
+  ]);
 
   const agencyDataset = hasFetchedLive ? liveTransactions : MOCK_TRANSACTIONS;
 
@@ -264,14 +331,20 @@ export const TransactionExplorerPage: React.FC = () => {
 
   // Agency memoized options
   const owners = useMemo(() => {
+    if (filterOwnersList.length > 0) {
+      return [{ value: 'all', label: 'Semua Owner' }, ...filterOwnersList.map((o) => ({ value: o, label: o }))];
+    }
     const set = new Set(agencyDataset.map((t) => t.owner).filter(Boolean));
     return [{ value: 'all', label: 'Semua Owner' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
-  }, [agencyDataset]);
+  }, [filterOwnersList, agencyDataset]);
 
   const outlets = useMemo(() => {
+    if (filterOutletsList.length > 0) {
+      return [{ value: 'all', label: 'Semua Outlet' }, ...filterOutletsList.map((o) => ({ value: o, label: o }))];
+    }
     const set = new Set(agencyDataset.map((t) => t.physicalOutlet).filter(Boolean));
     return [{ value: 'all', label: 'Semua Outlet' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
-  }, [agencyDataset]);
+  }, [filterOutletsList, agencyDataset]);
 
   const listings = useMemo(() => {
     const set = new Set(agencyDataset.map((t) => t.platformListing).filter(Boolean));
@@ -294,7 +367,7 @@ export const TransactionExplorerPage: React.FC = () => {
     return [{ value: 'all', label: 'Semua Listing' }, ...Array.from(set).map((l) => ({ value: l, label: l }))];
   }, []);
 
-  // Agency filtered & pagination
+  // Agency filtered & pagination (used for fallback mock)
   const filteredAgency = useMemo(() => {
     const q = deferredSearchQuery.trim().toLowerCase();
     const tokens = q.split(/\s+/).filter(Boolean);
@@ -329,6 +402,9 @@ export const TransactionExplorerPage: React.FC = () => {
   }, [agencyDataset, hasFetchedLive, agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
 
   const agencyKpi = useMemo(() => {
+    if (hasFetchedLive) {
+      return serverKpi;
+    }
     const sukses = filteredAgency.filter((t) => t.status === 'Sukses');
     const batal = filteredAgency.filter((t) => t.status === 'Batal');
     const preLive = filteredAgency.filter((t) => t.orderStage === 'akuisisi_to_live');
@@ -344,14 +420,18 @@ export const TransactionExplorerPage: React.FC = () => {
       lostRevenue,
       lostAgencyFee,
     };
-  }, [filteredAgency]);
+  }, [hasFetchedLive, serverKpi, filteredAgency]);
 
-  const totalAgencyPages = Math.max(1, Math.ceil(filteredAgency.length / agencyRowsPerPage));
+  const effectiveTotal = hasFetchedLive ? serverTotal : filteredAgency.length;
+  const totalAgencyPages = Math.max(1, Math.ceil(effectiveTotal / agencyRowsPerPage));
 
   const paginatedAgency = useMemo(() => {
+    if (hasFetchedLive) {
+      return liveTransactions;
+    }
     const start = (agencyPage - 1) * agencyRowsPerPage;
     return filteredAgency.slice(start, start + agencyRowsPerPage);
-  }, [filteredAgency, agencyPage, agencyRowsPerPage]);
+  }, [hasFetchedLive, liveTransactions, filteredAgency, agencyPage, agencyRowsPerPage]);
 
   const resetAgencyFilters = useCallback(() => {
     setFilterPlatform('all');
@@ -515,8 +595,8 @@ export const TransactionExplorerPage: React.FC = () => {
   }
 
   // Agency pagination display numbers
-  const agencyStart = filteredAgency.length === 0 ? 0 : (agencyPage - 1) * agencyRowsPerPage + 1;
-  const agencyEnd = Math.min(agencyPage * agencyRowsPerPage, filteredAgency.length);
+  const agencyStart = effectiveTotal === 0 ? 0 : (agencyPage - 1) * agencyRowsPerPage + 1;
+  const agencyEnd = Math.min(agencyPage * agencyRowsPerPage, effectiveTotal);
 
   const agencyPageNumbers = useMemo(() => {
     if (totalAgencyPages <= 5) return Array.from({ length: totalAgencyPages }, (_, i) => i + 1);
@@ -852,8 +932,8 @@ export const TransactionExplorerPage: React.FC = () => {
                   </div>
 
                   <p className="text-sm text-gray-500">
-                    {filteredAgency.length > 0
-                      ? `${agencyStart}-${agencyEnd} of ${TOTAL_ORDER_COUNT.toLocaleString('id-ID')}`
+                    {effectiveTotal > 0
+                      ? `${agencyStart}-${agencyEnd} of ${effectiveTotal.toLocaleString('id-ID')}`
                       : '0 of 0'}
                   </p>
 

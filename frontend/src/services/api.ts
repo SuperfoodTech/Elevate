@@ -193,6 +193,10 @@ export const api = {
     platform?: string;
     start_date?: string;
     end_date?: string;
+    owner?: string;
+    outlet?: string;
+    status?: string;
+    search?: string;
     limit?: number;
     offset?: number;
   }) => {
@@ -200,9 +204,17 @@ export const api = {
     if (params?.platform && params.platform !== 'all') search.append('platform', params.platform);
     if (params?.start_date) search.append('start_date', params.start_date);
     if (params?.end_date) search.append('end_date', params.end_date);
+    if (params?.owner && params.owner !== 'all') search.append('owner', params.owner);
+    if (params?.outlet && params.outlet !== 'all') search.append('outlet', params.outlet);
+    if (params?.status && params.status !== 'all') search.append('status', params.status);
+    if (params?.search && params.search.trim()) search.append('search', params.search.trim());
     if (params?.limit) search.append('limit', String(params.limit));
     if (params?.offset !== undefined) search.append('offset', String(params.offset));
     return fetchCached(`/api/transactions?${search.toString()}`);
+  },
+
+  getTransactionFilterOptions: async () => {
+    return fetchCached('/api/transactions/filter-options');
   },
 
   getTransactionDetail: async (orderId: string) => {
