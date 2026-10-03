@@ -185,7 +185,7 @@ export const api = {
     if (params.owner) search.append('owner', params.owner);
     if (params.business) search.append('business', params.business);
     if (params.forceRefresh) search.append('refresh', 'true');
-    return fetchCached(`/api/dashboard-summary?${search.toString()}`);
+    return fetchCached(`/api/dashboard-summary?${search.toString()}`, undefined, !!params.forceRefresh);
   },
 
   // Transactions Explorer API
