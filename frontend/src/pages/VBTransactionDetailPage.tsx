@@ -223,10 +223,10 @@ export const VBTransactionDetailPage: React.FC = () => {
                   <p className="text-xs text-gray-400 mb-1">Platform</p>
                   <p className="text-sm font-semibold text-gray-800">{platformLabel}</p>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-1 min-w-0">
                   <p className="text-xs text-gray-400 mb-1">Order ID</p>
-                  <div className="flex items-center">
-                    <p className="text-sm font-semibold text-gray-800 font-mono">{transaction.orderId}</p>
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="text-sm font-semibold text-gray-800 font-mono break-all select-all">{transaction.orderId}</p>
                     <CopyButton text={transaction.orderId} label="Order ID" />
                   </div>
                 </div>

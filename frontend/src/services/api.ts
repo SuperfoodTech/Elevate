@@ -169,5 +169,128 @@ export const api = {
 
   getBaselineVsCurrent: async () => {
     return fetchCached('/api/analytics/baseline-vs-current');
+  },
+
+  // Home Dashboard Aggregated Metrics
+  getHomeDashboardMetrics: async (params: {
+    startDate?: string;
+    endDate?: string;
+    owner?: string;
+    business?: string;
+    forceRefresh?: boolean;
+  }): Promise<HomeDashboardResponse> => {
+    const search = new URLSearchParams();
+    if (params.startDate) search.append('start_date', params.startDate);
+    if (params.endDate) search.append('end_date', params.endDate);
+    if (params.owner) search.append('owner', params.owner);
+    if (params.business) search.append('business', params.business);
+    if (params.forceRefresh) search.append('refresh', 'true');
+    return fetchCached(`/api/dashboard-summary?${search.toString()}`, undefined, !!params.forceRefresh);
+  },
+
+  // Transactions Explorer API
+  getTransactions: async (params?: {
+    platform?: string;
+    start_date?: string;
+    end_date?: string;
+    owner?: string;
+    outlet?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.platform && params.platform !== 'all') search.append('platform', params.platform);
+    if (params?.start_date) search.append('start_date', params.start_date);
+    if (params?.end_date) search.append('end_date', params.end_date);
+    if (params?.owner && params.owner !== 'all') search.append('owner', params.owner);
+    if (params?.outlet && params.outlet !== 'all') search.append('outlet', params.outlet);
+    if (params?.status && params.status !== 'all') search.append('status', params.status);
+    if (params?.search && params.search.trim()) search.append('search', params.search.trim());
+    if (params?.limit) search.append('limit', String(params.limit));
+    if (params?.offset !== undefined) search.append('offset', String(params.offset));
+    return fetchCached(`/api/transactions?${search.toString()}`);
+  },
+
+  getTransactionFilterOptions: async () => {
+    return fetchCached('/api/transactions/filter-options');
+  },
+
+  getTransactionDetail: async (orderId: string) => {
+    return fetchCached(`/api/transactions/${encodeURIComponent(orderId)}`);
   }
 };
+
+export interface HomeDashboardKPI {
+  total_owner?: number;
+  total_owner_change?: number;
+  total_outlet?: number;
+  total_outlet_change?: number;
+  active_listings?: number;
+  active_listings_change?: number;
+  merchant_orders?: number;
+  virtual_orders?: number;
+  sparklines?: {
+    owners?: { val: number }[];
+    outlets?: { val: number }[];
+    listings?: { val: number }[];
+    merchantOrders?: { val: number }[];
+    virtualOrders?: { val: number }[];
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
+
+export interface DailyVelocityPoint {
+  date: string;
+  merchantOrders: number;
+  virtualOrders: number;
+  totalOrders: number;
+}
+
+export interface MerchantChartPoint {
+  date: string;
+  gmv: number;
+  ofdFees: number;
+  revenue: number;
+  orderSucceed: number;
+  orderCanceled: number;
+}
+
+export interface VirtualChartPoint {
+  date: string;
+  gmv: number;
+  ofdFees: number;
+  revenue: number;
+  cogs: number;
+  grossMargin: number;
+  orderSucceed: number;
+  orderCanceled: number;
+}
+
+export interface TopBrandRankingItem {
+  name: string;
+  gmv: number;
+  share: number;
+  orders: number;
+  growth: string;
+}
+
+export interface SettlementFlowPoint {
+  date: string;
+  receivable: number;
+  payable: number;
+  disbursed: number;
+}
+
+export interface HomeDashboardResponse {
+  status: string;
+  has_data: boolean;
+  kpi: HomeDashboardKPI;
+  velocity: DailyVelocityPoint[];
+  merchant_chart_data: MerchantChartPoint[];
+  virtual_chart_data: VirtualChartPoint[];
+  top_brands: TopBrandRankingItem[];
+  settlement_flow: SettlementFlowPoint[];
+}

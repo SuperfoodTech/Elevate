@@ -16,7 +16,10 @@ with open(config_path) as f:
 
 def get_db_url():
     if os.getenv("DATABASE_URL"):
-        return os.getenv("DATABASE_URL")
+        raw_url = os.getenv("DATABASE_URL")
+        if raw_url.startswith("postgresql://"):
+            return raw_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return raw_url
     
     defaults = _config["db_defaults"]
     host = os.getenv("DB_HOST", defaults["host"]).strip("'\" ")
@@ -30,7 +33,7 @@ def get_db_url():
     safe_user = urllib.parse.quote_plus(user)
     safe_password = urllib.parse.quote_plus(password)
     
-    url = f"postgresql://{safe_user}:{safe_password}@{host}:{port}/{name}"
+    url = f"postgresql+psycopg2://{safe_user}:{safe_password}@{host}:{port}/{name}"
     if sslmode:
         url += f"?sslmode={sslmode}"
     return url

@@ -4,7 +4,10 @@ import os
 from sqlalchemy import text
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-from db_manager import DatabaseManager
+try:
+    from layer1_db_manager import DatabaseManager
+except ImportError:
+    from db_manager import DatabaseManager
 
 def recreate_clean_tables():
     db = DatabaseManager()
@@ -100,22 +103,36 @@ def recreate_clean_tables():
         DROP TABLE IF EXISTS layer2_clean.stg_go_orders CASCADE;
         CREATE TABLE layer2_clean.stg_go_orders (
             id SERIAL PRIMARY KEY,
-            period_id TEXT UNIQUE,
+            order_status TEXT,
+            outlet_name TEXT,
+            merchant_id TEXT,
+            feature TEXT,
+            order_id TEXT UNIQUE,
+            transaction_id TEXT,
+            amount NUMERIC(15,2),
+            net_amount NUMERIC(15,2),
+            transaction_time TIMESTAMP,
+            payment_type TEXT,
+            gopay_promo TEXT,
+            promo_type TEXT,
+            promo_name TEXT,
+            merchant_promo_contribution NUMERIC(15,2),
+            voucher_description TEXT,
+            gofood_discount NUMERIC(15,2),
+            voucher_commission NUMERIC(15,2),
+            total_fee NUMERIC(15,2),
+            value_added_tax NUMERIC(15,2),
+            restaurant_tax NUMERIC(15,2),
+            service NUMERIC(15,2),
+            withholding_tax NUMERIC(15,2),
             month TEXT,
             date DATE,
-            store_name TEXT,
-            store_id TEXT,
-            gross_sales NUMERIC(15,2),
-            commission_fee NUMERIC(15,2),
-            marketing_fee_and_discount NUMERIC(15,2),
             total_platform_deduction NUMERIC(15,2),
-            net_sales NUMERIC(15,2),
-            average_order_customer NUMERIC(15,2),
-            completed_order NUMERIC(15,2),
-            cancelled_order NUMERIC(15,2),
-            total_order NUMERIC(15,2),
             ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE INDEX IF NOT EXISTS idx_stg_go_orders_order_id ON layer2_clean.stg_go_orders(order_id);
+        CREATE INDEX IF NOT EXISTS idx_stg_go_orders_date ON layer2_clean.stg_go_orders(date);
+        CREATE INDEX IF NOT EXISTS idx_stg_go_orders_merchant ON layer2_clean.stg_go_orders(merchant_id);
         """,
         
         # 4. Create clean stg_shopee_orders

@@ -92,10 +92,16 @@ def execute_pipeline_chain(
 
     # 2. LAYER 2 & 3: Normalization, DBR Matching, and Fact Refresh
     if auto_process:
-        from layer2_normalize import normalize_all
+        from layer2_normalize import normalize_grab, normalize_shopee, normalize_gofood
 
-        # Layer 2: Clean & normalize
-        normalize_all()
+        # Layer 2: Clean & normalize platform-specific stream
+        if platform_key == "grab":
+            normalize_grab()
+        elif platform_key == "shopee":
+            normalize_shopee()
+        elif platform_key == "gofood":
+            normalize_gofood()
+
         layer2_status = "completed"
 
         # Layer 3: DBR matching & fact transactions update

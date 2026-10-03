@@ -1,4 +1,7 @@
-from db_manager import DatabaseManager
+try:
+    from layer1_db_manager import DatabaseManager
+except ImportError:
+    from db_manager import DatabaseManager
 from sqlalchemy import text
 
 def recreate_tables():

@@ -12,20 +12,20 @@ Diagram ini mengilustrasikan pemisahan fisik antara Server Scraper (Server B) da
 flowchart TB
     subgraph Server_B["SERVER B: SCRAPER WORKER (Dedicated Server)"]
         CronTrigger["Cron Daemon H+1 (Setiap Pukul 02:00 WIB)"]
-        
+      
         subgraph Scraper_Engines["OFD Extraction Engines"]
             GrabEngine["GrabFood Scraper (API / Web Session)"]
             ShopeeEngine["ShopeeFood Scraper (API / Merchant Session)"]
             GoEngine["GoFood Scraper (V2 Analytics / Commerce Items)"]
         end
-        
+      
         subgraph Local_Storage["Penyimpanan Lokal (Audit & Traceback)"]
             ExcelArchive["Arsip Laporan Fisik: 0Master.xlsx / CSV"]
             JSONLocal["Cache File JSON Mentah Transaksi"]
         end
-        
+      
         ClientSender["HTTP Client Pengirim (Tailscale + X-Elevate-API-Key)"]
-        
+      
         CronTrigger --> GrabEngine & ShopeeEngine & GoEngine
         GrabEngine & ShopeeEngine & GoEngine --> ExcelArchive
         GrabEngine & ShopeeEngine & GoEngine --> JSONLocal
@@ -40,31 +40,31 @@ flowchart TB
     subgraph Server_A["SERVER A: ELEVATE PRODUCTION (Docker Compose)"]
         ReverseProxy["Nginx Ingress / Tailscale Endpoint (Port 80/443)"]
         SecureTunnel --> ReverseProxy
-        
+      
         subgraph Elevate_Backend["Container: elevate_backend (FastAPI)"]
             AuthGuard["Security Guard: Verifikasi X-Elevate-API-Key"]
             IngestController["Controller: Ingest OFD Batch Endpoint"]
             PipelineRunner["Pipeline Orchestrator (ELT Trigger)"]
-            
+          
             ReverseProxy --> AuthGuard
             AuthGuard --> IngestController
             IngestController --> PipelineRunner
         end
-        
+      
         subgraph Elevate_DB["Container: elevate_db (PostgreSQL 15)"]
             RawSchema[("Layer 1: layer1_raw")]
             CleanSchema[("Layer 2: layer2_clean")]
             DimSchema[("Layer 3: layer3_dim")]
             MasterDBR[("Master DBR: dim_merchant_mapping")]
             MatViews[("Materialized Views: mv_*")]
-            
+          
             PipelineRunner -->|"1. Ingest Mentah"| RawSchema
             RawSchema -->|"2. Transform & Normalisasi"| CleanSchema
             CleanSchema -->|"3. Match DBR & Fact Load"| DimSchema
             MasterDBR -.->|"Lookup Store ID"| DimSchema
             DimSchema -->|"Auto Refresh"| MatViews
         end
-        
+      
         subgraph Elevate_Frontend["Container: elevate_frontend (React SPA)"]
             DashboardAPI["Backend REST Endpoints (/api/dashboard-summary)"]
             DashboardUI["Dashboard Eksekutif (DashboardPage.tsx)"]
@@ -94,7 +94,7 @@ flowchart LR
         T_RawGrab[("raw_grab")]
         T_RawShopee[("raw_shopee")]
         T_RawGo[("raw_go & raw_go_items")]
-        
+      
         RawPayload --> T_RawGrab
         RawPayload --> T_RawShopee
         RawPayload --> T_RawGo
@@ -103,11 +103,11 @@ flowchart LR
     subgraph L2["LAYER 2: CLEANING & NORMALIZATION (layer2_clean)"]
         direction TB
         NormLogic["Pembersihan & Standardisasi:<br/>- Parsing Timestamp ke ISO-8601<br/>- Status Baku: COMPLETED / CANCELLED<br/>- Konversi Angka Sen ke Rupiah<br/>- Deduplikasi (Order ID, Line No)"]
-        
+      
         T_StgGrab[("stg_grab_orders")]
         T_StgShopee[("stg_shopee_orders")]
         T_StgGo[("stg_go_orders")]
-        
+      
         T_RawGrab --> NormLogic --> T_StgGrab
         T_RawShopee --> NormLogic --> T_StgShopee
         T_RawGo --> NormLogic --> T_StgGo
@@ -123,11 +123,11 @@ flowchart LR
     subgraph L3["LAYER 3: FACT TRANSACTIONS & ANALYTICS (layer3_dim)"]
         direction TB
         SP_Fact["Stored Procedure: refresh_fact_transactions()<br/>- LEFT JOIN Staging ke Master DBR<br/>- Identifikasi Toko Baru (auto_detect)<br/>- Kalkulasi Net Sales, Komisi & Margin"]
-        
+      
         T_Fact[("fact_transactions")]
-        
+      
         MVs["Materialized Views:<br/>- mv_order_ranking<br/>- mv_payment_daily<br/>- mv_rekap_tagihan_monthly"]
-        
+      
         T_StgGrab & T_StgShopee & T_StgGo --> SP_Fact
         T_DBR --> SP_Fact
         SP_Fact --> T_Fact
@@ -139,7 +139,7 @@ flowchart LR
         KPICards["5 KPI Cards (GMV, Net, Orders, Fees, Brand Velocity)"]
         Charts["Grafik Tren Harian & Distribusi Platform"]
         TopBrands["Tabel Peringkat Brand & Arus Kas Settlement"]
-        
+      
         MVs --> KPICards & Charts & TopBrands
     end
 ```
@@ -221,7 +221,7 @@ sequenceDiagram
 
     Note over Cron, Scraper: Pukul 02:00 WIB (H+1 Selesai Settlement)
     Cron->>Scraper: Trigger proses penarikan data H-1
-    
+  
     par Ekstraksi Aplikator
         Scraper->>Scraper: Ekstraksi GrabFood (Orders & Financials)
         Scraper->>Scraper: Ekstraksi ShopeeFood (Orders & Items)
@@ -230,12 +230,12 @@ sequenceDiagram
 
     Note over Scraper, LocalDisk: Retensi Traceback & Audit
     Scraper->>LocalDisk: Tulis laporan lokal (0Master.xlsx, raw JSON)
-    
+  
     Note over Scraper, IngestAPI: Transport via Tailscale Private Mesh
     Scraper->>IngestAPI: POST /api/v1/ingest/ofd/batch (JSON + API Key)
-    
+  
     IngestAPI->>IngestAPI: Verifikasi X-Elevate-API-Key
-    
+  
     Note over IngestAPI, DB: Eksekusi Pipeline 3 Layer
     IngestAPI->>DB: 1. INSERT INTO layer1_raw (raw_grab, raw_shopee, raw_go)
     IngestAPI->>DB: 2. CALL normalize_all() -> populate layer2_clean
@@ -243,10 +243,10 @@ sequenceDiagram
     DBR-->>DB: Enrich owner, outlet, brand, group_code
     IngestAPI->>DB: 4. UPSERT INTO layer3_dim.fact_transactions
     IngestAPI->>DB: 5. REFRESH MATERIALIZED VIEW (mv_order_ranking, mv_payment_daily)
-    
+  
     DB-->>IngestAPI: Konfirmasi: Ingest Selesai (350 baris, 0 error)
     IngestAPI-->>Scraper: HTTP 200 OK (Status Berhasil)
-    
+  
     Note over UI, DB: Pengguna Membuka Elevate (08:00 WIB)
     UI->>IngestAPI: GET /api/dashboard-summary
     IngestAPI->>DB: Query data dari Materialized Views

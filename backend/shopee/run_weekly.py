@@ -35,61 +35,15 @@ def subtract_months(dt, months):
 
 def get_live_merchants(app_name="ShopeeFood", max_age_hours=0.01, merchant_filter=None):
     """
-    Fetches live merchants from Google Sheets and caches them locally.
-    Uses cached data if it's less than max_age_hours old.
+    Fetches live merchants from Master DBR using dbr_resolver.
     """
-    import os
-    import time
-    from datetime import datetime
-    
-    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3tLKBNXDqRgBw0mNhKZFxgvKx-JoiTDzm_s5Ix1cm7O6HCv4IvExOLR2HSRVaXSsx82V348mcr9X4/pub?output=csv"
-    cache_path = "data/master_merchants_cache.csv"
-    os.makedirs("data", exist_ok=True)
-    
-    # Cek cache
-    if os.path.exists(cache_path):
-        mtime = os.path.getmtime(cache_path)
-        age_hours = (time.time() - mtime) / 3600
-        if age_hours < max_age_hours:
-            log.info(f"🔄 [DATA] Using cached merchant list (Age: {age_hours:.1f}h)")
-            df = pd.read_csv(cache_path)
-            sf_df = df[(df['Aplikasi'] == app_name) & (df['Status'] == 'Live')]
-            
-            if merchant_filter:
-                if "|" in merchant_filter:
-                    filter_vals = [m.strip().lower().rstrip('_') for m in merchant_filter.split("|")]
-                    sf_df = sf_df[sf_df['Merchant Name'].str.strip().str.lower().str.rstrip('_').isin(filter_vals)]
-                else:
-                    filter_val = merchant_filter.strip().lower().rstrip('_')
-                    sf_df = sf_df[sf_df['Merchant Name'].str.strip().str.lower().str.rstrip('_') == filter_val]
-                
-            sf_df = sf_df[(sf_df['Merchant Name'] != '-') & (sf_df['Merchant Name'].notna())]
-            sf_df = sf_df.drop_duplicates(subset=['Merchant Name'])
-            return sf_df['Merchant Name'].tolist()
-            
-    # Jika tidak ada cache atau sudah usang, download ulang
-    log.info("🌐 [DATA] Downloading fresh merchant list from Google Sheets...")
     try:
-        cache_buster = f"&t={int(time.time())}" if "?" in url else f"?t={int(time.time())}"
-        df = pd.read_csv(url + cache_buster)
-        df.to_csv(cache_path, index=False)
-        
-        sf_df = df[(df['Aplikasi'] == app_name) & (df['Status'] == 'Live')]
-        
-        if merchant_filter:
-            if "|" in merchant_filter:
-                filter_vals = [m.strip().lower().rstrip('_') for m in merchant_filter.split("|")]
-                sf_df = sf_df[sf_df['Merchant Name'].str.strip().str.lower().str.rstrip('_').isin(filter_vals)]
-            else:
-                filter_val = merchant_filter.strip().lower().rstrip('_')
-                sf_df = sf_df[sf_df['Merchant Name'].str.strip().str.lower().str.rstrip('_') == filter_val]
-            
-        sf_df = sf_df[(sf_df['Merchant Name'] != '-') & (sf_df['Merchant Name'].notna())]
-        sf_df = sf_df.drop_duplicates(subset=['Merchant Name'])
-        
-        return sf_df['Merchant Name'].tolist()
+        from core.dbr_resolver import get_shopee_merchants
+        merchants = get_shopee_merchants(merchant_filter=merchant_filter)
+        log.info(f"Loaded {len(merchants)} unique active ShopeeFood merchants from Master DBR.")
+        return merchants
     except Exception as e:
-        log.error(f"⚠️ Failed to fetch/parse merchants: {e}")
+        log.error(f"Failed to fetch Shopee merchants from Master DBR: {e}")
         return []
 
 def download_file(url, filename, cookies=None, max_retries=3):
@@ -293,23 +247,18 @@ def run_pipeline():
         except Exception:
             pass
 
-    # Hardcoded/CSV fallback if still not found
-    if not username or not password or not phone:
+    # Master DBR fallback for staff credentials
+    if not username or not password:
         try:
-            log.info("🔍 [DATA] Fetching credentials from new Google Sheets (Row 7, Col T & U)...")
-            url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRYSUnKOqk29LCktTxdb0wPLbWMbRaWRP3eC_UA4AwYod1FW6zDMhtLMC5ghIvot2B8upCDfBsn-TCP/pub?gid=0&single=true&output=csv"
-            cache_buster = f"&t={int(time.time())}" if "?" in url else f"?t={int(time.time())}"
-            df = pd.read_csv(url + cache_buster)
-            
-            # Row 7 corresponds to index 5 in pandas DataFrame (since row 1 is header).
-            # Column T is index 19, Column U is index 20.
-            username = str(df.iloc[5, 19]).strip()
-            password = str(df.iloc[5, 20]).strip()
-            phone = ""
-            
-            log.info(f"✅ [DATA] Successfully loaded credentials for '{username}' from Sheets.")
+            from core.dbr_resolver import get_shopee_staff_credentials
+            staff_u, staff_p = get_shopee_staff_credentials()
+            if staff_u and staff_p:
+                username = staff_u
+                password = staff_p
+                phone = ""
+                log.info(f"[DATA] Successfully loaded credentials for '{username}' from Master DBR.")
         except Exception as e:
-            log.warning(f"⚠️ Failed to fetch credentials from Sheets: {e}")
+            log.warning(f"Failed to fetch credentials from Master DBR: {e}")
             
     # Ultimate fallback if it completely fails
     if not username: username = "allvbadmin"

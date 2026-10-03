@@ -749,9 +749,15 @@ def _init_driver(headless: bool):
     script_dir = Path(__file__).parent.parent
     suffix = "_win" if os.name == "nt" else ""
     if SESSION_FILE.stem == "session":
-        profile_dir = script_dir / "data" / f"chrome_profile{suffix}"
-        options.add_argument(f"--user-data-dir={profile_dir.resolve()}")
-        options.add_argument("--profile-directory=shopee_profile")
+        allvb_dir = script_dir / "data" / f"chrome_profile_allvbadmin{suffix}"
+        if allvb_dir.exists() and (allvb_dir / "profile_allvbadmin").exists():
+            profile_dir = allvb_dir
+            options.add_argument(f"--user-data-dir={profile_dir.resolve()}")
+            options.add_argument("--profile-directory=profile_allvbadmin")
+        else:
+            profile_dir = script_dir / "data" / f"chrome_profile{suffix}"
+            options.add_argument(f"--user-data-dir={profile_dir.resolve()}")
+            options.add_argument("--profile-directory=shopee_profile")
     else:
         account_name = SESSION_FILE.stem.replace("session_", "")
         profile_dir = script_dir / "data" / f"chrome_profile_{account_name}{suffix}"

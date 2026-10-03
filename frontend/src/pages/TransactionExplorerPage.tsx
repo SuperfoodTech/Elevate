@@ -4,7 +4,6 @@ import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
   Download,
   SlidersHorizontal,
-  Calendar,
   ChevronDown,
   Search,
   RotateCcw,
@@ -19,10 +18,10 @@ import {
 } from 'lucide-react';
 import {
   MOCK_TRANSACTIONS,
-  TOTAL_ORDER_COUNT,
   formatRupiah,
   type Platform,
   type OrderStatus,
+  type Transaction,
 } from '../data/transactions';
 import {
   MOCK_VB_TRANSACTIONS,
@@ -31,6 +30,34 @@ import {
   type Platform as VBPlatform,
   type OrderStatus as VBOrderStatus,
 } from '../data/vbTransactions';
+import {
+  TransactionPeriodPicker,
+  type PeriodFilterValue,
+} from '../components/common/TransactionPeriodPicker';
+import { parseTransactionDate, isWithinDateRange } from '../utils/dateParser';
+import { api } from '../services/api';
+
+function formatToYMD(d: Date | null | undefined): string | undefined {
+  if (!d) return undefined;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const DEFAULT_AGENCY_PERIOD: PeriodFilterValue = {
+  type: 'all',
+  label: 'Semua Periode',
+  startDate: undefined,
+  endDate: undefined,
+};
+
+const DEFAULT_VB_PERIOD: PeriodFilterValue = {
+  type: 'all',
+  label: 'Semua Periode',
+  startDate: undefined,
+  endDate: undefined,
+};
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
 
@@ -129,6 +156,7 @@ export const TransactionExplorerPage: React.FC = () => {
   }, []);
 
   // Agency tab filters & state
+  const [agencyPeriod, setAgencyPeriod] = useState<PeriodFilterValue>(DEFAULT_AGENCY_PERIOD);
   const [filterPlatform, setFilterPlatform] = useState('all');
   const [filterOwner, setFilterOwner] = useState('all');
   const [filterOutlet, setFilterOutlet] = useState('all');
@@ -139,7 +167,148 @@ export const TransactionExplorerPage: React.FC = () => {
   const [agencyPage, setAgencyPage] = useState(1);
   const [agencyRowsPerPage, setAgencyRowsPerPage] = useState(10);
 
+  // Live API data state for Agency tab
+  const [liveTransactions, setLiveTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasFetchedLive, setHasFetchedLive] = useState<boolean>(false);
+  const [serverTotal, setServerTotal] = useState<number>(0);
+  const [serverKpi, setServerKpi] = useState({
+    suksesCount: 0,
+    batalCount: 0,
+    preLiveCount: 0,
+    total: 0,
+    suksesRate: '0.0',
+    batalRate: '0.0',
+    lostRevenue: 0,
+    lostAgencyFee: 0,
+  });
+
+  const [filterOwnersList, setFilterOwnersList] = useState<string[]>([]);
+  const [filterOutletsList, setFilterOutletsList] = useState<string[]>([]);
+
+  // Load distinct filter options on mount
+  useEffect(() => {
+    if (currentTab !== 'agency') return;
+    api.getTransactionFilterOptions()
+      .then((res: any) => {
+        if (res) {
+          if (Array.isArray(res.owners)) setFilterOwnersList(res.owners);
+          if (Array.isArray(res.outlets)) setFilterOutletsList(res.outlets);
+        }
+      })
+      .catch((err: any) => {
+        console.error('Failed to load transaction filter options:', err);
+      });
+  }, [currentTab]);
+
+  // Reset to page 1 whenever any filter changes
+  useEffect(() => {
+    setAgencyPage(1);
+  }, [agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterStatus, deferredSearchQuery]);
+
+  useEffect(() => {
+    if (currentTab !== 'agency') return;
+
+    let isMounted = true;
+    const fetchLive = async () => {
+      setIsLoading(true);
+      try {
+        const startStr = agencyPeriod.startDate ? formatToYMD(agencyPeriod.startDate) : undefined;
+        const endStr = agencyPeriod.endDate ? formatToYMD(agencyPeriod.endDate) : undefined;
+
+        const res = await api.getTransactions({
+          platform: filterPlatform !== 'all' ? filterPlatform : undefined,
+          start_date: startStr,
+          end_date: endStr,
+          owner: filterOwner !== 'all' ? filterOwner : undefined,
+          outlet: filterOutlet !== 'all' ? filterOutlet : undefined,
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          search: deferredSearchQuery ? deferredSearchQuery : undefined,
+          limit: agencyRowsPerPage,
+          offset: (agencyPage - 1) * agencyRowsPerPage,
+        });
+
+        if (!isMounted) return;
+
+        if (res) {
+          if (res.kpi) {
+            setServerKpi({
+              suksesCount: res.kpi.suksesCount || 0,
+              batalCount: res.kpi.batalCount || 0,
+              preLiveCount: res.kpi.preLiveCount || 0,
+              total: res.kpi.total || 0,
+              suksesRate: res.kpi.suksesRate || '0.0',
+              batalRate: res.kpi.batalRate || '0.0',
+              lostRevenue: res.kpi.lostRevenue || 0,
+              lostAgencyFee: res.kpi.lostAgencyFee || 0,
+            });
+          }
+          if (typeof res.total === 'number') {
+            setServerTotal(res.total);
+          }
+
+          if (Array.isArray(res.data)) {
+            const mapped: Transaction[] = res.data.map((item: any) => {
+              const platLower = (item.platform || '').toLowerCase();
+              const plat: Platform = platLower === 'gofood' ? 'gofood' : platLower === 'grabfood' ? 'grabfood' : 'shopeefood';
+              const isSukses = item.is_success === 1 || String(item.status).toUpperCase() === 'SETTLEMENT' || String(item.status).toUpperCase() === 'COMPLETED' || String(item.status).toUpperCase() === 'TRANSFERRED';
+              const dt = item.created_on || item.transaction_date || '';
+
+              return {
+                id: String(item.id),
+                dateTime: dt,
+                orderId: item.external_id || String(item.id),
+                platform: plat,
+                owner: item.owner_name || 'FoodMaster Group',
+                physicalOutlet: item.outlet_name || item.branch_name || item.store_name || '-',
+                platformListing: item.store_name || item.branch_name || item.outlet_name || '-',
+                sid: item.merchant_id || '-',
+                status: isSukses ? 'Sukses' : 'Batal',
+                orderValue: Number(item.gross_amount) || 0,
+                agencyFee: Number(item.agency_fee) || 0,
+                orderStage: 'live',
+                netSales: Number(item.net_sales) || 0,
+                marketingSuccessFee: 0,
+                orderCommission: Math.abs(Number(item.commission) || 0),
+                ofdFees: Number(item.ofd_fees) || 0,
+                ingestedAt: item.created_on || undefined,
+                ingestedBy: 'ETL Worker',
+                lastUpdated: item.created_on || undefined,
+              };
+            });
+            setLiveTransactions(mapped);
+            setHasFetchedLive(true);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch transactions from API:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    fetchLive();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    currentTab,
+    agencyPeriod.startDate,
+    agencyPeriod.endDate,
+    filterPlatform,
+    filterOwner,
+    filterOutlet,
+    filterStatus,
+    deferredSearchQuery,
+    agencyPage,
+    agencyRowsPerPage,
+  ]);
+
+  const agencyDataset = hasFetchedLive ? liveTransactions : MOCK_TRANSACTIONS;
+
   // VB tab filters & state (symmetrical with Agency)
+  const [vbPeriod, setVbPeriod] = useState<PeriodFilterValue>(DEFAULT_VB_PERIOD);
   const [vbFilterPlatform, setVbFilterPlatform] = useState('all');
   const [vbFilterBrand, setVbFilterBrand] = useState('all');
   const [vbFilterOutlet, setVbFilterOutlet] = useState('all');
@@ -160,19 +329,25 @@ export const TransactionExplorerPage: React.FC = () => {
 
   // Agency memoized options
   const owners = useMemo(() => {
-    const set = new Set(MOCK_TRANSACTIONS.map((t) => t.owner));
-    return [{ value: 'all', label: 'Semua Owner' }, ...Array.from(set).map((o) => ({ value: o, label: o }))];
-  }, []);
+    if (filterOwnersList.length > 0) {
+      return [{ value: 'all', label: 'Semua Owner' }, ...filterOwnersList.map((o) => ({ value: o, label: o }))];
+    }
+    const set = new Set(agencyDataset.map((t) => t.owner).filter(Boolean));
+    return [{ value: 'all', label: 'Semua Owner' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
+  }, [filterOwnersList, agencyDataset]);
 
   const outlets = useMemo(() => {
-    const set = new Set(MOCK_TRANSACTIONS.map((t) => t.physicalOutlet));
-    return [{ value: 'all', label: 'Semua Outlet' }, ...Array.from(set).map((o) => ({ value: o, label: o }))];
-  }, []);
+    if (filterOutletsList.length > 0) {
+      return [{ value: 'all', label: 'Semua Outlet' }, ...filterOutletsList.map((o) => ({ value: o, label: o }))];
+    }
+    const set = new Set(agencyDataset.map((t) => t.physicalOutlet).filter(Boolean));
+    return [{ value: 'all', label: 'Semua Outlet' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
+  }, [filterOutletsList, agencyDataset]);
 
   const listings = useMemo(() => {
-    const set = new Set(MOCK_TRANSACTIONS.map((t) => t.platformListing));
-    return [{ value: 'all', label: 'Semua Listing' }, ...Array.from(set).map((o) => ({ value: o, label: o }))];
-  }, []);
+    const set = new Set(agencyDataset.map((t) => t.platformListing).filter(Boolean));
+    return [{ value: 'all', label: 'Semua Listing' }, ...Array.from(set).sort().map((o) => ({ value: o, label: o }))];
+  }, [agencyDataset]);
 
   // VB memoized options (symmetrical with Agency)
   const vbBrands = useMemo(() => {
@@ -190,12 +365,19 @@ export const TransactionExplorerPage: React.FC = () => {
     return [{ value: 'all', label: 'Semua Listing' }, ...Array.from(set).map((l) => ({ value: l, label: l }))];
   }, []);
 
-  // Agency filtered & pagination
+  // Agency filtered & pagination (used for fallback mock)
   const filteredAgency = useMemo(() => {
     const q = deferredSearchQuery.trim().toLowerCase();
     const tokens = q.split(/\s+/).filter(Boolean);
+    const hasDateRange = Boolean(agencyPeriod.startDate && agencyPeriod.endDate);
 
-    return MOCK_TRANSACTIONS.filter((t) => {
+    return agencyDataset.filter((t) => {
+      if (hasDateRange && !hasFetchedLive) {
+        const txDate = parseTransactionDate(t.dateTime);
+        if (!isWithinDateRange(txDate, agencyPeriod.startDate, agencyPeriod.endDate)) {
+          return false;
+        }
+      }
       if (filterPlatform !== 'all' && t.platform !== filterPlatform) return false;
       if (filterOwner !== 'all' && t.owner !== filterOwner) return false;
       if (filterOutlet !== 'all' && t.physicalOutlet !== filterOutlet) return false;
@@ -215,9 +397,12 @@ export const TransactionExplorerPage: React.FC = () => {
       }
       return true;
     });
-  }, [filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
+  }, [agencyDataset, hasFetchedLive, agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, deferredSearchQuery]);
 
   const agencyKpi = useMemo(() => {
+    if (hasFetchedLive) {
+      return serverKpi;
+    }
     const sukses = filteredAgency.filter((t) => t.status === 'Sukses');
     const batal = filteredAgency.filter((t) => t.status === 'Batal');
     const preLive = filteredAgency.filter((t) => t.orderStage === 'akuisisi_to_live');
@@ -233,14 +418,18 @@ export const TransactionExplorerPage: React.FC = () => {
       lostRevenue,
       lostAgencyFee,
     };
-  }, [filteredAgency]);
+  }, [hasFetchedLive, serverKpi, filteredAgency]);
 
-  const totalAgencyPages = Math.max(1, Math.ceil(filteredAgency.length / agencyRowsPerPage));
+  const effectiveTotal = hasFetchedLive ? serverTotal : filteredAgency.length;
+  const totalAgencyPages = Math.max(1, Math.ceil(effectiveTotal / agencyRowsPerPage));
 
   const paginatedAgency = useMemo(() => {
+    if (hasFetchedLive) {
+      return liveTransactions;
+    }
     const start = (agencyPage - 1) * agencyRowsPerPage;
     return filteredAgency.slice(start, start + agencyRowsPerPage);
-  }, [filteredAgency, agencyPage, agencyRowsPerPage]);
+  }, [hasFetchedLive, liveTransactions, filteredAgency, agencyPage, agencyRowsPerPage]);
 
   const resetAgencyFilters = useCallback(() => {
     setFilterPlatform('all');
@@ -249,6 +438,7 @@ export const TransactionExplorerPage: React.FC = () => {
     setFilterListing('all');
     setFilterStatus('all');
     setSearchQuery('');
+    setAgencyPeriod(DEFAULT_AGENCY_PERIOD);
     setAgencyPage(1);
   }, []);
 
@@ -263,8 +453,15 @@ export const TransactionExplorerPage: React.FC = () => {
   const filteredVB = useMemo(() => {
     const q = deferredVbSearchQuery.trim().toLowerCase();
     const tokens = q.split(/\s+/).filter(Boolean);
+    const hasDateRange = Boolean(vbPeriod.startDate && vbPeriod.endDate);
 
     return MOCK_VB_TRANSACTIONS.filter((t) => {
+      if (hasDateRange) {
+        const txDate = parseTransactionDate(t.dateTime);
+        if (!isWithinDateRange(txDate, vbPeriod.startDate, vbPeriod.endDate)) {
+          return false;
+        }
+      }
       if (vbFilterPlatform !== 'all' && t.platform !== (vbFilterPlatform as VBPlatform)) return false;
       if (vbFilterBrand !== 'all' && t.vb !== vbFilterBrand) return false;
       if (vbFilterOutlet !== 'all' && t.physicalOutlet !== vbFilterOutlet) return false;
@@ -278,7 +475,7 @@ export const TransactionExplorerPage: React.FC = () => {
       }
       return true;
     });
-  }, [vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, deferredVbSearchQuery]);
+  }, [vbPeriod, vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, deferredVbSearchQuery]);
 
   const vbKpi = useMemo(() => {
     const total = filteredVB.length;
@@ -313,11 +510,13 @@ export const TransactionExplorerPage: React.FC = () => {
     setVbFilterListing('all');
     setVbFilterStatus('all');
     setVbSearchQuery('');
+    setVbPeriod(DEFAULT_VB_PERIOD);
     setVbPage(1);
   }, []);
 
   const agencyActiveFilterCount = useMemo(() => {
     let count = 0;
+    if (agencyPeriod.type !== 'all') count++;
     if (filterPlatform !== 'all') count++;
     if (filterOwner !== 'all') count++;
     if (filterOutlet !== 'all') count++;
@@ -325,10 +524,11 @@ export const TransactionExplorerPage: React.FC = () => {
     if (filterStatus !== 'all') count++;
     if (searchQuery.trim() !== '') count++;
     return count;
-  }, [filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, searchQuery]);
+  }, [agencyPeriod, filterPlatform, filterOwner, filterOutlet, filterListing, filterStatus, searchQuery]);
 
   const vbActiveFilterCount = useMemo(() => {
     let count = 0;
+    if (vbPeriod.type !== 'all') count++;
     if (vbFilterPlatform !== 'all') count++;
     if (vbFilterBrand !== 'all') count++;
     if (vbFilterOutlet !== 'all') count++;
@@ -336,7 +536,7 @@ export const TransactionExplorerPage: React.FC = () => {
     if (vbFilterStatus !== 'all') count++;
     if (vbSearchQuery.trim() !== '') count++;
     return count;
-  }, [vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, vbSearchQuery]);
+  }, [vbPeriod, vbFilterPlatform, vbFilterBrand, vbFilterOutlet, vbFilterListing, vbFilterStatus, vbSearchQuery]);
 
   const activeFilterCount = currentTab === 'agency' ? agencyActiveFilterCount : vbActiveFilterCount;
 
@@ -393,8 +593,8 @@ export const TransactionExplorerPage: React.FC = () => {
   }
 
   // Agency pagination display numbers
-  const agencyStart = filteredAgency.length === 0 ? 0 : (agencyPage - 1) * agencyRowsPerPage + 1;
-  const agencyEnd = Math.min(agencyPage * agencyRowsPerPage, filteredAgency.length);
+  const agencyStart = effectiveTotal === 0 ? 0 : (agencyPage - 1) * agencyRowsPerPage + 1;
+  const agencyEnd = Math.min(agencyPage * agencyRowsPerPage, effectiveTotal);
 
   const agencyPageNumbers = useMemo(() => {
     if (totalAgencyPages <= 5) return Array.from({ length: totalAgencyPages }, (_, i) => i + 1);
@@ -558,10 +758,13 @@ export const TransactionExplorerPage: React.FC = () => {
               {showFilter && (
                 <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6 transition-all">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white min-w-[200px]">
-                      <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                      <span>17 - 23 Agustus 2026</span>
-                    </div>
+                    <TransactionPeriodPicker
+                      value={agencyPeriod}
+                      onChange={(p) => {
+                        setAgencyPeriod(p);
+                        setAgencyPage(1);
+                      }}
+                    />
 
                     <SelectDropdown
                       value={filterPlatform}
@@ -644,7 +847,16 @@ export const TransactionExplorerPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedAgency.length === 0 ? (
+                      {isLoading ? (
+                        <tr>
+                          <td colSpan={10} className="px-4 py-16 text-center text-gray-500 text-sm">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="w-5 h-5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+                              <span>Memuat data transaksi...</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : paginatedAgency.length === 0 ? (
                         <tr>
                           <td colSpan={10} className="px-4 py-16 text-center text-gray-400 text-sm">
                             Tidak ada data transaksi yang cocok dengan filter yang dipilih.
@@ -718,8 +930,8 @@ export const TransactionExplorerPage: React.FC = () => {
                   </div>
 
                   <p className="text-sm text-gray-500">
-                    {filteredAgency.length > 0
-                      ? `${agencyStart}-${agencyEnd} of ${TOTAL_ORDER_COUNT.toLocaleString('id-ID')}`
+                    {effectiveTotal > 0
+                      ? `${agencyStart}-${agencyEnd} of ${effectiveTotal.toLocaleString('id-ID')}`
                       : '0 of 0'}
                   </p>
 
@@ -826,10 +1038,13 @@ export const TransactionExplorerPage: React.FC = () => {
               {showFilter && (
                 <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6 transition-all">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white min-w-[200px]">
-                      <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                      <span>1 - 21 Agustus 2026</span>
-                    </div>
+                    <TransactionPeriodPicker
+                      value={vbPeriod}
+                      onChange={(p) => {
+                        setVbPeriod(p);
+                        setVbPage(1);
+                      }}
+                    />
 
                     <SelectDropdown
                       value={vbFilterPlatform}

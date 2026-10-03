@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { ArrowLeft, Copy, Check, ShieldCheck, Info } from 'lucide-react';
@@ -9,7 +9,37 @@ import {
   formatRupiah,
   type Platform,
   type OrderStatus,
+  type Transaction,
 } from '../data/transactions';
+import { api } from '../services/api';
+import { parseTransactionDate } from '../utils/dateParser';
+
+function formatDisplayDateTime(str: string | null | undefined): { date: string; time: string } {
+  if (!str) return { date: '-', time: '' };
+  const d = parseTransactionDate(str);
+  if (d && !isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const secs = String(d.getSeconds()).padStart(2, '0');
+    return {
+      date: `${day} ${month} ${year}`,
+      time: `${hours}:${mins}:${secs} WIB`,
+    };
+  }
+  const clean = str.replace('T', ' ').split('.')[0];
+  const parts = clean.split(' ');
+  return { date: parts[0] || str, time: parts[1] || '' };
+}
+
+function formatAuditDate(str: string | null | undefined): string {
+  if (!str) return '-';
+  const { date, time } = formatDisplayDateTime(str);
+  return time ? `${date} ${time}` : date;
+}
 
 function PlatformLogoLarge({ platform }: { platform: Platform }) {
   if (platform === 'gofood') {
@@ -130,7 +160,75 @@ export const TransactionDetailPage: React.FC = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
 
-  const transaction = orderId ? TRANSACTIONS_BY_ORDER_ID.get(orderId) : undefined;
+  const mockTx = orderId ? TRANSACTIONS_BY_ORDER_ID.get(orderId) : undefined;
+  const [liveTx, setLiveTx] = useState<Transaction | undefined>(mockTx);
+  const [loading, setLoading] = useState<boolean>(!mockTx);
+
+  useEffect(() => {
+    if (mockTx || !orderId) return;
+
+    let isMounted = true;
+    setLoading(true);
+
+    api.getTransactionDetail(orderId)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res && res.data) {
+          const item = res.data;
+          const platLower = (item.platform || '').toLowerCase();
+          const plat: Platform = platLower === 'gofood' ? 'gofood' : platLower === 'grabfood' ? 'grabfood' : 'shopeefood';
+          const isSukses = item.is_success === 1 || String(item.status).toUpperCase() === 'SETTLEMENT' || String(item.status).toUpperCase() === 'COMPLETED';
+          const dt = item.created_on || item.transaction_date || '';
+
+          setLiveTx({
+            id: String(item.id),
+            dateTime: dt,
+            orderId: item.external_id || String(item.id),
+            platform: plat,
+            owner: item.owner_name || 'FoodMaster Group',
+            physicalOutlet: item.outlet_name || item.branch_name || item.store_name || '-',
+            platformListing: item.store_name || item.branch_name || item.outlet_name || '-',
+            sid: item.merchant_id || '-',
+            status: isSukses ? 'Sukses' : 'Batal',
+            orderValue: Number(item.gross_amount) || 0,
+            agencyFee: Number(item.agency_fee) || 0,
+            orderStage: 'live',
+            netSales: Number(item.net_sales) || 0,
+            marketingSuccessFee: 0,
+            orderCommission: Math.abs(Number(item.commission) || 0),
+            ofdFees: Number(item.ofd_fees) || 0,
+            ingestedAt: item.created_on || undefined,
+            ingestedBy: 'ETL Worker',
+            lastUpdated: item.created_on || undefined,
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load transaction detail:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [orderId, mockTx]);
+
+  const transaction = liveTx;
+
+  if (loading) {
+    return (
+      <DashboardLayout title="Detail Transaksi">
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="w-5 h-5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+            <span>Memuat detail transaksi...</span>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (!transaction) {
     return (
@@ -155,6 +253,7 @@ export const TransactionDetailPage: React.FC = () => {
   const isSukses = transaction.status === 'Sukses';
   const platformLabel = getPlatformLabel(transaction.platform);
   const dataSource = getDataSource(transaction.platform);
+  const formattedDateTime = formatDisplayDateTime(transaction.dateTime);
 
   const netSales = transaction.netSales ?? transaction.orderValue;
   const marketingFee = transaction.marketingSuccessFee ?? 0;
@@ -214,27 +313,35 @@ export const TransactionDetailPage: React.FC = () => {
                 </div>
 
                 {/* Top row: platform + core order fields */}
-                <div className="flex items-start gap-5 pb-5 border-b border-gray-100">
+                <div className="flex flex-col sm:flex-row items-start gap-5 pb-5 border-b border-gray-100">
                   <PlatformLogoLarge platform={transaction.platform} />
-                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4">
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">Platform</p>
-                      <p className="text-sm font-semibold text-gray-800">{platformLabel}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">Order ID</p>
-                      <div className="flex items-center">
-                        <p className="text-sm font-semibold text-gray-800 font-mono">{transaction.orderId}</p>
-                        <CopyButton text={transaction.orderId} />
+                  <div className="flex-1 min-w-0 w-full space-y-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">Platform</p>
+                        <p className="text-sm font-semibold text-gray-800">{platformLabel}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">Order Status</p>
+                        <StatusBadge status={transaction.status} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">Date &amp; Time</p>
+                        <p className="text-sm font-semibold text-gray-800">{formattedDateTime.date}</p>
+                        {formattedDateTime.time && (
+                          <p className="text-xs text-gray-500 font-mono mt-0.5">{formattedDateTime.time}</p>
+                        )}
                       </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">Date &amp; Time</p>
-                      <p className="text-sm font-semibold text-gray-800 whitespace-pre-line">{transaction.dateTime.replace(' ', '\n')}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">Order Status</p>
-                      <StatusBadge status={transaction.status} />
+
+                    <div className="bg-gray-50/80 rounded-lg p-2.5 border border-gray-100 flex items-center justify-between gap-3 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] text-gray-400 font-medium mb-0.5">Order ID</p>
+                        <p className="text-xs sm:text-sm font-semibold text-gray-900 font-mono break-all select-all">
+                          {transaction.orderId}
+                        </p>
+                      </div>
+                      <CopyButton text={transaction.orderId} />
                     </div>
                   </div>
                 </div>
@@ -249,15 +356,15 @@ export const TransactionDetailPage: React.FC = () => {
                     <p className="text-xs text-gray-400 mb-1">Physical Outlet</p>
                     <p className="text-sm font-semibold text-gray-800">{transaction.physicalOutlet.replace(' - ', ' \u2014 ')}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-gray-400 mb-1">Platform Listing</p>
-                    <p className="text-sm font-semibold text-gray-800">{transaction.platformListing}</p>
-                    <p className="text-xs text-[#2563EB] font-mono mt-0.5">{transaction.sid}</p>
+                    <p className="text-sm font-semibold text-gray-800 break-words">{transaction.platformListing}</p>
+                    <p className="text-xs text-[#2563EB] font-mono mt-0.5 break-all">{transaction.sid}</p>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-gray-400 mb-1">SID / Store ID</p>
-                    <div className="flex items-center">
-                      <p className="text-sm font-semibold text-gray-800 font-mono">{transaction.sid}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-800 font-mono break-all select-all">{transaction.sid}</p>
                       <CopyButton text={transaction.sid} />
                     </div>
                   </div>
@@ -405,7 +512,7 @@ export const TransactionDetailPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">Ingested At</p>
-                    <p className="text-sm text-gray-700">{transaction.ingestedAt ?? '-'}</p>
+                    <p className="text-sm text-gray-700">{formatAuditDate(transaction.ingestedAt)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">Ingested By</p>
@@ -413,7 +520,7 @@ export const TransactionDetailPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">Last Updated</p>
-                    <p className="text-sm text-gray-700">{transaction.lastUpdated ?? '-'}</p>
+                    <p className="text-sm text-gray-700">{formatAuditDate(transaction.lastUpdated)}</p>
                   </div>
                 </div>
               </div>

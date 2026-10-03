@@ -64,65 +64,39 @@ async def run_all(date_start: str = None, date_end: str = None, output_dir: str 
     # Reload env just in case
     load_dotenv(override=True)
     
-    log.info(f"Fetching merchant list from spreadsheet...")
+    log.info("Fetching merchant list from Master DBR...")
     try:
-        resp = requests.get(CSV_URL, timeout=30)
-        resp.raise_for_status()
-        df = pd.read_csv(io.StringIO(resp.text))
-        
-        # Filter for GrabFood and Status Live
-        grab_df = df[df["Aplikasi"].str.contains("Grab", na=False, case=False)]
-        grab_df = grab_df[grab_df["Status"].str.contains("Live", na=False, case=False)]
-        
-        portals = []
-        for idx, row in grab_df.iterrows():
-            user_sf = row.get("Nama Pengguna.1")
-            user_mt = row.get("Nama Pengguna")
-            pwd_sf = row.get("Kata Sandi.1")
-            pwd_mt = row.get("Kata Sandi")
-            
-            user = user_sf if pd.notna(user_sf) and str(user_sf).strip() != "-" else user_mt
-            pwd = pwd_sf if pd.notna(pwd_sf) and str(pwd_sf).strip() != "-" else pwd_mt
-            
-            if pd.notna(user) and pd.notna(pwd) and str(user).strip() != "-" and str(pwd).strip() != "-":
-                u_str = str(user).strip()
-                p_str = str(pwd).strip()
-                outlet = str(row.get("Nama Outlet", "Unknown")).strip()
-                
-                # Di Master DB, kolom Cabang tidak ada, gunakan Brand
-                branch_val = row.get("Cabang", row.get("Brand", ""))
-                branch = str(branch_val).strip() if pd.notna(branch_val) else ""
-                
-                # Apply custom outlet and branch filters internally
-                if outlet_filter:
-                    if "|" in outlet_filter:
-                        valid_outlets = [o.strip().lower() for o in outlet_filter.split("|")]
-                        if str(outlet).strip().lower() not in valid_outlets: continue
-                    elif str(outlet).strip().lower() != str(outlet_filter).strip().lower():
-                        continue
-                if branch_filter:
-                    if "|" in branch_filter:
-                        valid_branches = [b.strip().lower() for b in branch_filter.split("|")]
-                        if str(branch).strip().lower() not in valid_branches: continue
-                    elif str(branch).strip().lower() != str(branch_filter).strip().lower():
-                        continue
-                
-                # Smart credential validation
-                is_valid, err_msg = validate_credentials(u_str, p_str)
-                if not is_valid:
-                    log.warning(f"⚠️  [VALIDATION WARNING] Row #{idx+1} for '{outlet} ({branch})' has invalid credentials: {err_msg}")
-                    
-                portals.append({
-                    "id": len(portals) + 1,
-                    "outlet": outlet,
-                    "branch": branch,
-                    "user": u_str,
-                    "pwd": p_str
-                })
+        from core.dbr_resolver import get_grab_accounts
+        raw_accounts = get_grab_accounts(
+            outlet_filter=outlet_filter,
+            branch_filter=branch_filter,
+            user_filter=user_filter
+        )
 
-        
+        portals = []
+        for idx, acc in enumerate(raw_accounts):
+            u_str = acc["user"]
+            p_str = acc["pwd"]
+            outlet = acc["outlet"]
+            branch = acc["branch"]
+
+            is_valid, err_msg = validate_credentials(u_str, p_str)
+            if not is_valid:
+                log.warning(f"[VALIDATION WARNING] #{idx+1} for '{outlet} ({branch})' has invalid credentials: {err_msg}")
+
+            portals.append({
+                "id": idx + 1,
+                "outlet": outlet,
+                "branch": branch,
+                "user": u_str,
+                "pwd": p_str,
+                "store_id": acc.get("store_id", ""),
+                "group_id": acc.get("group_id", "")
+            })
+
+        log.info(f"Loaded {len(portals)} active GrabFood portals from Master DBR.")
     except Exception as e:
-        log.error(f"Failed to fetch or parse spreadsheet: {e}")
+        log.error(f"Failed to fetch or parse Master DBR: {e}")
         return
 
     # Determine output directory
@@ -164,14 +138,14 @@ async def run_all(date_start: str = None, date_end: str = None, output_dir: str 
             if incomplete_portals:
                 active_users[u] = info
             else:
-                log.info(f"⏭️ [SKIP] Account {u} is already completed (All Excel files exist in {laporan_dir.name}).")
+                log.info(f"[SKIP] Account {u} is already completed (All Excel files exist in {laporan_dir.name}).")
         unique_users = active_users
         if not unique_users:
-            log.info("⏭️ [SKIP] All accounts are already completed. Bypassing browser download phase.")
+            log.info("[SKIP] All accounts are already completed. Bypassing browser download phase.")
             skip_download = True
     
     if skip_download:
-        log.info("⏭️ [SKIP] Bypassing browser download phase (Phases 1 & 2) as --skip-download is enabled.")
+        log.info("[SKIP] Bypassing browser download phase (Phases 1 & 2) as --skip-download is enabled.")
     else:
         from playwright.async_api import async_playwright
         
