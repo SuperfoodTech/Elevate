@@ -1,8 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
-import { getWeeksForMonth, getAvailableMonths } from '../utils/periodHelper';
 import { api } from '../services/api';
+import {
+  TransactionPeriodPicker,
+  type PeriodFilterValue,
+} from '../components/common/TransactionPeriodPicker';
 import type {
   HomeDashboardKPI,
   DailyVelocityPoint,
@@ -23,7 +26,6 @@ import {
   Tooltip
 } from 'recharts';
 import {
-  Calendar,
   ChevronDown,
   RefreshCw,
   Users,
@@ -74,62 +76,20 @@ const formatOrderAxis = (val: number): string => {
 
 export const DashboardPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
-  const [selectedMonthKey, setSelectedMonthKey] = useState<string>('2024-05');
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('13 - 19 Mei 2024 (Minggu 2)');
+  const [selectedPeriodValue, setSelectedPeriodValue] = useState<PeriodFilterValue>({
+    type: 'all',
+    label: 'Semua Periode',
+    startDate: undefined,
+    endDate: undefined,
+  });
   const [selectedOwner, setSelectedOwner] = useState<string>('All Owner');
   const [selectedBusiness, setSelectedBusiness] = useState<string>('All');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
 
-  // Available months grouped by year (e.g. 2024 to 2026)
-  const availableMonthsData = useMemo(() => getAvailableMonths(2024, 2026), []);
-
-  // Compute year and monthIndex from selectedMonthKey
-  const [selectedYear, selectedMonthIndex] = useMemo(() => {
-    const [y, m] = selectedMonthKey.split('-').map((v) => parseInt(v, 10));
-    return [y, m - 1];
-  }, [selectedMonthKey]);
-
-  // Compute weeks dynamically based on the first Monday rule
-  const availableWeeks = useMemo(() => {
-    return getWeeksForMonth(selectedYear, selectedMonthIndex);
-  }, [selectedYear, selectedMonthIndex]);
-
-  // Current active week object from availableWeeks
-  const currentWeekObj = useMemo(() => {
-    return availableWeeks.find((w) => w.label === selectedPeriod) || availableWeeks[0];
-  }, [availableWeeks, selectedPeriod]);
-
-  // Extract current and previous week labels based on business rule:
-  // Week 1 starts on the first Monday of the month, not day 1.
-  const currentWeekLabel = useMemo(() => {
-    const match = selectedPeriod.match(/\(([^)]+)\)/);
-    return match ? match[1] : (currentWeekObj?.weekLabel || 'Minggu 1');
-  }, [selectedPeriod, currentWeekObj]);
-
-  const prevWeekLabel = useMemo(() => {
-    const match = currentWeekLabel.match(/\d+/);
-    if (match) {
-      const num = parseInt(match[0], 10);
-      return num > 1 ? `Minggu ${num - 1}` : 'Minggu Lalu';
-    }
-    return 'Minggu Lalu';
-  }, [currentWeekLabel]);
-
-  const handleMonthChange = (newMonthKey: string) => {
-    setSelectedMonthKey(newMonthKey);
-    const [y, m] = newMonthKey.split('-').map((v) => parseInt(v, 10));
-    const weeks = getWeeksForMonth(y, m - 1);
-    if (weeks.length > 0) {
-      const currentWeekNumMatch = currentWeekLabel.match(/\d+/);
-      const currentWeekNum = currentWeekNumMatch ? parseInt(currentWeekNumMatch[0], 10) : 1;
-      const matchedWeek = weeks.find((w) => w.weekNumber === currentWeekNum) || weeks[0];
-      setSelectedPeriod(matchedWeek.label);
-    }
-  };
-
   // Convert Date object to YYYY-MM-DD
-  const formatToISODate = (d: Date): string => {
+  const formatToISODate = (d?: Date): string | undefined => {
+    if (!d) return undefined;
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -137,12 +97,20 @@ export const DashboardPage: React.FC = () => {
   };
 
   const activeStartDate = useMemo(() => {
-    return currentWeekObj ? formatToISODate(currentWeekObj.startDate) : undefined;
-  }, [currentWeekObj]);
+    return selectedPeriodValue.startDate ? formatToISODate(selectedPeriodValue.startDate) : undefined;
+  }, [selectedPeriodValue]);
 
   const activeEndDate = useMemo(() => {
-    return currentWeekObj ? formatToISODate(currentWeekObj.endDate) : undefined;
-  }, [currentWeekObj]);
+    return selectedPeriodValue.endDate ? formatToISODate(selectedPeriodValue.endDate) : undefined;
+  }, [selectedPeriodValue]);
+
+  const currentWeekLabel = useMemo(() => {
+    return selectedPeriodValue.label || 'Semua Periode';
+  }, [selectedPeriodValue]);
+
+  const prevWeekLabel = useMemo(() => {
+    return 'Periode Sebelumnya';
+  }, []);
 
   // View modes for Brand Performance cards
   const [merchantViewMode, setMerchantViewMode] = useState<'financial' | 'orders'>('financial');
@@ -174,7 +142,6 @@ export const DashboardPage: React.FC = () => {
 
   // Fetch dashboard metrics when date range, owner, or business group changes
   const fetchDashboardData = async (force = false) => {
-    if (!activeStartDate || !activeEndDate) return;
     setIsLoading(true);
     try {
       const res = await api.getHomeDashboardMetrics({
@@ -184,14 +151,16 @@ export const DashboardPage: React.FC = () => {
         business: selectedBusiness,
         forceRefresh: force
       });
-      if (res && res.status === 'success') {
-        setHasData(res.has_data);
-        setDashboardKPI(res.kpi);
-        setVelocityData(res.velocity || []);
-        setMerchantData(res.merchant_chart_data || []);
-        setVirtualData(res.virtual_chart_data || []);
-        setTopBrands(res.top_brands || []);
-        setSettlementData(res.settlement_flow || []);
+      if (res) {
+        if (res.status === 'success' || res.kpi) {
+          setHasData(res.has_data ?? true);
+          setDashboardKPI(res.kpi);
+          setVelocityData(res.velocity || []);
+          setMerchantData(res.merchant_chart_data || []);
+          setVirtualData(res.virtual_chart_data || []);
+          setTopBrands(res.top_brands || []);
+          setSettlementData(res.settlement_flow || []);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch home dashboard metrics', err);
@@ -337,47 +306,13 @@ export const DashboardPage: React.FC = () => {
         {/* ── Filters Bar ── */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-[#EBEBEF]">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Bulan & Tahun Filter */}
+            {/* Periode Calendar Filter */}
             <div className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-slate-500">Bulan & Tahun</span>
-              <div className="relative flex items-center">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
-                <select
-                  value={selectedMonthKey}
-                  onChange={(e) => handleMonthChange(e.target.value)}
-                  className="appearance-none border border-slate-200 rounded-lg pl-8 pr-8 py-1.5 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                >
-                  {availableMonthsData.years.map((year) => (
-                    <optgroup key={year} label={`Tahun ${year}`}>
-                      {availableMonthsData.monthsByYear[year].map((m) => (
-                        <option key={m.key} value={m.key}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
-              </div>
-            </div>
-
-            {/* Minggu Filter */}
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-slate-500">Minggu</span>
-              <div className="relative flex items-center">
-                <select
-                  value={selectedPeriod}
-                  onChange={(e) => setSelectedPeriod(e.target.value)}
-                  className="appearance-none border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 min-w-[220px]"
-                >
-                  {availableWeeks.map((w) => (
-                    <option key={w.label} value={w.label}>
-                      {w.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
-              </div>
+              <span className="text-[11px] font-medium text-slate-500">Periode</span>
+              <TransactionPeriodPicker
+                value={selectedPeriodValue}
+                onChange={(p) => setSelectedPeriodValue(p)}
+              />
             </div>
 
             {/* Owner Filter */}
